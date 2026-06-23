@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useCompany } from "@/lib/useCompany";
-import { useLocalStorage } from "@/lib/useLocalStorage";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import DataTable from "@/components/DataTable";
 import StatusBadge from "@/components/StatusBadge";
@@ -10,56 +9,73 @@ import ActionMenu from "@/components/ActionMenu";
 import CreateModal from "@/components/CreateModal";
 import { PlusIcon } from "@/components/Icons";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { Client, ColumnDef } from "@/lib/types";
+import type { ColumnDef } from "@/lib/types";
+
+interface Student {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  language: string;
+  level: string;
+  since: string;
+  total_value: number;
+  status: string;
+}
 
 export default function ClientsPage() {
-  const company = useCompany();
-  const [clients, setClients] = useLocalStorage<Client[]>("masteri-clients", company.data.clients);
+  const { companyId } = useParams<{ companyId: string }>();
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
-  const singular = company.labels.clients.replace(/s$/, "").toLowerCase();
 
-  const columns: ColumnDef<Client>[] = [
+  useEffect(() => {
+    fetch(`/api/school/${companyId}/students`)
+      .then((r) => r.json())
+      .then(setStudents)
+      .finally(() => setLoading(false));
+  }, [companyId]);
+
+  const columns: ColumnDef<Student>[] = [
     {
       key: "name",
-      header: company.labels.clients.replace(/s$/, ""),
-      render: (client) => (
+      header: "Student",
+      render: (s) => (
         <div>
-          <p className="font-medium text-slate-900">{client.name}</p>
-          <p className="text-xs text-slate-500">{client.email}</p>
+          <p className="font-medium text-slate-900">{s.name}</p>
+          <p className="text-xs text-slate-500">{s.email}</p>
         </div>
       ),
     },
-    ...(company.clientMetaColumns ?? []).map<ColumnDef<Client>>((meta) => ({
-      key: meta.key,
-      header: meta.header,
-      render: (client) => client.meta?.[meta.key] ?? "—",
-    })),
-    { key: "phone", header: "Phone" },
-    { key: "since", header: "Since", render: (client) => formatDate(client.since) },
+    { key: "language", header: "Language", render: (s) => s.language ?? "—" },
+    { key: "level", header: "Level", render: (s) => s.level ?? "—" },
+    { key: "phone", header: "Phone", render: (s) => s.phone ?? "—" },
+    { key: "since", header: "Since", render: (s) => s.since ? formatDate(s.since) : "—" },
     {
-      key: "totalValue",
+      key: "total_value",
       header: "Lifetime Value",
-      render: (client) => (
-        <span className="font-medium text-slate-900">
-          {formatCurrency(client.totalValue, company.currency)}
-        </span>
+      render: (s) => (
+        <span className="font-medium text-slate-900">{formatCurrency(s.total_value ?? 0)}</span>
       ),
     },
-    {
-      key: "status",
-      header: "Status",
-      render: (client) => <StatusBadge status={client.status} />,
-    },
+    { key: "status", header: "Status", render: (s) => <StatusBadge status={s.status} /> },
     {
       key: "id",
       header: "",
-      render: (client) => (
+      render: (s) => (
         <ActionMenu
           items={[
             {
               label: "Delete",
               destructive: true,
-              onClick: () => setClients((prev) => prev.filter((c) => c.id !== client.id)),
+              onClick: async () => {
+                await fetch(`/api/school/${companyId}/students`, {
+                  method: "DELETE",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ id: s.id }),
+                });
+                setStudents((prev) => prev.filter((x) => x.id !== s.id));
+              },
             },
           ]}
         />
@@ -70,48 +86,48 @@ export default function ClientsPage() {
   return (
     <div>
       <PageHeader
-        title={company.labels.clients}
-        description={`Everyone ${company.name} currently works with.`}
+        title="Students"
+        description="Everyone currently enrolled."
         actions={
           <button
             type="button"
             onClick={() => setModalOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
           >
-            <PlusIcon /> Add {singular}
+            <PlusIcon /> Add student
           </button>
         }
       />
       <DataTable
         columns={columns}
-        rows={clients}
-        searchKeys={["name", "contact", "email", "phone"]}
-        searchPlaceholder={`Search ${company.labels.clients.toLowerCase()}...`}
+        rows={students}
+        searchKeys={["name", "email", "phone", "language"]}
+        searchPlaceholder="Search students..."
         filters={[
-          { key: "status", label: "Statuses", options: ["Active", "Paused", "Churned"] },
+          { key: "status", label: "Status", options: ["Active", "Paused", "Churned", "Trial"] },
+          { key: "language", label: "Language", options: Array.from(new Set(students.map((s) => s.language).filter(Boolean))) },
         ]}
       />
       {modalOpen && (
         <CreateModal
-          title={`Add ${singular}`}
+          title="Add student"
           fields={[
             { name: "name", label: "Name", required: true },
             { name: "email", label: "Email" },
             { name: "phone", label: "Phone" },
-            { name: "status", label: "Status", type: "select", options: ["Active", "Paused", "Inactive"] },
+            { name: "language", label: "Language" },
+            { name: "level", label: "Level", type: "select", options: ["Complete Beginner", "Beginner", "Intermediate", "Advanced"] },
+            { name: "status", label: "Status", type: "select", options: ["Active", "Trial", "Paused", "Churned"] },
           ]}
-          onSubmit={(data) => {
-            const newClient: Client = {
-              id: Date.now().toString(),
-              name: data.name,
-              contact: data.name,
-              email: data.email ?? "",
-              phone: data.phone ?? "",
-              since: new Date().toISOString().slice(0, 10),
-              totalValue: 0,
-              status: (data.status as Client["status"]) ?? "Active",
-            };
-            setClients((prev) => [newClient, ...prev]);
+          onSubmit={async (data) => {
+            const res = await fetch(`/api/school/${companyId}/students`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            });
+            const newStudent = await res.json();
+            setStudents((prev) => [newStudent, ...prev]);
+            setModalOpen(false);
           }}
           onClose={() => setModalOpen(false)}
         />

@@ -1,19 +1,39 @@
 "use client";
 
-import { useState } from "react";
-import { useCompany } from "@/lib/useCompany";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import DataTable from "@/components/DataTable";
 import StatusBadge from "@/components/StatusBadge";
 import NewLeadModal from "@/components/NewLeadModal";
 import { PlusIcon } from "@/components/Icons";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { ColumnDef, Lead } from "@/lib/types";
+import type { ColumnDef } from "@/lib/types";
+
+interface Lead {
+  id: string;
+  name: string;
+  email: string;
+  contact: string;
+  source: string;
+  value: number;
+  status: string;
+  owner: string;
+  created_at: string;
+}
 
 export default function LeadsPage() {
-  const company = useCompany();
-  const [leads, setLeads] = useState<Lead[]>(company.data.leads);
+  const { companyId } = useParams<{ companyId: string }>();
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(true);
   const [newLeadOpen, setNewLeadOpen] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/school/${companyId}/leads`)
+      .then((r) => r.json())
+      .then(setLeads)
+      .finally(() => setLoading(false));
+  }, [companyId]);
 
   const columns: ColumnDef<Lead>[] = [
     {
@@ -26,27 +46,23 @@ export default function LeadsPage() {
         </div>
       ),
     },
-    { key: "contact", header: "Contact" },
-    { key: "source", header: "Source" },
+    { key: "contact", header: "Contact", render: (l) => l.contact ?? "—" },
+    { key: "source", header: "Source", render: (l) => l.source ?? "—" },
     {
       key: "value",
       header: "Est. Value",
-      render: (lead) => (
-        <span className="font-medium text-slate-900">
-          {formatCurrency(lead.value, company.currency)}
-        </span>
-      ),
+      render: (l) => <span className="font-medium text-slate-900">{formatCurrency(l.value ?? 0)}</span>,
     },
-    { key: "status", header: "Status", render: (lead) => <StatusBadge status={lead.status} /> },
-    { key: "owner", header: "Owner" },
-    { key: "createdAt", header: "Created", render: (lead) => formatDate(lead.createdAt) },
+    { key: "status", header: "Status", render: (l) => <StatusBadge status={l.status} /> },
+    { key: "owner", header: "Owner", render: (l) => l.owner ?? "—" },
+    { key: "created_at", header: "Created", render: (l) => formatDate(l.created_at) },
   ];
 
   return (
     <div>
       <PageHeader
-        title={company.labels.leads}
-        description={`Incoming opportunities for ${company.name}.`}
+        title="Leads"
+        description="Incoming opportunities."
         actions={
           <button
             type="button"
@@ -60,40 +76,37 @@ export default function LeadsPage() {
       <DataTable
         columns={columns}
         rows={leads}
-        searchKeys={["name", "contact", "email", "source", "owner"]}
+        searchKeys={["name", "email", "contact", "source", "owner"]}
         searchPlaceholder="Search leads..."
         filters={[
-          {
-            key: "status",
-            label: "Statuses",
-            options: ["New", "Contacted", "Qualified", "Proposal Sent", "Won", "Lost"],
-          },
-          {
-            key: "source",
-            label: "Sources",
-            options: Array.from(new Set(leads.map((l) => l.source))),
-          },
+          { key: "status", label: "Status", options: ["New", "Contacted", "Qualified", "Proposal Sent", "Won", "Lost"] },
+          { key: "source", label: "Source", options: Array.from(new Set(leads.map((l) => l.source).filter(Boolean))) },
         ]}
-        emptyTitle="No leads match"
-        emptyDescription="Try a different search term or clear the filters."
+        emptyTitle="No leads yet"
+        emptyDescription="Add your first lead to get started."
       />
       <NewLeadModal
         open={newLeadOpen}
         onClose={() => setNewLeadOpen(false)}
-        onSubmit={({ firstName, lastName, phone, email }) => {
+        onSubmit={async ({ firstName, lastName, phone, email }) => {
           const fullName = `${firstName} ${lastName}`.trim();
-          const newLead: Lead = {
-            id: `L-${Date.now()}`,
-            name: fullName,
-            contact: `${fullName} · ${phone}`,
-            email,
-            source: "Manual",
-            value: 0,
-            status: "New",
-            owner: "Mark",
-            createdAt: new Date().toISOString().slice(0, 10),
-          };
+          const res = await fetch(`/api/school/${companyId}/leads`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: fullName,
+              contact: `${fullName} · ${phone}`,
+              email,
+              phone,
+              source: "Manual",
+              value: 0,
+              status: "New",
+              owner: "Mark",
+            }),
+          });
+          const newLead = await res.json();
           setLeads((prev) => [newLead, ...prev]);
+          setNewLeadOpen(false);
         }}
       />
     </div>
