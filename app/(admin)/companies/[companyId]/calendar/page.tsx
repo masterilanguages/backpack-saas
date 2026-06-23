@@ -1,19 +1,26 @@
 "use client";
 
-import { useCompany } from "@/lib/useCompany";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
 import { cn, formatDate } from "@/lib/utils";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-// All mock data lives in June 2026
-const YEAR = 2026;
-const MONTH = 5; // 0-indexed June
+const now = new Date();
+const YEAR = now.getFullYear();
+const MONTH = now.getMonth();
+
+interface CalendarEvent { id: string; title: string; date: string; time?: string; type?: string; }
 
 export default function CalendarPage() {
-  const company = useCompany();
-  const events = company.data.calendar;
+  const { companyId } = useParams<{ companyId: string }>();
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+
+  useEffect(() => {
+    fetch(`/api/school/${companyId}/calendar`).then((r) => r.json()).then(setEvents);
+  }, [companyId]);
 
   const eventsByDate = new Map<string, typeof events>();
   for (const event of events) {
@@ -37,7 +44,7 @@ export default function CalendarPage() {
     <div>
       <PageHeader
         title="Calendar"
-        description={`June ${YEAR} — everything scheduled for ${company.name}.`}
+        description={`${now.toLocaleString("default", { month: "long" })} ${YEAR}`}
       />
 
       {/* Month grid (tablet and up) */}
@@ -75,7 +82,7 @@ export default function CalendarPage() {
                         <div
                           key={event.id}
                           className="truncate rounded px-1.5 py-0.5 text-[11px] font-medium text-white"
-                          style={{ backgroundColor: company.color }}
+                          style={{ backgroundColor: "#0d9488" }}
                           title={`${event.title}${event.time ? ` · ${event.time}` : ""}`}
                         >
                           {event.time ? `${event.time} ` : ""}

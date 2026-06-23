@@ -163,6 +163,19 @@ export async function getTransactions(schoolId: string) {
   return data ?? [];
 }
 
+export async function createTransaction(schoolId: string, input: {
+  description: string; amount: number; type: string;
+  category?: string; status?: string; date?: string;
+}) {
+  const { data, error } = await supabaseAdmin
+    .from("transactions")
+    .insert({ school_id: schoolId, ...input })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ── Team ──────────────────────────────────────────────────────────────────────
 
 export async function getTeamMembers(schoolId: string) {

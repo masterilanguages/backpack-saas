@@ -1,17 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useCompany } from "@/lib/useCompany";
-import { useLocalStorage } from "@/lib/useLocalStorage";
+import { useState, useEffect, useMemo } from "react";
+import { useParams } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import ActionMenu from "@/components/ActionMenu";
 import CreateModal from "@/components/CreateModal";
 import { PlusIcon, SearchIcon } from "@/components/Icons";
 import { cn, formatDate } from "@/lib/utils";
-import type { Note } from "@/lib/types";
-
-function NoteCard({ note, onDelete }: { note: Note; onDelete: () => void }) {
+function NoteCard({ note, onDelete }: { note: { id: string; title: string; body: string; author: string; pinned: boolean; created_at: string }; onDelete: () => void }) {
   return (
     <div
       className={cn(
@@ -32,26 +29,31 @@ function NoteCard({ note, onDelete }: { note: Note; onDelete: () => void }) {
       </div>
       <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{note.body}</p>
       <p className="mt-3 text-xs text-slate-400">
-        {note.author} · {formatDate(note.date)}
+        {note.author} · {formatDate(note.created_at)}
       </p>
     </div>
   );
 }
 
+interface Note {
+  id: string; title: string; body: string; author: string; pinned: boolean; created_at: string;
+}
+
 export default function NotesPage() {
-  const company = useCompany();
-  const [notes, setNotes] = useLocalStorage<Note[]>("masteri-notes", company.data.notes);
+  const { companyId } = useParams<{ companyId: string }>();
+  const [notes, setNotes] = useState<Note[]>([]);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/school/${companyId}/notes`).then((r) => r.json()).then(setNotes);
+  }, [companyId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return notes;
-    return notes.filter(
-      (n) =>
-        n.title.toLowerCase().includes(q) ||
-        n.body.toLowerCase().includes(q) ||
-        n.author.toLowerCase().includes(q)
+    return notes.filter((n) =>
+      n.title?.toLowerCase().includes(q) || n.body?.toLowerCase().includes(q) || n.author?.toLowerCase().includes(q)
     );
   }, [notes, search]);
 
@@ -102,7 +104,7 @@ export default function NotesPage() {
                   <NoteCard
                     key={note.id}
                     note={note}
-                    onDelete={() => setNotes((prev) => prev.filter((n) => n.id !== note.id))}
+                    onDelete={async () => { setNotes((prev) => prev.filter((n) => n.id !== note.id)); }}
                   />
                 ))}
               </div>
@@ -135,15 +137,15 @@ export default function NotesPage() {
             { name: "body", label: "Body", type: "textarea", required: true },
             { name: "author", label: "Author" },
           ]}
-          onSubmit={(data) => {
-            const newNote: Note = {
-              id: Date.now().toString(),
-              title: data.title,
-              body: data.body,
-              author: data.author ?? "",
-              date: new Date().toISOString().slice(0, 10),
-            };
-            setNotes((prev) => [newNote, ...prev]);
+          onSubmit={async (data) => {
+            const res = await fetch(`/api/school/${companyId}/notes`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            });
+            const note = await res.json();
+            setNotes((prev) => [note, ...prev]);
+            setModalOpen(false);
           }}
           onClose={() => setModalOpen(false)}
         />
