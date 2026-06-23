@@ -113,7 +113,7 @@ export default function CalendarPage() {
                   {event.time ? ` · ${event.time}` : ""}
                 </p>
               </div>
-              <StatusBadge status={event.type} tone="blue" />
+              <StatusBadge status={event.type ?? "Event"} tone="blue" />
             </li>
           ))}
         </ul>
