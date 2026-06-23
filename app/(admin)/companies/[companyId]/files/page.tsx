@@ -1,6 +1,7 @@
 "use client";
 
-import { useCompany } from "@/lib/useCompany";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import DataTable from "@/components/DataTable";
 import StatusBadge from "@/components/StatusBadge";
@@ -19,8 +20,11 @@ const TYPE_TONES: Record<FileRecord["type"], Tone> = {
 };
 
 export default function FilesPage() {
-  const company = useCompany();
-  const files = company.data.files;
+  const { companyId } = useParams<{ companyId: string }>();
+  const [files, setFiles] = useState<FileRecord[]>([]);
+  useEffect(() => {
+    fetch(`/api/school/${companyId}/files`).then((r) => r.json()).then(setFiles).catch(() => setFiles([]));
+  }, [companyId]);
 
   const columns: ColumnDef<FileRecord>[] = [
     {
@@ -43,7 +47,7 @@ export default function FilesPage() {
     <div>
       <PageHeader
         title="Files"
-        description={`Documents and media for ${company.name}.`}
+        description="Documents and media."
         actions={
           <button
             type="button"
