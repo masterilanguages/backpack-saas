@@ -25,6 +25,7 @@ export default function TasksPage() {
   const { companyId } = useParams<{ companyId: string }>();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Task | null>(null);
 
   useEffect(() => {
     fetch(`/api/school/${companyId}/tasks`)
@@ -54,6 +55,10 @@ export default function TasksPage() {
       render: (t) => (
         <ActionMenu
           items={[
+            {
+              label: "Edit",
+              onClick: () => setEditing(t),
+            },
             {
               label: "Mark Done",
               onClick: async () => {
@@ -118,6 +123,38 @@ export default function TasksPage() {
             setModalOpen(false);
           }}
           onClose={() => setModalOpen(false)}
+        />
+      )}
+      {editing && (
+        <CreateModal
+          title="Edit Task"
+          submitLabel="Update"
+          initialValues={{
+            title: editing.title ?? "",
+            assignee: editing.assignee ?? "",
+            due_date: editing.due_date ?? "",
+            priority: editing.priority ?? "",
+            status: editing.status ?? "",
+            related: editing.related ?? "",
+          }}
+          fields={[
+            { name: "title", label: "Title", required: true },
+            { name: "assignee", label: "Assignee" },
+            { name: "due_date", label: "Due Date", type: "date" },
+            { name: "priority", label: "Priority", type: "select", options: ["High", "Medium", "Low"] },
+            { name: "status", label: "Status", type: "select", options: ["To Do", "In Progress", "Done", "Blocked"] },
+            { name: "related", label: "Related" },
+          ]}
+          onSubmit={async (data) => {
+            await fetch(`/api/school/${companyId}/tasks`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: editing.id, ...data }),
+            });
+            setTasks((prev) => prev.map((x) => (x.id === editing.id ? { ...x, ...data } : x)));
+            setEditing(null);
+          }}
+          onClose={() => setEditing(null)}
         />
       )}
     </div>

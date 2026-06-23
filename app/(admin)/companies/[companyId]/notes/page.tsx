@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useParams } from "next/navigation";
+import { useCompany } from "@/lib/useCompany";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import ActionMenu from "@/components/ActionMenu";
 import CreateModal from "@/components/CreateModal";
 import { PlusIcon, SearchIcon } from "@/components/Icons";
 import { cn, formatDate } from "@/lib/utils";
-function NoteCard({ note, onDelete }: { note: { id: string; title: string; body: string; author: string; pinned: boolean; created_at: string }; onDelete: () => void }) {
+function NoteCard({ note, onEdit, onDelete }: { note: { id: string; title: string; body: string; author: string; pinned: boolean; created_at: string }; onEdit: () => void; onDelete: () => void }) {
   return (
     <div
       className={cn(
@@ -23,6 +24,7 @@ function NoteCard({ note, onDelete }: { note: { id: string; title: string; body:
         </h3>
         <ActionMenu
           items={[
+            { label: "Edit", onClick: onEdit },
             { label: "Delete", destructive: true, onClick: onDelete },
           ]}
         />
@@ -41,9 +43,20 @@ interface Note {
 
 export default function NotesPage() {
   const { companyId } = useParams<{ companyId: string }>();
+  const company = useCompany();
   const [notes, setNotes] = useState<Note[]>([]);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Note | null>(null);
+
+  const deleteNote = async (id: string) => {
+    await fetch(`/api/school/${companyId}/notes`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setNotes((prev) => prev.filter((n) => n.id !== id));
+  };
 
   useEffect(() => {
     fetch(`/api/school/${companyId}/notes`).then((r) => r.json()).then(setNotes);
@@ -104,7 +117,8 @@ export default function NotesPage() {
                   <NoteCard
                     key={note.id}
                     note={note}
-                    onDelete={async () => { setNotes((prev) => prev.filter((n) => n.id !== note.id)); }}
+                    onEdit={() => setEditing(note)}
+                    onDelete={() => deleteNote(note.id)}
                   />
                 ))}
               </div>
@@ -120,7 +134,8 @@ export default function NotesPage() {
                   <NoteCard
                     key={note.id}
                     note={note}
-                    onDelete={() => setNotes((prev) => prev.filter((n) => n.id !== note.id))}
+                    onEdit={() => setEditing(note)}
+                    onDelete={() => deleteNote(note.id)}
                   />
                 ))}
               </div>
@@ -148,6 +163,32 @@ export default function NotesPage() {
             setModalOpen(false);
           }}
           onClose={() => setModalOpen(false)}
+        />
+      )}
+      {editing && (
+        <CreateModal
+          title="Edit Note"
+          submitLabel="Update"
+          initialValues={{
+            title: editing.title ?? "",
+            body: editing.body ?? "",
+            author: editing.author ?? "",
+          }}
+          fields={[
+            { name: "title", label: "Title", required: true },
+            { name: "body", label: "Body", type: "textarea", required: true },
+            { name: "author", label: "Author" },
+          ]}
+          onSubmit={async (data) => {
+            await fetch(`/api/school/${companyId}/notes`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: editing.id, ...data }),
+            });
+            setNotes((prev) => prev.map((n) => (n.id === editing.id ? { ...n, ...data } : n)));
+            setEditing(null);
+          }}
+          onClose={() => setEditing(null)}
         />
       )}
     </div>

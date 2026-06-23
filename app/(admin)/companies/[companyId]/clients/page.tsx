@@ -28,6 +28,7 @@ export default function ClientsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Student | null>(null);
 
   useEffect(() => {
     fetch(`/api/school/${companyId}/students`)
@@ -65,6 +66,10 @@ export default function ClientsPage() {
       render: (s) => (
         <ActionMenu
           items={[
+            {
+              label: "Edit",
+              onClick: () => setEditing(s),
+            },
             {
               label: "Delete",
               destructive: true,
@@ -130,6 +135,39 @@ export default function ClientsPage() {
             setModalOpen(false);
           }}
           onClose={() => setModalOpen(false)}
+        />
+      )}
+      {editing && (
+        <CreateModal
+          title="Edit student"
+          submitLabel="Update"
+          initialValues={{
+            name: editing.name ?? "",
+            email: editing.email ?? "",
+            phone: editing.phone ?? "",
+            language: editing.language ?? "",
+            level: editing.level ?? "",
+            status: editing.status ?? "",
+          }}
+          fields={[
+            { name: "name", label: "Name", required: true },
+            { name: "email", label: "Email" },
+            { name: "phone", label: "Phone" },
+            { name: "language", label: "Language" },
+            { name: "level", label: "Level", type: "select", options: ["Complete Beginner", "Beginner", "Intermediate", "Advanced"] },
+            { name: "status", label: "Status", type: "select", options: ["Active", "Trial", "Paused", "Churned"] },
+          ]}
+          onSubmit={async (data) => {
+            const res = await fetch(`/api/school/${companyId}/students`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: editing.id, ...data }),
+            });
+            const updated = await res.json();
+            setStudents((prev) => prev.map((x) => (x.id === editing.id ? { ...x, ...updated } : x)));
+            setEditing(null);
+          }}
+          onClose={() => setEditing(null)}
         />
       )}
     </div>

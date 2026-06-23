@@ -37,6 +37,20 @@ export async function createStudent(schoolId: string, input: {
   return data;
 }
 
+export async function updateStudent(id: string, input: Partial<{
+  name: string; email: string; phone: string; language: string;
+  level: string; status: string;
+}>) {
+  const { data, error } = await supabaseAdmin
+    .from("students")
+    .update(input)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteStudent(id: string) {
   const { error } = await supabaseAdmin.from("students").delete().eq("id", id);
   if (error) throw error;
@@ -146,7 +160,10 @@ export async function createTask(schoolId: string, input: {
   return data;
 }
 
-export async function updateTask(id: string, input: Partial<{ status: string; priority: string }>) {
+export async function updateTask(id: string, input: Partial<{
+  title: string; assignee: string; related: string;
+  due_date: string; priority: string; status: string;
+}>) {
   const { error } = await supabaseAdmin.from("tasks").update(input).eq("id", id);
   if (error) throw error;
 }
@@ -198,6 +215,24 @@ export async function getNotes(schoolId: string) {
     .order("pinned", { ascending: false });
   if (error) throw error;
   return data ?? [];
+}
+
+export async function updateNote(id: string, input: Partial<{
+  title: string; body: string; author: string; pinned: boolean;
+}>) {
+  const { data, error } = await supabaseAdmin
+    .from("notes")
+    .update(input)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteNote(id: string) {
+  const { error } = await supabaseAdmin.from("notes").delete().eq("id", id);
+  if (error) throw error;
 }
 
 // ── Calendar ──────────────────────────────────────────────────────────────────

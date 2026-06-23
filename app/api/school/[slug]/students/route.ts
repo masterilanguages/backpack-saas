@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSchoolBySlug, getStudents, createStudent, deleteStudent } from "@/lib/queries";
+import { getSchoolBySlug, getStudents, createStudent, updateStudent, deleteStudent } from "@/lib/queries";
 
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
   const school = await getSchoolBySlug(params.slug);
@@ -12,6 +12,12 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const body = await req.json();
   const student = await createStudent(school.id, body);
   return NextResponse.json(student, { status: 201 });
+}
+
+export async function PATCH(req: Request, { params }: { params: { slug: string } }) {
+  const { id, ...input } = await req.json();
+  const student = await updateStudent(id, input);
+  return NextResponse.json(student);
 }
 
 export async function DELETE(req: Request, { params }: { params: { slug: string } }) {

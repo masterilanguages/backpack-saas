@@ -14,13 +14,17 @@ export default function CreateModal({
   fields,
   onSubmit,
   onClose,
+  initialValues,
+  submitLabel = "Save",
 }: {
   title: string;
   fields: FieldDef[];
   onSubmit: (data: Record<string, string>) => void;
   onClose: () => void;
+  initialValues?: Record<string, string>;
+  submitLabel?: string;
 }) {
-  const [form, setForm] = useState<Record<string, string>>({});
+  const [form, setForm] = useState<Record<string, string>>(initialValues ?? {});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +71,7 @@ export default function CreateModal({
           ))}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
-            <button type="submit" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">Save</button>
+            <button type="submit" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">{submitLabel}</button>
           </div>
         </form>
       </div>
