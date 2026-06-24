@@ -1,18 +1,15 @@
 -- ============================================================
 -- 0200_link_identity.sql
 -- ============================================================
+-- ORDEN OFICIAL DE MIGRACIONES: 001 -> 0100 -> 0300 -> 0200 -> 0500 -> 0400.
+--   0200 corre DESPUES de 0300 (que crea/rellena org_id en las tablas
+--   learning) y ANTES de 0500 / 0400 (RLS). Este header refleja ese orden.
+--
 -- OBJETIVO
 --   Ligar los usuarios de auth existentes a la organizacion Masteri.
---   1) Una membership por cada auth.users (rol inferido del censo / app_metadata).
+--   1) Una membership por cada auth.users (rol mapeado del censo real).
 --   2) Un perfil en students (con username = slug del email) por cada
 --      membership con rol 'student'.
---
---   NOTA: el backfill de coach_assignment.org_id NO se hace aqui.
---   coach_assignment es una tabla LEARNING; su columna org_id la crea y la
---   rellena (a Masteri) la migracion 0300_learning_org_id. Hacerlo aqui
---   FALLABA porque 0200 corre ANTES de 0300 (orden por nombre de archivo:
---   001 -> 0100 -> 0200 -> 0300 -> 0500) y la columna aun no existe.
---   Ver REVISION ADVERSARIAL mas abajo.
 --
 -- CONTEXTO / SUPUESTOS (ver MEMORY + Arquitectura-Backpack.md)
 --   - La migracion 0100_organizations_core ya renombro el esquema backpack:
@@ -22,50 +19,36 @@
 --                                          unique(org_id, user_id))
 --       students.school_id -> students.org_id   (org_id NOT NULL, FK -> organizations)
 --     y existen los helpers app_role() / app_email() (leen el JWT de la peticion)
---     y my_org_id() / has_org_role() / is_platform_admin().
+--     y my_org_id() / my_org_ids() / has_org_role() / is_platform_admin().
 --   - Masteri es el tenant #1, identificado por organizations.slug = 'masteri'.
 --   - Esta migracion es un ARCHIVO. No se aplica aqui. Se probara primero
 --     sobre una COPIA. Es idempotente (on conflict do nothing) y trae su
 --     DOWN-migration comentada al final.
 --
--- NOTA CRITICA SOBRE EL ORIGEN DEL ROL ("el censo")
+-- CENSO REAL (mapeo de roles EXACTO)
+--   El censo confirmado son 8 usuarios: 1 owner + 7 student, 0 coaches.
 --   El rol real vive en el app_metadata de cada usuario, que en runtime se
 --   expone via app_role() (que lee auth.jwt() -> 'app_metadata' ->> 'role').
 --   PERO una migracion NO corre dentro de una peticion con JWT: auth.jwt() es
 --   NULL aqui, asi que app_role() devolveria NULL durante el backfill.
 --   Por eso el CASE de abajo lee DIRECTAMENTE la fuente subyacente del censo:
 --       auth.users.raw_app_meta_data ->> 'role'   (= app_metadata.role)
---   con respaldo en raw_user_meta_data ->> 'role' y default 'student'.
---   Esto reproduce la semantica de app_role() pero usando la tabla, no el JWT.
---   -- TODO confirmar censo manual: revisar fila por fila que el rol inferido
---   --      coincide con el rol real esperado de cada persona antes de aplicar.
+--   con respaldo en raw_user_meta_data ->> 'role'.
+--   MAPEO EXACTO (fiel al censo, sin coaches):
+--       role / user_role = 'admin'  ->  membership.role = 'owner'
+--       resto ('user', vacio, NULL) ->  membership.role = 'student'
+--   No se mapea 'coach' porque el censo real tiene 0 coaches.
 --
 -- ============================================================
 -- REVISION ADVERSARIAL (cambios respecto al borrador previo)
 -- ============================================================
---   [FIX-1] (CRITICO, orden/columna inexistente) Se ELIMINO la seccion 3 que
---           hacia UPDATE public.coach_assignment SET org_id=Masteri. Esa
---           columna NO existe cuando corre 0200 (la crea 0300). Ademas era
---           REDUNDANTE: 0300 ya hace ese mismo backfill a Masteri. Mantenerlo
---           aqui rompia toda la transaccion 0200 con "column org_id does not
---           exist". El backfill de coach_assignment es responsabilidad de 0300.
---
---   [FIX-2] (MEDIO, DOWN destructiva) La DOWN-migration ya NO borra TODOS los
+--   [FIX-1] (MEDIO, DOWN destructiva) La DOWN-migration ya NO borra TODOS los
 --           students de Masteri (eso borraria alumnos reales creados despues).
 --           Ahora borra SOLO los perfiles placeholder creados por esta
 --           migracion, identificados por un marcador en meta->>'seed_source'
 --           = '0200_link_identity'. Se estampa ese marcador en el INSERT.
 --
---   [FIX-3] (BAJO, fuga cross-tenant) NO se cierra aqui el leak conocido
---           (word_sel USING(true) y policies permisivas de las 34 tablas
---           learning). 0200 corre ANTES de 0300, asi que org_id aun no existe
---           en esas tablas y una policy org-based seria imposible de escribir.
---           Cerrar esas policies es responsabilidad de una migracion RLS
---           POSTERIOR a 0300 (p.ej. 0400_learning_rls). Ver bloque "RIESGO
---           ABIERTO" al final. 0200 no toca RLS de learning -> blast radius nulo
---           sobre el portal vivo.
---
---   [FIX-4] (BAJO, seguridad) Las inserciones de 0200 (memberships, students)
+--   [FIX-2] (BAJO, seguridad) Las inserciones de 0200 (memberships, students)
 --           son tablas backpack con RLS org-based (NO force RLS), de modo que el
 --           rol de migracion (owner) inserta sin que RLS lo bloquee. Verificado
 --           que ninguna de estas dos tablas tiene FORCE ROW LEVEL SECURITY (solo
@@ -110,31 +93,26 @@ end$$;
 
 -- ============================================================
 -- 1) MEMBERSHIPS — una fila por cada auth.users en Masteri.
---    Rol inferido del censo (app_metadata) con CASE; default 'student'.
+--    Mapeo de roles EXACTO segun el CENSO REAL (1 owner + 7 student, 0 coaches).
 -- ============================================================
--- El CASE normaliza el valor crudo del censo a los 4 roles validos del
--- CHECK de memberships (owner|admin|coach|student). Cualquier valor
--- desconocido o ausente cae a 'student' (el rol de menor privilegio).
--- -- TODO confirmar censo manual: este mapeo asume que app_metadata.role ya
--- --      usa exactamente owner|admin|coach|student. Si el censo trae alias
--- --      (p.ej. 'teacher' -> coach, 'staff' -> admin), agregalos al CASE.
+-- MAPEO EXACTO (fiel al censo):
+--     app_metadata.role  / user_metadata.role  = 'admin'  ->  'owner'
+--     cualquier otro valor ('user', vacio, NULL, etc.)     ->  'student'
+-- No se mapea 'coach' (el censo real tiene 0 coaches) ni se usa 'admin' como
+-- rol de membership: el unico administrador real del tenant es el 'owner'.
+-- El resultado siempre cae dentro del CHECK de memberships (owner|...|student).
 insert into public.memberships (org_id, user_id, role)
 select
   org.id                                              as org_id,
   u.id                                                as user_id,
   case
-    -- fuente primaria del censo: app_metadata.role (lo que app_role() leeria del JWT)
-    when lower(coalesce(u.raw_app_meta_data  ->> 'role', '')) in ('owner')   then 'owner'
-    when lower(coalesce(u.raw_app_meta_data  ->> 'role', '')) in ('admin')   then 'admin'
-    when lower(coalesce(u.raw_app_meta_data  ->> 'role', '')) in ('coach')   then 'coach'
-    when lower(coalesce(u.raw_app_meta_data  ->> 'role', '')) in ('student') then 'student'
-    -- respaldo: user_metadata.role (por si el censo quedo del lado user, no app)
-    when lower(coalesce(u.raw_user_meta_data ->> 'role', '')) in ('owner')   then 'owner'
-    when lower(coalesce(u.raw_user_meta_data ->> 'role', '')) in ('admin')   then 'admin'
-    when lower(coalesce(u.raw_user_meta_data ->> 'role', '')) in ('coach')   then 'coach'
-    when lower(coalesce(u.raw_user_meta_data ->> 'role', '')) in ('student') then 'student'
-    -- default seguro
-    else 'student'  -- -- TODO confirmar censo manual
+    -- el unico rol elevado del censo es 'admin' (app_metadata o user_metadata) -> 'owner'
+    when lower(coalesce(u.raw_app_meta_data  ->> 'role',      '')) = 'admin' then 'owner'
+    when lower(coalesce(u.raw_app_meta_data  ->> 'user_role', '')) = 'admin' then 'owner'
+    when lower(coalesce(u.raw_user_meta_data ->> 'role',      '')) = 'admin' then 'owner'
+    when lower(coalesce(u.raw_user_meta_data ->> 'user_role', '')) = 'admin' then 'owner'
+    -- resto del censo (7 student): 'user', vacio o NULL -> 'student'
+    else 'student'
   end                                                 as role
 from auth.users u
 cross join (select id from public.organizations where slug = 'masteri') org
@@ -254,11 +232,10 @@ where not exists (
 );
 
 -- ------------------------------------------------------------
--- (Se elimino la antigua seccion 3: backfill de coach_assignment.org_id.
---  Ver [FIX-1] en el header. Ese backfill lo hace 0300_learning_org_id,
---  que es quien crea la columna coach_assignment.org_id y la rellena a
---  Masteri. Hacerlo aqui rompia 0200 por columna inexistente y era
---  redundante.)
+-- (No hay backfill de coach_assignment.org_id en 0200: esa columna la crea y
+--  la rellena 0300_learning_org_id, que en el ORDEN OFICIAL corre ANTES de
+--  0200. 0200 solo liga identidades (memberships + students); no toca tablas
+--  learning.)
 -- ------------------------------------------------------------
 
 commit;
@@ -272,7 +249,7 @@ commit;
 --   group by role order by role;
 -- select count(*) as students from public.students s
 --   join public.organizations o on o.id = s.org_id and o.slug='masteri';
--- -- (coach_assignment.org_id se verifica tras aplicar 0300, no aqui)
+-- -- censo esperado: role='owner' => 1 ; role='student' => 7 ; coach => 0.
 
 
 -- ============================================================
@@ -286,7 +263,7 @@ commit;
 --   - usuarios de auth.users
 --   - la organizacion en si
 --   - alumnos reales de Masteri creados despues (sin el marcador seed_source)
---   - coach_assignment.org_id (eso lo revierte la DOWN de 0300)
+--   - coach_assignment.org_id (lo gestiona 0300, no 0200)
 -- ============================================================
 -- begin;
 --
@@ -311,7 +288,7 @@ commit;
 
 
 -- ============================================================
--- RIESGO ABIERTO (NO resuelto por 0200, requiere migracion posterior a 0300)
+-- RIESGO ABIERTO (NO resuelto por 0200, se cierra en 0400_learning_rls)
 -- ============================================================
 -- FUGA CROSS-TENANT en las 34 tablas LEARNING. La auditoria del portal vivo
 -- confirma policies permisivas tipo:
@@ -319,14 +296,16 @@ commit;
 -- y se asumen policies similares (using(true)) en otras tablas learning.
 -- Mientras solo exista Masteri no hay fuga real, pero EN CUANTO entre un
 -- segundo tenant esas policies using(true) dejaran que cualquier usuario
--- autenticado lea filas de OTRA org. Esto NO se puede cerrar en 0200 porque:
---   (a) 0200 corre ANTES de 0300, asi que org_id aun no existe en learning;
+-- autenticado lea filas de OTRA org. Esto NO se cierra en 0200 porque:
+--   (a) 0200 solo liga identidades (memberships + students); no toca RLS de
+--       learning -> blast radius nulo sobre el portal vivo;
 --   (b) tocar la RLS del portal vivo es ALTO RIESGO y debe ir en su propia
---       migracion (p.ej. 0400_learning_rls), aplicada/probada sobre COPIA,
+--       migracion (0400_learning_rls), que en el ORDEN OFICIAL corre al final
+--       (... -> 0200 -> 0500 -> 0400), aplicada/probada sobre COPIA,
 --       PRESERVANDO app_email()/app_role()/created_by y AÑADIENDO el eje:
 --           using( (created_by = app_email() OR app_role() = 'admin' OR ...)
---                  AND org_id = any(array(select my_org_ids())) )
+--                  AND org_id = any(select my_org_ids()) )
 --       con WITH CHECK explicito en las policies ALL/INSERT/UPDATE para que
 --       nadie pueda escribir filas con un org_id ajeno.
--- ACCION REQUERIDA antes de onboardear el tenant #2: crear 0400_learning_rls.
+-- ACCION REQUERIDA antes de onboardear el tenant #2: 0400_learning_rls.
 -- ============================================================

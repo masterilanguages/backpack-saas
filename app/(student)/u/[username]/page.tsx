@@ -31,15 +31,26 @@
 // 0200_link_identity.sql). Por eso TODO lookup de alumno es por el par
 // (org_id, lower(username)), jamas por username global.
 //
-// Contrato de esquema (fuente de verdad = supabase/migrations):
+// Contrato de esquema (fuente de verdad = supabase/migrations).
+//   ORDEN OFICIAL de migraciones:  001 -> 0100 -> 0300 -> 0200 -> 0500 -> 0400.
 //   organizations(id, slug, name, active, ...)            -- 0100
 //   memberships(org_id, user_id, role)                    -- 0100, role: owner|admin|coach|student
 //   students(org_id, username, email, name, status, meta) -- 0200, unique(org_id, username)
-//   coach_assignment(org_id, coach_email, student_email)  -- 0300 (+org_id) / 0400
-//   helpers RLS: app_email(), has_org_role(uuid,text), is_platform_admin()
+//   coach_assignment(org_id, coach_email, student_email)  -- 0300 (+org_id) / 0400 (RLS)
+//   helpers RLS canonicos (eje tenant = memberships del user):
+//     - my_org_ids()  setof uuid  -> AISLAMIENTO multi-org (0100). Las policies
+//       de organizations/memberships/backpack usan `= any(my_org_ids())`.
+//     - has_org_role(uuid,text)   -> jerarquia owner>admin>coach>student +
+//       is_platform_admin() incluido (0100). ES la firma 2-arg canonica; NO
+//       existe un overload de 1-arg.
+//     - is_platform_admin()       -> super-admin de plataforma (0100). Canonico
+//       (NUNCA is_platform()).
+//     - app_email()               -> email del viewer desde el JWT (helper vivo).
+//   Esta pagina NO usa my_org_id() (single-org) para autorizar: el eje es la
+//   org resuelta por slug + has_org_role(orgId, ...) y coach_assignment, todo
+//   bajo RLS multi-org.
 //
-// DEPENDENCIA: requiere `@supabase/ssr` (ya usado en el resto del workspace).
-//   Anadir a backpack-saas/package.json:  "@supabase/ssr": "^0.5.2"
+// DEPENDENCIA: `@supabase/ssr` (ya en backpack-saas/package.json: ^0.5.2).
 // ============================================================================
 
 import { cookies, headers } from "next/headers";
@@ -133,6 +144,17 @@ function normalizeUsername(raw: string): string {
   return decoded.trim().toLowerCase();
 }
 
+// Validacion de forma UUID. `org.id` viene de una fila de `organizations` ya
+// filtrada por RLS (organizations_member_select via my_org_ids()), asi que es
+// confiable; aun asi lo verificamos antes de interpolarlo en un filtro PostgREST
+// (.or()) — defensa en profundidad contra cualquier inyeccion en el string del
+// filtro. La autoridad final del tenant sigue siendo RLS, no este chequeo.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(v: unknown): v is string {
+  return typeof v === "string" && UUID_RE.test(v);
+}
+
 interface PageProps {
   params: { username: string };
 }
@@ -167,7 +189,10 @@ export default async function StudentPrivatePage({ params }: PageProps) {
     .maybeSingle();
 
   if (orgErr || !org || org.active === false) notFound();
-  const orgId = org.id as string;
+  // org.id proviene de una fila ya filtrada por RLS; verificamos su forma UUID
+  // antes de usarlo (incluida la interpolacion en el filtro .or() de mas abajo).
+  if (!isUuid(org.id)) notFound();
+  const orgId = org.id;
 
   // --------------------------------------------------------------------------
   // 2) Resolver el ALUMNO por (org_id, lower(username)).
@@ -218,10 +243,12 @@ export default async function StudentPrivatePage({ params }: PageProps) {
     viewerEmail === studentEmail;
 
   // 3c) ¿es el COACH asignado a este alumno, en esta org?
-  //     coach_assignment es visible al coach por RLS (coach_assignment_org_select:
-  //     coach_email = app_email()). Consultamos por el par (coach=viewer, alumno).
-  //     Si no conocemos studentEmail (RLS oculto students), igual sirve: el coach
-  //     NECESITA un email de alumno; lo tomamos del propio coach_assignment.
+  //     coach_assignment es visible al coach por RLS (coach_assignment_org_select
+  //     de 0400: tenant NULL-tolerant `(org_id is null or org_id = my_org_id())`
+  //     AND `coach_email = app_email()` para el coach). Consultamos por el par
+  //     (coach=viewer, alumno). Si no conocemos studentEmail (RLS oculto students),
+  //     igual sirve: el coach NECESITA un email de alumno; lo tomamos del propio
+  //     coach_assignment.
   let isAssignedCoach = false;
   let coachResolvedStudentEmail = "";
   if (!isOrgAdmin && !isSelf) {
@@ -230,7 +257,8 @@ export default async function StudentPrivatePage({ params }: PageProps) {
       .select("student_email, coach_email, org_id")
       .eq("coach_email", viewerEmail);
 
-    // Acotar al tenant cuando la columna existe (NULL-tolerante por transicion).
+    // Acotar al tenant (NULL-tolerante, espejo del eje de coach_assignment_org_select
+    // en 0400). orgId esta validado como UUID arriba -> interpolacion segura en .or().
     q = q.or(`org_id.eq.${orgId},org_id.is.null`);
 
     // Si conocemos el email del alumno, restringimos al vinculo exacto.

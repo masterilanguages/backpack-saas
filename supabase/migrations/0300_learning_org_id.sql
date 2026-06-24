@@ -10,9 +10,11 @@
 --   2. Backfills org_id = Masteri's org id where it is null.
 --   3. Creates a NON-THROWING BEFORE INSERT trigger function
 --      stamp_org_id() that auto-stamps org_id from my_org_id()
---      when the row does not provide one. If my_org_id() is null
---      (e.g. an unauthenticated / service context) it leaves
---      org_id null instead of raising -> never breaks an insert.
+--      (the user's ACTIVE org -- this is the only sanctioned use of the
+--      single-org helper: a default stamp, NOT isolation) when the row
+--      does not provide one. If my_org_id() is null (e.g. an
+--      unauthenticated / service context) it leaves org_id null instead
+--      of raising -> never breaks an insert.
 --   4. Creates a BEFORE UPDATE guard freeze_org_id() that PREVENTS
 --      re-pointing a row to a different org once it is stamped.
 --      This closes a cross-tenant REASSIGNMENT hole that the
@@ -27,33 +29,33 @@
 --     resolve a tenant). Enforcing NOT NULL is a separate, later step.
 --   - It does NOT tighten the existing SELECT/ALL RLS policies. The
 --     known cross-tenant READ leak (e.g. word_sel USING(true), and any
---     other USING(true)/created_by-only policy) is closed in a later
---     RLS migration, NOT here. TENANT ISOLATION IS NOT COMPLETE AFTER
---     0300: every learning row is still readable cross-tenant until the
---     RLS migration lands. The UPDATE guard above only stops WRITE-side
---     reassignment, not cross-tenant SELECT.
+--     other USING(true)/created_by-only policy) is closed in 0400_rls_
+--     reconcile (the last file in the official order), NOT here. That
+--     migration scopes reads with the multi-org predicate
+--     `org_id = any (select my_org_ids())` (and `org_id IS NULL` for the
+--     global content catalog). TENANT ISOLATION IS NOT COMPLETE AFTER
+--     0300: every learning row is still readable cross-tenant until 0400
+--     lands. The UPDATE guard above only stops WRITE-side reassignment,
+--     not cross-tenant SELECT.
 --
 -- DEPENDENCIES (must already exist before applying 0300)
 --   - table   public.organizations          (renamed from schools)
 --   - column  organizations.slug            (Masteri seed = 'masteri')
---   - function public.my_org_id() returns uuid
+--   - function public.my_org_id()  returns uuid       (default-stamp helper)
+--   - function public.my_org_ids() returns setof uuid (multi-org axis)
 --   These come from 0100_organizations_core. This file guards on their
 --   existence and fails loudly with a clear message if they are missing,
---   rather than half-applying.
+--   rather than half-applying. NOTE on multi-org: my_org_ids() is the
+--   canonical tenant-isolation helper; my_org_id() is used HERE only for
+--   the default INSERT stamp (the user's active org), never for isolation.
 --
--- !!! ORDERING HAZARD (READ BEFORE APPLYING) !!!
---   0200_link_identity.sql ALREADY references coach_assignment.org_id
---   (it runs `update public.coach_assignment set org_id = ... where
---   org_id is null`). That column is created HERE, in 0300, which sorts
---   AFTER 0200. Applied in lexicographic order (0100 -> 0200 -> 0300)
---   0200 WILL FAIL with `column "org_id" does not exist`.
---   FIX BEFORE APPLYING TO ANY COPY (pick one):
---     (a) RENUMBER this file to run BEFORE 0200 (e.g. 0150_learning_org_id),
---         OR
---     (b) move the coach_assignment.org_id backfill out of 0200 into a
---         step that runs after this migration.
---   This migration is self-contained and idempotent either way; the
---   hazard is purely about apply ORDER across files.
+-- APPLY ORDER (official): 001 -> 0100 -> 0300 -> 0200 -> 0500 -> 0400.
+--   0300 runs BEFORE 0200 on purpose: 0200 (link_identity) seeds
+--   memberships/students for the Masteri tenant and no longer touches
+--   coach_assignment.org_id, so coach_assignment (and the other 33 learning
+--   tables) must already carry org_id when 0200 runs. This file creates and
+--   backfills that column, so it sorts ahead of 0200 in the official order.
+--   0300 is self-contained and idempotent regardless of apply order.
 --
 -- IDEMPOTENT: safe to run more than once.
 -- DOWN-migration: commented-out block at the very bottom.
@@ -63,7 +65,10 @@
 begin;
 
 -- ------------------------------------------------------------
--- 0. Preconditions: organizations table + my_org_id() must exist.
+-- 0. Preconditions: organizations table + the 0100 org helpers must exist.
+--    my_org_id() is used for the default INSERT stamp; my_org_ids() is the
+--    canonical multi-org isolation helper the later RLS migration (0400)
+--    relies on. Assert both so a half-applied 0100 is caught here.
 -- ------------------------------------------------------------
 do $pre$
 begin
@@ -79,6 +84,15 @@ begin
   ) then
     raise exception
       '0300_learning_org_id: function public.my_org_id() does not exist. Apply 0100_organizations_core (helpers) first.';
+  end if;
+
+  if not exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'my_org_ids'
+  ) then
+    raise exception
+      '0300_learning_org_id: function public.my_org_ids() does not exist. Apply 0100_organizations_core (multi-org helpers) first.';
   end if;
 end
 $pre$;
@@ -140,6 +154,9 @@ begin
       '0300_learning_org_id: no organization with slug=''masteri'' found. Column will be added but backfill is skipped (org_id stays null).';
   end if;
 
+  declare
+    col_existed boolean;
+  begin
   foreach t in array learning_tables
   loop
     -- Skip cleanly if a table is unexpectedly absent (defensive; the
@@ -148,6 +165,17 @@ begin
       raise warning '0300_learning_org_id: table public.% not found, skipping.', t;
       continue;
     end if;
+
+    -- Did org_id ALREADY exist before this run? (decides one-time backfill).
+    -- The backfill of legacy NULLs to Masteri must happen ONLY the first time
+    -- the column is introduced. On any RE-APPLY, org_id IS NULL is meaningful
+    -- (= GLOBAL platform catalog per the canonical contract: song/video/day/...
+    -- with org_id NULL). Re-backfilling would clobber those global rows into
+    -- Masteri. So we capture col_existed and skip the backfill when true.
+    select exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = t and column_name = 'org_id'
+    ) into col_existed;
 
     -- 1a. Add the column (nullable). Idempotent.
     execute format(
@@ -180,14 +208,17 @@ begin
       t || '_org_id_idx', t
     );
 
-    -- 2. Backfill to Masteri where null.
-    if masteri_id is not null then
+    -- 2. ONE-TIME backfill to Masteri where null — ONLY on the run that first
+    --    introduces the column. On re-apply (col_existed), org_id NULL is the
+    --    intentional GLOBAL-catalog marker and must NOT be stamped to Masteri.
+    if masteri_id is not null and not col_existed then
       execute format(
         'update public.%I set org_id = %L where org_id is null;',
         t, masteri_id
       );
     end if;
   end loop;
+  end;
 end
 $main$;
 
@@ -230,9 +261,9 @@ comment on function public.stamp_org_id() is
 --     several USING(true)) do NOT scope by org_id, so without this guard
 --     an anon client could UPDATE someone else's-org row OR re-point its
 --     OWN row into another tenant. This is the cheapest write-side
---     cross-tenant containment until the full RLS migration lands.
---     Setting org_id on a row that was previously null IS allowed
---     (one-time stamping / backfill catch-up).
+--     cross-tenant containment until 0400_rls_reconcile lands the
+--     org-scoped policies. Setting org_id on a row that was previously
+--     null IS allowed (one-time stamping / backfill catch-up).
 -- ------------------------------------------------------------
 create or replace function public.freeze_org_id()
 returns trigger

@@ -42,8 +42,12 @@
 --     * tabla    public.organizations        (rename schools->organizations)
 --     * tabla    public.memberships          (rename school_users->memberships)
 --     * funcion  public.is_platform_admin()   (de 0100)
---     * funcion  public.has_org_role(uuid,text) (de 0100)
+--     * funcion  public.has_org_role(uuid,text) (2-arg canonico, de 0100)
 --   => aplicar PRIMERO 0100_organizations_core.
+--
+-- ORDEN OFICIAL de migraciones: 001 -> 0100 -> 0300 -> 0200 -> 0500 -> 0400.
+--   0500 corre DESPUES de 0100 (helpers de autoridad multi-tenant) y de la
+--   carga de identidad (0200), y ANTES del reconcile final de RLS (0400).
 --
 -- IDEMPOTENTE. Transaccional (begin/commit) como sus hermanas 0100/0200/0300:
 --   si algo falla, no deja la migracion a medio aplicar.
@@ -274,10 +278,12 @@ create policy "subscriptions: platform all"
   using (public.is_platform_admin())
   with check (public.is_platform_admin());
 
--- OWNER: el dueno (rol 'owner') ve las suscripciones de SU organizacion.
--- Reusa has_org_role(org_id,'owner') -> incluye el escape de plataforma y
--- una sola definicion de jerarquia de roles. Solo SELECT: los cobros NO se
--- editan a mano desde el cliente (solo el webhook con service_role).
+-- OWNER: el dueno (rol 'owner') ve las suscripciones de CADA organizacion
+-- donde es owner. Multi-org por diseno: has_org_role(org_id,'owner') valida
+-- la membresia fila-a-fila contra TODAS las orgs del user (no asume una sola
+-- org activa), e incluye el escape de plataforma y una unica definicion de la
+-- jerarquia de roles. Solo SELECT: los cobros NO se editan a mano desde el
+-- cliente (solo el webhook con service_role).
 -- org_id IS NOT NULL evita que una fila huerfana (org sin resolver) sea
 -- visible para cualquier owner por un has_org_role(NULL,...) ambiguo.
 create policy "subscriptions: owner org"

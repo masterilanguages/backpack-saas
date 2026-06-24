@@ -2,14 +2,24 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Multi-tenant middleware for {slug}.backpacksystems.com
+ * Multi-tenant middleware for {slug}.backpacksystems.com  (MULTI-ORG)
  * ------------------------------------------------------------------
+ * The tenant axis is derived from the user's `memberships`. A user may belong
+ * to SEVERAL orgs; the SUBDOMAIN chooses the *active* one, and access requires
+ * a membership IN THAT specific org (not "any org"). This mirrors the canonical
+ * server helper getSessionOrgRole() in lib/supabase-ssr.ts: org + role are ALWAYS
+ * re-derived against `memberships` by (org_id, user_id) — never from a JWT claim
+ * or a client-supplied header.
+ *
  * Responsibilities (in order):
  *  1. Parse the Host header -> tenant `slug` (reject reserved subdomains).
- *  2. Resolve the `organization` for that slug via a cached RPC.
+ *  2. Resolve the active `organization` for that slug via the cached RPC
+ *     `resolve_org_by_slug` (the org chosen by the subdomain).
  *  3. Require an authenticated Supabase session (else -> /login).
- *  4. Require a `membership` in THAT org (else -> 404, without revealing
- *     whether the org or the membership exists).
+ *  4. Require a `membership` IN THIS org for the current user (else -> 404,
+ *     without revealing whether the org or the membership exists). The role is
+ *     read straight from the `memberships` row for (org_id = active org,
+ *     user_id = auth.uid()); a user's role in some OTHER org is irrelevant here.
  *  5. Portal gating by role:
  *        owner | admin | coach  -> ADMIN portal group
  *        student                -> LEARNING portal group
@@ -20,13 +30,16 @@ import { NextResponse, type NextRequest } from "next/server";
  * Notes / assumptions:
  *  - Uses @supabase/ssr (must be added as a dependency).
  *  - `resolve_org_by_slug(p_slug text)` is a SECURITY DEFINER, STABLE RPC
- *    (set search_path = public, pg_temp) that returns the org row
- *    ({ id, slug, name, active, ... }) or no rows. Being STABLE lets
- *    Postgres/PostgREST cache it within the request; we also short-cache
+ *    (set search_path = public, pg_temp; lives in 0100) that RETURNS the
+ *    organizations row ({ id, slug, name, active }) or no rows. Being STABLE
+ *    lets Postgres/PostgREST cache it within the request; we also short-cache
  *    the resolved slug->org in-process to spare repeated round-trips.
- *  - `membership_for(p_org_id uuid)` is a SECURITY DEFINER RPC that returns
- *    the caller's role in that org ({ role }) using auth.uid(), or no rows.
- *    Resolving membership server-side via RPC (not a header) is what makes
+ *  - Membership is resolved by SELECTing the caller's `memberships` row for
+ *    (org_id = active org, user_id = auth.uid()) under the anon client + RLS.
+ *    RLS ("memberships: own org", scoped by my_org_ids()) lets a user read
+ *    their OWN membership rows, so this returns the role only when the user is
+ *    actually a member of the active org. Deriving it from the table (not a
+ *    header, and scoped to THIS org) is what makes both the multi-org rule and
  *    the "do not reveal existence" guarantee hold.
  */
 
@@ -277,10 +290,18 @@ export async function middleware(request: NextRequest) {
     return withCookies(supabaseResponse, redirectToLogin(request));
   }
 
-  // ── 4. Require membership in THIS org. Resolved server-side via RPC so a
-  //        non-member cannot tell a missing org from a forbidden one.
+  // ── 4. Require membership IN THIS org (the subdomain-chosen active org).
+  //        MULTI-ORG: a user may be a member of several orgs; we read ONLY the
+  //        row for (org_id = this org, user_id = current user), so a role in a
+  //        DIFFERENT org never grants access here. Derived from the table under
+  //        the anon client + RLS (RLS lets a user read their own membership),
+  //        not from a header/claim — so a non-member cannot tell a missing org
+  //        from a forbidden one.
   const { data: membership, error: memErr } = await supabase
-    .rpc("membership_for", { p_org_id: org.id })
+    .from("memberships")
+    .select("role")
+    .eq("org_id", org.id)
+    .eq("user_id", user.id)
     .maybeSingle<{ role: string }>();
 
   const role = memErr ? null : membership?.role ?? null;

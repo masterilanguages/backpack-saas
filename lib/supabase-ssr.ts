@@ -15,10 +15,13 @@
  *                          alta automática post-Stripe, jobs de plataforma.
  *
  *   - getSessionOrgRole(slug) → server-side. Devuelve { userId, orgId, role }
- *                          DERIVADO de `memberships` por auth.uid() + slug de la
- *                          org activa. NUNCA confía en claims/JWT: siempre
- *                          re-deriva contra la tabla. Es la pieza que aísla cada
- *                          tenant en el Admin Portal.
+ *                          DERIVADO de las `memberships` del usuario (auth.uid())
+ *                          FILTRADAS por el slug de la org activa. Multi-org: un
+ *                          usuario puede pertenecer a varias orgs; el slug activo
+ *                          (subdominio) selecciona CUÁL de sus membresías aplica,
+ *                          y el rol sale de ESA fila. NUNCA confía en claims/JWT:
+ *                          siempre re-deriva contra la tabla. Es la pieza que
+ *                          aísla cada tenant en el Admin Portal.
  *
  *   - base44Client        → shim de compatibilidad para el Learning Portal
  *                          (que asume un cliente anon + RLS estilo Base44).
@@ -233,19 +236,24 @@ export function serviceClient(): SupabaseClient {
 
 /**
  * Resuelve la identidad efectiva del usuario logueado DENTRO de la organización
- * identificada por `slug`. Server-side. Pasos:
+ * identificada por `slug`. Server-side. Multi-org. Pasos:
  *
  *   1. Lee la sesión real desde cookies vía `auth.getUser()` (valida el JWT
  *      contra Supabase Auth — no confía en el token sin verificar).
- *   2. Resuelve `organizations.id` a partir del `slug` (org activa = subdominio).
- *   3. DERIVA la membresía: busca en `memberships` la fila
- *      (org_id = orgId, user_id = auth.uid()). El rol sale de AHÍ, no del JWT.
+ *   2. DERIVA de las `memberships` del usuario (user_id = auth.uid()) la fila
+ *      cuya organización tiene ese `slug` y está activa. El usuario puede
+ *      pertenecer a varias orgs (multi-org): el slug activo (subdominio)
+ *      selecciona CUÁL membresía aplica. El { orgId, role } sale de ESA fila;
+ *      jamás del JWT. Una sola query embebe organizations vía la FK org_id, de
+ *      modo que la org y la membresía se filtran juntas por el slug activo.
  *
- * Si el usuario no está logueado, la org no existe, o no hay membresía en esa
- * org → devuelve `null` (el caller decide: 401 / 403 / redirect a login).
+ * Si el usuario no está logueado, la org no existe/no está activa, o el usuario
+ * no tiene membresía en esa org concreta → devuelve `null` (el caller decide:
+ * 401 / 403 / redirect a login).
  *
  * Esto es el corazón del aislamiento multi-tenant del Admin Portal: el cliente
- * jamás puede declarar su propio org_id ni su rol; ambos se re-derivan aquí.
+ * jamás puede declarar su propio org_id ni su rol; ambos se re-derivan aquí a
+ * partir de las membresías reales del usuario, acotadas al slug activo.
  *
  * @param slug  slug de la organización activa (p. ej. "masteri").
  * @param client  cliente opcional (anon+cookies). Por defecto serverClient().
@@ -268,33 +276,35 @@ export async function getSessionOrgRole(
 
   if (userError || !user) return null;
 
-  // (2) Organización activa a partir del slug.
-  const { data: org, error: orgError } = await supabase
-    .from("organizations")
-    .select("id, slug")
-    .eq("slug", slug)
-    .eq("active", true)
-    .maybeSingle();
-
-  if (orgError || !org) return null;
-
-  // (3) Membresía derivada: (org_id, user_id). El rol SIEMPRE viene de la tabla.
-  //     RLS de memberships debe permitir al usuario leer su propia fila.
+  // (2) Derivación multi-org: arranca de las membresías del usuario y FILTRA por
+  //     el slug activo embebiendo la org vía la FK org_id. Un inner join (no
+  //     `!left`) descarta automáticamente la fila si la org no existe, no está
+  //     activa o su slug no coincide. El rol viene de la membresía; org_id/slug
+  //     de la org embebida. RLS de memberships debe permitir al usuario leer sus
+  //     propias filas; RLS de organizations, leer las orgs en las que milita.
   const { data: membership, error: memError } = await supabase
     .from("memberships")
-    .select("role")
-    .eq("org_id", org.id)
+    .select("role, org_id, organizations!inner ( id, slug, active )")
     .eq("user_id", user.id)
+    .eq("organizations.slug", slug)
+    .eq("organizations.active", true)
     .maybeSingle();
 
   if (memError || !membership) return null;
 
-  const role = membership.role as MembershipRole;
+  // El embed puede tiparse como objeto o array según la inferencia; normalizar.
+  const orgEmbed = membership.organizations as
+    | { id: string; slug: string; active: boolean }
+    | { id: string; slug: string; active: boolean }[]
+    | null;
+  const org = Array.isArray(orgEmbed) ? orgEmbed[0] : orgEmbed;
+
+  if (!org) return null;
 
   return {
     userId: user.id,
-    orgId: org.id as string,
-    role,
+    orgId: (org.id ?? membership.org_id) as string,
+    role: membership.role as MembershipRole,
     email: user.email ?? "",
     slug: org.slug as string,
   };

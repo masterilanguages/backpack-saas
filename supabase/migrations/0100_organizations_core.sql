@@ -3,6 +3,14 @@
 -- ============================================================
 -- TENANCY layer — rebuild FAITHFUL TO THE WORD ("Arquitectura-Backpack.md").
 --
+-- OFFICIAL MIGRATION ORDER: 001 -> 0100 -> 0300 -> 0200 -> 0500 -> 0400
+--   001  initial_schema        (schools + 49 live tables, portal helpers)
+--   0100 organizations_core     <-- THIS FILE: tenancy rename + canonical helpers
+--   0300 learning_org_id        (adds org_id axis to the 34 learning tables)
+--   0200 link_identity          (census: 8 users -> memberships from app_metadata)
+--   0500 subscriptions          (Stripe billing; uses is_platform_admin())
+--   0400 rls_reconcile          (final two-axis RLS; USES 0100 helpers as-is)
+--
 -- WHAT THIS DOES (low risk: the backpack admin tables are EMPTY):
 --   1. RENAME  schools          -> organizations
 --   2. RENAME  school_users     -> memberships
@@ -10,16 +18,23 @@
 --   4. memberships.role: TEXT + CHECK (owner|admin|coach|student),
 --      keep UNIQUE(org_id, user_id)
 --   5. NEW     platform_admins(user_id uuid pk -> auth.users)
---   6. NEW helpers (all STABLE SECURITY DEFINER, search_path = public, pg_temp):
---        my_org_id()           uuid
---        my_org_ids()          setof uuid
---        has_org_role(uuid,text) boolean
---        is_platform_admin()   boolean
+--   6. CANONICAL HELPERS (all STABLE SECURITY DEFINER, search_path = public, pg_temp):
+--        my_org_ids()            setof uuid  -- ALL active orgs of the user.
+--                                            -- THE tenant axis: RLS isolation uses
+--                                            -- `org_id = ANY(select my_org_ids())`.
+--        my_org_id()             uuid        -- active/primary org. CONVENIENCE for
+--                                            -- default STAMPING ONLY. NEVER use for
+--                                            -- RLS isolation (single-org leak).
+--        has_org_role(uuid,text) boolean     -- 2-arg canonical (org, min-role).
+--        is_platform_admin()     boolean     -- platform super-admin.
 --      -> these REPLACE my_school_id(); dependent RLS policies are re-pointed.
---   7. Masteri seed survives the rename as 1 row in organizations (no re-insert).
+--   7. RPC  resolve_org_by_slug(p_slug text) RETURNS organizations
+--           (STABLE SECURITY DEFINER) -- tenant lookup for the middleware.
+--   8. Masteri seed survives the rename as 1 row in organizations (no re-insert).
 --
--- NOT TOUCHED: app_role() / app_email() (the live portal depends on them).
--- The 34 "learning" tables get their org_id axis in a LATER migration.
+-- NOT TOUCHED: app_role() / app_email() / created_by (the live portal depends on
+-- them; client is ANON + RLS). The 34 "learning" tables get their org_id axis in
+-- 0300 (per the official order above).
 --
 -- Idempotent where Postgres allows; objects that cannot be guarded by
 -- IF (NOT) EXISTS are wrapped in DO-blocks that check the catalog first.
@@ -37,16 +52,18 @@
 --    (see 0400_rls_reconcile: "with_check OBLIGATORIO en todas").
 --    Verified: cross-tenant INSERT and UPDATE-repoint are both blocked.
 --
---  * CROSS-FILE CONTRACT — 0400_rls_reconcile.sql SUPERSEDES the policies
---    created here. 0400 redefines my_org_id(), adds a DIFFERENT-arity
---    has_org_role(text) (this file ships has_org_role(uuid,text)), and
---    rewrites organizations/memberships/child-table policies to the
---    two-axis (org_id + owner/role) model. Both helper signatures coexist
---    without error. This file is intentionally self-contained so it can
---    stand alone if 0400 is not yet applied; once 0400 lands, 0400's
---    policies win. Do NOT delete my_org_ids() / has_org_role(uuid,text):
---    removing them would break this file's own policies and any caller
---    that targets the 2-arg signature.
+--  * CROSS-FILE CONTRACT — this file is the SINGLE SOURCE OF TRUTH for the
+--    tenancy helpers. 0400_rls_reconcile.sql USES them verbatim and does NOT
+--    redefine them: it does NOT redefine my_org_id() to single-org, and it
+--    does NOT create a 1-arg has_org_role(text) overload — it consumes the
+--    canonical has_org_role(uuid,text) shipped here. 0500_subscriptions also
+--    depends on is_platform_admin() from this file. 0400 then rewrites the
+--    organizations/memberships/child-table policies to the final two-axis
+--    (org_id + owner/role) model; those policies win once 0400 lands, but
+--    this file stays self-contained so it can stand alone if 0400 is not yet
+--    applied. Do NOT delete my_org_ids() / has_org_role(uuid,text) /
+--    is_platform_admin(): removing them breaks this file's own policies and
+--    every downstream caller (0400, 0500) that targets these exact signatures.
 -- ============================================================
 
 begin;
@@ -161,9 +178,18 @@ alter table public.platform_admins enable row level security;
 -- 6. HELPERS  (all STABLE SECURITY DEFINER, search_path = public, pg_temp)
 --    These replace my_school_id(). Drop the old helper at the end of this
 --    section after the policies that used it have been re-pointed.
+--
+--    CANONICAL TENANT AXIS = my_org_ids() (setof). RLS isolation MUST use
+--    `org_id = any(select my_org_ids())`. my_org_id() (singular) is a
+--    CONVENIENCE helper for default STAMPING (the user's active/primary org)
+--    and MUST NOT be used as the RLS isolation predicate — a multi-org user
+--    would otherwise be confined to a single org. Keep this distinction.
 -- ------------------------------------------------------------
 
--- Primary org for the current user (first membership). Replaces my_school_id().
+-- Active/primary org for the current user (first membership by created_at).
+-- CONVENIENCE for default STAMPING ONLY (e.g. defaulting org_id on insert).
+-- NEVER use this for RLS isolation — use my_org_ids() (setof) for that.
+-- Replaces my_school_id().
 create or replace function public.my_org_id()
 returns uuid
 language sql
@@ -253,6 +279,34 @@ as $$
              end)
     );
 $$;
+
+-- ------------------------------------------------------------
+-- 6c. RPC for the middleware: resolve an org row by its public slug.
+--     The middleware maps an incoming slug (e.g. "masteri") to the tenant
+--     row BEFORE any membership exists (anon, pre-auth), so this lookup must
+--     bypass the organizations RLS policy. SECURITY DEFINER does that while
+--     exposing ONLY a single by-slug lookup (no table-wide scan to clients).
+--     RETURNS the whole organizations row (id, slug, name, active, ...); the
+--     caller reads id/slug/name/active. STABLE: no writes; result depends only
+--     on table state. Pinned search_path = public, pg_temp.
+-- ------------------------------------------------------------
+create or replace function public.resolve_org_by_slug(p_slug text)
+returns public.organizations
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select o.*
+  from public.organizations o
+  where o.slug = p_slug
+  limit 1;
+$$;
+
+-- Expose the lookup to the (anon + authenticated) client roles. The function
+-- body is SECURITY DEFINER and constrained to a single by-slug row, so this
+-- does not widen access to the organizations table itself.
+grant execute on function public.resolve_org_by_slug(text) to anon, authenticated;
 
 -- ------------------------------------------------------------
 -- 6b. Re-point RLS policies that referenced my_school_id() / school_id.
@@ -373,6 +427,7 @@ commit;
 -- drop table if exists public.platform_admins;
 --
 -- -- 6-down. Drop new helpers.
+-- drop function if exists public.resolve_org_by_slug(text);
 -- drop function if exists public.has_org_role(uuid, text);
 -- drop function if exists public.is_platform_admin();
 -- drop function if exists public.my_org_ids();
