@@ -384,18 +384,11 @@ commit;
 -- ============================================================
 -- begin;
 --
--- -- 6b-down. Restore my_school_id() helper.
--- --          NOTE: the ORIGINAL 001 definition lacked `set search_path`,
--- --          which the audit flagged as a defect. We restore it WITH a pinned
--- --          search_path on rollback -- harmless (same result set) and avoids
--- --          reintroducing the search-path-hijack surface on a revert.
--- create or replace function public.my_school_id()
--- returns uuid language sql stable security definer
--- set search_path = public, pg_temp as $$
---   select org_id from public.memberships
---   where user_id = auth.uid()
---   limit 1;
--- $$;
+-- -- 6b-down. (my_school_id() is restored LATER, AFTER the table renames below,
+-- --          so its body can reference the restored school_users/school_id.
+-- --          Restoring it here -- while the tables are still organizations/
+-- --          memberships/org_id -- would leave the helper pointing at names the
+-- --          renames below then break. See "Restore my_school_id()" near the end.)
 --
 -- -- 6b-down. Restore original child-table policies (org_id col still exists
 -- --          at this point; we recreate the "<x>: own school" names but on
@@ -459,6 +452,17 @@ commit;
 --
 -- -- 1-down. RENAME organizations -> schools.
 -- alter table public.organizations rename to schools;
+--
+-- -- Restore my_school_id() helper now that school_users/school_id exist again.
+-- --   (Restored WITH a pinned search_path -- harmless, same result set -- to avoid
+-- --    reintroducing the search-path-hijack surface the audit flagged in 001.)
+-- create or replace function public.my_school_id()
+-- returns uuid language sql stable security definer
+-- set search_path = public, pg_temp as $$
+--   select school_id from public.school_users
+--   where user_id = auth.uid()
+--   limit 1;
+-- $$;
 --
 -- -- Restore original child-table policies on the now-school_id columns.
 -- create policy "students: own school"       on public.students            for all using (school_id = public.my_school_id());
