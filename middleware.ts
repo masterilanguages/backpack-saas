@@ -1,25 +1,351 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
 
-const ADMIN_PATHS = ["/dashboard", "/companies", "/website"];
-const SESSION_COOKIE = "masteri-admin-session";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "masteri2026";
+/**
+ * Multi-tenant middleware for {slug}.backpacksystems.com
+ * ------------------------------------------------------------------
+ * Responsibilities (in order):
+ *  1. Parse the Host header -> tenant `slug` (reject reserved subdomains).
+ *  2. Resolve the `organization` for that slug via a cached RPC.
+ *  3. Require an authenticated Supabase session (else -> /login).
+ *  4. Require a `membership` in THAT org (else -> 404, without revealing
+ *     whether the org or the membership exists).
+ *  5. Portal gating by role:
+ *        owner | admin | coach  -> ADMIN portal group
+ *        student                -> LEARNING portal group
+ *  6. Strip client-supplied x-org-id / x-user-role headers BEFORE setting
+ *     the server-resolved values, so downstream (Server Components / Route
+ *     Handlers) can only ever read trusted, middleware-set identity.
+ *
+ * Notes / assumptions:
+ *  - Uses @supabase/ssr (must be added as a dependency).
+ *  - `resolve_org_by_slug(p_slug text)` is a SECURITY DEFINER, STABLE RPC
+ *    (set search_path = public, pg_temp) that returns the org row
+ *    ({ id, slug, name, active, ... }) or no rows. Being STABLE lets
+ *    Postgres/PostgREST cache it within the request; we also short-cache
+ *    the resolved slug->org in-process to spare repeated round-trips.
+ *  - `membership_for(p_org_id uuid)` is a SECURITY DEFINER RPC that returns
+ *    the caller's role in that org ({ role }) using auth.uid(), or no rows.
+ *    Resolving membership server-side via RPC (not a header) is what makes
+ *    the "do not reveal existence" guarantee hold.
+ */
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+// ── Configuration ────────────────────────────────────────────────────────────
 
-  const isAdminPath = ADMIN_PATHS.some((p) => pathname.startsWith(p));
-  if (!isAdminPath) return NextResponse.next();
+const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "backpacksystems.com";
 
-  const session = request.cookies.get(SESSION_COOKIE);
-  if (session?.value === "authenticated") return NextResponse.next();
+/** Subdomains that are NOT tenants. */
+const RESERVED_SUBDOMAINS = new Set([
+  "www",
+  "app",
+  "api",
+  "admin",
+  "platform",
+]);
 
-  // Redirect to login, preserving the intended destination
-  const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set("from", pathname);
-  return NextResponse.redirect(loginUrl);
+/** Roles allowed into the Admin portal group. */
+const ADMIN_ROLES = new Set(["owner", "admin", "coach"]);
+/** Roles allowed into the Learning portal group. */
+const LEARNING_ROLES = new Set(["student"]);
+
+/**
+ * Path prefixes for each portal group. A request whose pathname starts with
+ * one of these prefixes is gated to that group's allowed roles.
+ *   - Admin portal: school operations (dashboard, students, courses…).
+ *   - Learning portal: the student space (/u/:username, learning, journal…).
+ * Anything not listed is "shared" (e.g. /login, /logout, /account) and is
+ * reachable by any authenticated member of the org.
+ */
+const ADMIN_PORTAL_PREFIXES = [
+  "/dashboard",
+  "/students",
+  "/courses",
+  "/coaches",
+  "/lessons",
+  "/team",
+  "/leads",
+  "/transactions",
+  "/calendar",
+  "/settings",
+  "/analytics",
+];
+const LEARNING_PORTAL_PREFIXES = [
+  "/u",
+  "/learn",
+  "/learning",
+  "/journal",
+  "/vocabulary",
+  "/songs",
+  "/practice",
+  "/progress",
+];
+
+/** Public paths reachable WITHOUT a session (still scoped to a valid tenant). */
+const PUBLIC_PATHS = new Set(["/login", "/auth/callback", "/auth/confirm"]);
+
+/** Default landing path per portal group, used to redirect after auth. */
+const ADMIN_HOME = "/dashboard";
+const LEARNING_HOME = "/learn";
+
+// ── In-process slug -> org cache (cheap, request-bursty, short TTL) ───────────
+// Per-instance only; real caching authority is the STABLE RPC. Keeps a single
+// browser navigation burst from hammering the DB. Negative results cached too
+// (shorter) so a flood to an unknown slug doesn't repeatedly hit the RPC.
+
+type Org = {
+  id: string;
+  slug: string;
+  name: string | null;
+  active: boolean | null;
+};
+
+type CacheEntry = { org: Org | null; expires: number };
+const ORG_CACHE = new Map<string, CacheEntry>();
+const ORG_TTL_MS = 60_000; // 1 min for hits
+const ORG_NEG_TTL_MS = 10_000; // 10 s for misses
+
+function cacheGet(slug: string): CacheEntry | undefined {
+  const hit = ORG_CACHE.get(slug);
+  if (!hit) return undefined;
+  if (hit.expires < Date.now()) {
+    ORG_CACHE.delete(slug);
+    return undefined;
+  }
+  return hit;
 }
 
+function cacheSet(slug: string, org: Org | null) {
+  ORG_CACHE.set(slug, {
+    org,
+    expires: Date.now() + (org ? ORG_TTL_MS : ORG_NEG_TTL_MS),
+  });
+}
+
+// ── Host -> slug parsing ─────────────────────────────────────────────────────
+
+/**
+ * Extract the tenant slug from the request host.
+ * Returns:
+ *   - string slug      -> a candidate tenant subdomain
+ *   - null             -> apex / www / unknown shape (not a tenant host)
+ *   - "__reserved__"   -> a reserved, non-tenant subdomain
+ */
+function parseSlug(host: string | null): string | null | "__reserved__" {
+  if (!host) return null;
+
+  // Strip port and normalize.
+  const hostname = host.split(":")[0].trim().toLowerCase();
+  if (!hostname) return null;
+
+  // Local dev: support `slug.localhost` and bare `localhost`.
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+    const parts = hostname.split(".");
+    if (parts.length < 2) return null; // bare localhost -> no tenant
+    const sub = parts[0];
+    return RESERVED_SUBDOMAINS.has(sub) ? "__reserved__" : sub;
+  }
+
+  // Must be a subdomain of the configured root domain.
+  if (hostname === ROOT_DOMAIN) return null; // apex -> no tenant
+  const suffix = `.${ROOT_DOMAIN}`;
+  if (!hostname.endsWith(suffix)) return null; // unrelated host
+
+  const sub = hostname.slice(0, -suffix.length);
+  // Only accept a single-label subdomain (e.g. "masteri", not "a.b").
+  if (!sub || sub.includes(".")) return null;
+
+  if (RESERVED_SUBDOMAINS.has(sub)) return "__reserved__";
+  return sub;
+}
+
+// ── Responses ────────────────────────────────────────────────────────────────
+
+/**
+ * "Not found" used for: unknown/inactive org, AND missing membership.
+ * Using the SAME 404 for both makes the two cases indistinguishable, so we
+ * never reveal whether an org (or a membership in it) exists.
+ */
+function notFound(request: NextRequest): NextResponse {
+  const url = request.nextUrl.clone();
+  url.pathname = "/404";
+  // 404 status with a rewrite to the app's not-found UI.
+  return NextResponse.rewrite(url, { status: 404 });
+}
+
+function redirectToLogin(request: NextRequest): NextResponse {
+  const url = request.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = "";
+  // Preserve intended destination so we can bounce back after auth.
+  url.searchParams.set("from", request.nextUrl.pathname + request.nextUrl.search);
+  return NextResponse.redirect(url);
+}
+
+function redirectTo(request: NextRequest, pathname: string): NextResponse {
+  const url = request.nextUrl.clone();
+  url.pathname = pathname;
+  url.search = "";
+  return NextResponse.redirect(url);
+}
+
+// ── Middleware ───────────────────────────────────────────────────────────────
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // ── 0. Build a request whose headers have any client-supplied identity
+  //        headers REMOVED. We start from this stripped baseline for every
+  //        downstream request so a client can never spoof x-org-id /
+  //        x-user-role. We only ever set them ourselves, later.
+  const cleanHeaders = new Headers(request.headers);
+  cleanHeaders.delete("x-org-id");
+  cleanHeaders.delete("x-org-slug");
+  cleanHeaders.delete("x-user-id");
+  cleanHeaders.delete("x-user-role");
+
+  // ── 1. Host -> slug
+  const slug = parseSlug(request.headers.get("host"));
+
+  // Reserved subdomain (www/app/api/admin/platform) or non-tenant host:
+  // this middleware governs tenant apps only -> not found here.
+  if (slug === "__reserved__" || slug === null) {
+    return notFound(request);
+  }
+
+  // ── Supabase SSR client wired to this request's cookies.
+  // `supabaseResponse` accumulates refreshed-session Set-Cookie headers and is
+  // the object we ultimately return (or copy cookies from). It is rebuilt with
+  // `cleanHeaders` so the stripped headers flow downstream.
+  let supabaseResponse = NextResponse.next({ request: { headers: cleanHeaders } });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value),
+          );
+          supabaseResponse = NextResponse.next({
+            request: { headers: cleanHeaders },
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options),
+          );
+        },
+      },
+    },
+  );
+
+  // ── 2. Resolve org by slug (cached RPC + in-process short cache).
+  let org: Org | null;
+  const cached = cacheGet(slug);
+  if (cached) {
+    org = cached.org;
+  } else {
+    const { data, error } = await supabase
+      .rpc("resolve_org_by_slug", { p_slug: slug })
+      .maybeSingle<Org>();
+    // On RPC error, fail closed (treat as unknown tenant) but do NOT cache.
+    org = error ? null : (data ?? null);
+    if (!error) cacheSet(slug, org);
+  }
+
+  // Unknown or inactive org -> 404 (same response as missing membership).
+  if (!org || org.active === false) {
+    return notFound(request);
+  }
+
+  // ── 3. Require a Supabase session.
+  // getUser() validates the JWT with the auth server (revalidates/refreshes).
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const isPublicPath = PUBLIC_PATHS.has(pathname);
+
+  if (!user) {
+    // Allow unauthenticated access only to the explicit public paths of a
+    // valid tenant (e.g. its /login). Everything else -> /login.
+    if (isPublicPath) {
+      return withCookies(supabaseResponse, NextResponse.next({ request: { headers: cleanHeaders } }));
+    }
+    return withCookies(supabaseResponse, redirectToLogin(request));
+  }
+
+  // ── 4. Require membership in THIS org. Resolved server-side via RPC so a
+  //        non-member cannot tell a missing org from a forbidden one.
+  const { data: membership, error: memErr } = await supabase
+    .rpc("membership_for", { p_org_id: org.id })
+    .maybeSingle<{ role: string }>();
+
+  const role = memErr ? null : membership?.role ?? null;
+
+  if (!role) {
+    // Authenticated, but not a member of this tenant.
+    // 404 (not 403) so we never confirm the tenant exists to outsiders.
+    return withCookies(supabaseResponse, notFound(request));
+  }
+
+  // A logged-in member hitting /login -> send them to their portal home.
+  if (isPublicPath && pathname === "/login") {
+    const home = LEARNING_ROLES.has(role) ? LEARNING_HOME : ADMIN_HOME;
+    return withCookies(supabaseResponse, redirectTo(request, home));
+  }
+
+  // ── 5. Portal gating by role.
+  const wantsAdmin = ADMIN_PORTAL_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  );
+  const wantsLearning = LEARNING_PORTAL_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  );
+
+  if (wantsAdmin && !ADMIN_ROLES.has(role)) {
+    // e.g. a student trying to reach /dashboard -> bounce to learning home.
+    return withCookies(supabaseResponse, redirectTo(request, LEARNING_HOME));
+  }
+  if (wantsLearning && !LEARNING_ROLES.has(role)) {
+    // e.g. an admin/coach trying to reach /learn -> bounce to admin home.
+    return withCookies(supabaseResponse, redirectTo(request, ADMIN_HOME));
+  }
+
+  // ── 6. Set the trusted, server-resolved identity headers on the (already
+  //        stripped) downstream request, then return.
+  cleanHeaders.set("x-org-id", org.id);
+  cleanHeaders.set("x-org-slug", org.slug);
+  cleanHeaders.set("x-user-id", user.id);
+  cleanHeaders.set("x-user-role", role);
+
+  const response = NextResponse.next({ request: { headers: cleanHeaders } });
+  return withCookies(supabaseResponse, response);
+}
+
+/**
+ * Copy any session Set-Cookie headers accumulated by the Supabase SSR client
+ * onto the final response we hand back, so token refreshes are persisted no
+ * matter which branch returns.
+ */
+function withCookies(from: NextResponse, to: NextResponse): NextResponse {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie);
+  });
+  return to;
+}
+
+// ── Matcher: everything EXCEPT static assets & framework internals ───────────
 export const config = {
-  matcher: ["/dashboard/:path*", "/companies/:path*", "/website/:path*"],
+  matcher: [
+    /*
+     * Match all request paths except:
+     *  - _next/static, _next/image  (build assets / image optimizer)
+     *  - favicon.ico, robots.txt, sitemap.xml
+     *  - any path ending in a common static asset extension
+     */
+    "/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|css|js|map|woff2?|ttf|otf|mp4|webm|mp3|wav|pdf|txt)$).*)",
+  ],
 };
