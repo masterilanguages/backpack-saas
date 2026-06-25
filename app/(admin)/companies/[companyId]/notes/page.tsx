@@ -77,7 +77,7 @@ export default function NotesPage() {
     <div>
       <PageHeader
         title="Notes"
-        description={`Internal notes and reminders for ${company.name}.`}
+        description="Internal notes and reminders."
         actions={
           <button
             type="button"
