@@ -220,10 +220,12 @@ export async function middleware(request: NextRequest) {
   // ── 1. Host -> slug
   const slug = parseSlug(request.headers.get("host"));
 
-  // Reserved subdomain (www/app/api/admin/platform) or non-tenant host:
-  // this middleware governs tenant apps only -> not found here.
+  // Host NO-tenant (apex backpacksystems.com / www / subdominio reservado):
+  // es la superficie de MARKETING del producto, no una app de tenant. Se deja
+  // pasar para que renderice normal (app/page.tsx, etc.) en vez de 404. El
+  // gating multi-tenant SOLO aplica a {slug}.backpacksystems.com.
   if (slug === "__reserved__" || slug === null) {
-    return notFound(request);
+    return NextResponse.next({ request: { headers: cleanHeaders } });
   }
 
   // ── Supabase SSR client wired to this request's cookies.
