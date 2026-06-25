@@ -37,6 +37,14 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
         <div className="hidden h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700 sm:flex">
           ML
         </div>
+        <form action="/auth/signout" method="post">
+          <button
+            type="submit"
+            className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900"
+          >
+            Logout
+          </button>
+        </form>
       </div>
     </header>
   );
