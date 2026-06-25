@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, createPageUrl } from "@/lib/router-compat";
 import SoundWave from "@/components/practice/SoundWave";
-import GameHeader from "@/components/home/GameHeader";
+import GameHeader from "@/components/dashboard/GameHeader";
 import ClickableWord from "@/components/learning/ClickableWord";
 
 export default function Sentences() {

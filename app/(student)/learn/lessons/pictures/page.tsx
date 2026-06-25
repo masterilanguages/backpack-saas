@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft } from "lucide-react";
 import { Link, createPageUrl } from "@/lib/router-compat";
 import PictureCard from "@/components/practice/PictureCard";
-import GameHeader from "@/components/home/GameHeader";
+import GameHeader from "@/components/dashboard/GameHeader";
 
 const pictureCards = [
 

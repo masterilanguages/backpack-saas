@@ -8,7 +8,7 @@ import { useNavigate, createPageUrl } from "@/lib/router-compat";
 export default function Flashcards() {
   const navigate = useNavigate();
   useEffect(() => {
-    navigate(createPageUrl("Library"), { replace: true });
+    navigate(createPageUrl("Backpack"), { replace: true });
   }, []);
   return null;
 }

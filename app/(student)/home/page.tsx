@@ -15,12 +15,12 @@ import { Input } from "@/components/ui/input";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import RecommendedForYou from "@/components/home/RecommendedForYou";
-import BabyGame from "@/components/home/BabyGame";
-import AvatarMenu from "@/components/home/AvatarMenu";
+import RecommendedForYou from "@/components/dashboard/RecommendedForYou";
+import BabyGame from "@/components/dashboard/BabyGame";
+import AvatarMenu from "@/components/dashboard/AvatarMenu";
 import PostVideoFlashcards from "@/components/video/PostVideoFlashcards";
-import SongTranscriptModal from "@/components/home/SongTranscriptModal";
-import ContentLibraryPicker from "@/components/home/ContentLibraryPicker";
+import SongTranscriptModal from "@/components/dashboard/SongTranscriptModal";
+import ContentLibraryPicker from "@/components/dashboard/ContentLibraryPicker";
 
 
 

@@ -12,8 +12,8 @@ import { Coins, Lock, Check, ArrowLeft, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "@/lib/router-compat";
 import { toast } from "sonner";
-import GameHeader from "@/components/home/GameHeader";
-import AvatarDisplay from "@/components/home/AvatarDisplay";
+import GameHeader from "@/components/dashboard/GameHeader";
+import AvatarDisplay from "@/components/dashboard/AvatarDisplay";
 
 const storeItems = [
   { id: "diaper", name: "Diapers", emoji: "🩲", price: 50, category: "baby" },

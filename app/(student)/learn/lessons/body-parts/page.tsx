@@ -9,7 +9,7 @@ const base44: any = base44Client;
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import GameHeader from "@/components/home/GameHeader";
+import GameHeader from "@/components/dashboard/GameHeader";
 import QuickAddWordWidget from "@/components/QuickAddWordWidget";
 
 const bodyParts = [
