@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Home as HomeIcon, Rabbit, Zap, Heart, Play, Star } from "lucide-react";
 import { Link, createPageUrl } from "@/lib/router-compat";
 import { toast } from "sonner";
-import GameHeader from "@/components/dashboard/GameHeader";
+import GameHeader from "@/components/home/GameHeader";
 
 const zones: any[] = [
   {

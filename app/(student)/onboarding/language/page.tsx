@@ -57,7 +57,7 @@ export default function LanguageSelect() {
         });
       }
       await queryClient.invalidateQueries({ queryKey: ['userProfile', currentUser?.email] });
-      navigate("/dashboard");
+      navigate("/home");
     },
   });
 

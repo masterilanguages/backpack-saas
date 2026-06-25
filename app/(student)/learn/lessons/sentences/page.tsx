@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, createPageUrl } from "@/lib/router-compat";
 import SoundWave from "@/components/practice/SoundWave";
-import GameHeader from "@/components/dashboard/GameHeader";
+import GameHeader from "@/components/home/GameHeader";
 import ClickableWord from "@/components/learning/ClickableWord";
 
 export default function Sentences() {
@@ -103,7 +103,7 @@ export default function Sentences() {
           className="mb-8"
         >
           <div className="flex items-center gap-4 mb-6">
-            <Link to="/dashboard" className="text-white/60 hover:text-white">
+            <Link to="/home" className="text-white/60 hover:text-white">
               <ArrowLeft className="w-6 h-6" />
             </Link>
             <div>

@@ -19,7 +19,7 @@ export default function StudentLayout({ children }: { children: ReactNode }) {
   // server; this client gate keeps the UX (spinner + redirect) intact.
   useEffect(() => {
     if (!isLoadingAuth && !isAuthenticated) {
-      router.replace(`/login?from=${encodeURIComponent(pathname || "/dashboard")}`);
+      router.replace(`/login?from=${encodeURIComponent(pathname || "/home")}`);
     }
   }, [isLoadingAuth, isAuthenticated, pathname, router]);
 

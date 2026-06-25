@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 
 const NAV = [
-  { href: "/dashboard",      label: "Dashboard", emoji: "🏠" },
+  { href: "/home",      label: "Dashboard", emoji: "🏠" },
   { href: "/learn",          label: "Learn",     emoji: "🎬" },
   { href: "/learn/lessons",  label: "Lessons",   emoji: "📖" },
   { href: "/learn/songs",    label: "Songs",     emoji: "🎵" },
@@ -43,7 +43,7 @@ export default function StudentSidebar({
       >
         {/* Logo */}
         <div className="flex h-16 shrink-0 items-center border-b border-slate-800 px-5">
-          <Link href="/dashboard" onClick={onClose} className="flex items-center gap-2.5">
+          <Link href="/home" onClick={onClose} className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500 text-sm font-bold text-white">
               M
             </span>

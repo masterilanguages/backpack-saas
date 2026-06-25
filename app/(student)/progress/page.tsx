@@ -180,7 +180,7 @@ export default function Progress() {
 
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
-          <Link to="/dashboard" className="text-white/60 hover:text-white">
+          <Link to="/home" className="text-white/60 hover:text-white">
             <ArrowLeft className="w-6 h-6" />
           </Link>
           <div>

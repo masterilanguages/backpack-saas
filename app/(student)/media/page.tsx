@@ -176,7 +176,7 @@ export default function MediaLibrary() {
   const handleRankWords = async () => {
     if (!sessionDay) return;
     await markTaskComplete();
-    navigate("/dashboard");
+    navigate("/home");
   };
 
   const [formData, setFormData] = useState<any>({

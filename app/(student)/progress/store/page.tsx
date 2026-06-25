@@ -12,8 +12,8 @@ import { Coins, Lock, Check, ArrowLeft, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "@/lib/router-compat";
 import { toast } from "sonner";
-import GameHeader from "@/components/dashboard/GameHeader";
-import AvatarDisplay from "@/components/dashboard/AvatarDisplay";
+import GameHeader from "@/components/home/GameHeader";
+import AvatarDisplay from "@/components/home/AvatarDisplay";
 
 const storeItems = [
   { id: "diaper", name: "Diapers", emoji: "🩲", price: 50, category: "baby" },
@@ -105,7 +105,7 @@ export default function Store() {
 
       <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="flex items-center gap-4 mb-8">
-          <Link to="/dashboard" className="text-white/60 hover:text-white">
+          <Link to="/home" className="text-white/60 hover:text-white">
             <ArrowLeft className="w-6 h-6" />
           </Link>
           <div>

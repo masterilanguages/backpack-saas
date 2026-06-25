@@ -11,7 +11,7 @@
  * Page-URL convention (backpack):
  *   The Vite origin used `createPageUrl(name) => '/' + name.toLowerCase().replace(/ /g, '-')`
  *   (e.g. "Home" -> "/home"). In backpack the learning routes live at the ROOT
- *   (/learn, /journal, /dashboard, …) WITHOUT a /portal prefix — the multi-tenant
+ *   (/learn, /journal, /home, …) WITHOUT a /portal prefix — the multi-tenant
  *   middleware gates them by subdomain + membership — so this table maps each
  *   Base44 page name straight to its real root route.
  */
@@ -31,11 +31,11 @@ import React from "react";
 // for cross-page navigation; unmapped names fall back to slug.
 const PAGE_ROUTES: Record<string, string> = {
   // dashboard
-  home: "/dashboard",
-  dashboard: "/dashboard",
-  myprogram: "/dashboard/my-program",
-  fluentpath: "/dashboard/fluent-path",
-  level1world: "/dashboard/level1-world",
+  home: "/home",
+  dashboard: "/home",
+  myprogram: "/home/my-program",
+  fluentpath: "/home/fluent-path",
+  level1world: "/home/level1-world",
   // learn / video transcription
   learn: "/learn",
   videos: "/learn",
@@ -84,7 +84,7 @@ const PAGE_ROUTES: Record<string, string> = {
 // Resolve a react-router-style target (bare "Name", "/Name", "Name?q=1", or an
 // already-real path) into the correct Next href.
 function resolveHref(to: string): string {
-  if (!to) return "/dashboard";
+  if (!to) return "/home";
   // Split off query/hash so it survives the mapping.
   const qIndex = to.search(/[?#]/);
   const pathPart = qIndex >= 0 ? to.slice(0, qIndex) : to;

@@ -31,7 +31,7 @@ export default function AvatarSelect() {
       } else {
         await base44.entities.UserProfile.create(data);
       }
-      navigate("/dashboard", { replace: true });
+      navigate("/home", { replace: true });
     };
     complete();
   }, []);

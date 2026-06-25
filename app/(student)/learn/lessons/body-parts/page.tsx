@@ -9,7 +9,7 @@ const base44: any = base44Client;
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import GameHeader from "@/components/dashboard/GameHeader";
+import GameHeader from "@/components/home/GameHeader";
 import QuickAddWordWidget from "@/components/QuickAddWordWidget";
 
 const bodyParts = [
@@ -128,7 +128,7 @@ export default function BodyPartsLesson() {
 
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="flex items-center gap-4 mb-6">
-          <Link to="/dashboard" className="text-white/60 hover:text-white">
+          <Link to="/home" className="text-white/60 hover:text-white">
             <ArrowLeft className="w-6 h-6" />
           </Link>
           <div>

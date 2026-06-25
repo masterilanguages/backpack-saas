@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft } from "lucide-react";
 import { Link, createPageUrl } from "@/lib/router-compat";
 import PictureCard from "@/components/practice/PictureCard";
-import GameHeader from "@/components/dashboard/GameHeader";
+import GameHeader from "@/components/home/GameHeader";
 
 const pictureCards = [
 
@@ -217,7 +217,7 @@ export default function Pictures() {
           className="mb-8"
         >
           <div className="flex items-center gap-4 mb-6">
-            <Link to="/dashboard" className="text-white/60 hover:text-white">
+            <Link to="/home" className="text-white/60 hover:text-white">
               <ArrowLeft className="w-6 h-6" />
             </Link>
             <div>
