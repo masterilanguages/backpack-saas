@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
-import { getCompany } from "@/lib/companies";
+import { useSchool } from "@/lib/useSchool";
 import type { IconName } from "@/lib/types";
 import { Icon, CloseIcon } from "./Icons";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,26 @@ interface NavItem {
   label: string;
   icon: IconName;
 }
+
+/** Default section labels for a language school (per-tenant, no mock data). */
+const NAV_LABELS = {
+  leads: "Leads",
+  clients: "Students",
+  projects: "Lessons",
+  tasks: "Homework & Tasks",
+  team: "Coaches",
+} as const;
+
+/** Default sidebar modules. */
+const NAV_MODULES: { id: string; label: string }[] = [
+  { id: "curriculum", label: "Curriculum" },
+  { id: "vocabulary", label: "Vocabulary" },
+  { id: "mnemonics", label: "Mnemonics" },
+  { id: "progress", label: "Progress" },
+  { id: "landing-page", label: "Website" },
+];
+
+const ACCENT_FALLBACK = "#6366f1";
 
 function NavLink({
   item,
@@ -48,7 +68,13 @@ export default function Sidebar({
 }) {
   const pathname = usePathname();
   const params = useParams<{ companyId?: string }>();
-  const company = params.companyId ? getCompany(params.companyId) : undefined;
+  const companyId = params.companyId;
+  // Real org for the active tenant (fetched from /api/school/[companyId]).
+  const { school } = useSchool();
+
+  const schoolName = school?.name ?? companyId ?? "School";
+  const accent = school?.accent_color ?? ACCENT_FALLBACK;
+  const brandInitial = schoolName.trim().charAt(0).toUpperCase() || "B";
 
   const globalNav: NavItem[] = [
     { href: "/", label: "Control Panel", icon: "dashboard" },
@@ -56,25 +82,25 @@ export default function Sidebar({
     { href: "/companies", label: "Companies", icon: "building" },
   ];
 
-  const base = company ? `/companies/${company.id}` : "";
-  const companyNav: NavItem[] = company
+  const base = companyId ? `/companies/${companyId}` : "";
+  const companyNav: NavItem[] = companyId
     ? [
         { href: `${base}/dashboard`, label: "Dashboard", icon: "dashboard" },
-        { href: `${base}/leads`, label: company.labels.leads, icon: "leads" },
-        { href: `${base}/clients`, label: company.labels.clients, icon: "clients" },
-        { href: `${base}/projects`, label: company.labels.projects, icon: "projects" },
-        { href: `${base}/tasks`, label: company.labels.tasks, icon: "tasks" },
+        { href: `${base}/leads`, label: NAV_LABELS.leads, icon: "leads" },
+        { href: `${base}/clients`, label: NAV_LABELS.clients, icon: "clients" },
+        { href: `${base}/projects`, label: NAV_LABELS.projects, icon: "projects" },
+        { href: `${base}/tasks`, label: NAV_LABELS.tasks, icon: "tasks" },
         { href: `${base}/calendar`, label: "Calendar", icon: "calendar" },
         { href: `${base}/notes`, label: "Notes", icon: "notes" },
         { href: `${base}/files`, label: "Files", icon: "files" },
-        { href: `${base}/team`, label: company.labels.team, icon: "team" },
+        { href: `${base}/team`, label: NAV_LABELS.team, icon: "team" },
         { href: `${base}/finances`, label: "Finances", icon: "finances" },
         { href: `${base}/newsletter`, label: "Newsletter", icon: "email" },
       ]
     : [];
 
-  const moduleNav: NavItem[] = company
-    ? company.modules.map((m) => ({
+  const moduleNav: NavItem[] = companyId
+    ? NAV_MODULES.map((m) => ({
         href: `${base}/modules/${m.id}`,
         label: m.label,
         icon: "module" as IconName,
@@ -102,11 +128,14 @@ export default function Sidebar({
       >
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-5">
           <Link href="/" className="flex items-center gap-2.5" onClick={onClose}>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500 text-sm font-bold text-white">
-              L
+            <span
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white"
+              style={{ backgroundColor: accent }}
+            >
+              {brandInitial}
             </span>
-            <span className="text-sm font-semibold tracking-tight text-white">
-              Masteri
+            <span className="truncate text-sm font-semibold tracking-tight text-white">
+              {companyId ? schoolName : "Backpack"}
             </span>
           </Link>
           <button
@@ -136,15 +165,15 @@ export default function Sidebar({
             </div>
           </div>
 
-          {company && (
+          {companyId && (
             <>
               <div>
                 <p className="mb-2 flex items-center gap-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   <span
                     className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: company.color }}
+                    style={{ backgroundColor: accent }}
                   />
-                  {company.name}
+                  <span className="truncate">{schoolName}</span>
                 </p>
                 <div className="space-y-0.5">
                   {companyNav.map((item) => (
@@ -178,13 +207,13 @@ export default function Sidebar({
         </nav>
 
         <div className="shrink-0 border-t border-white/10 px-3 py-3">
-          {company ? (
+          {companyId ? (
             <Link
-              href={`/companies/${company.id}/settings`}
+              href={`/companies/${companyId}/settings`}
               onClick={onClose}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition",
-                isActive(`/companies/${company.id}/settings`)
+                isActive(`/companies/${companyId}/settings`)
                   ? "bg-white/10 text-white"
                   : "text-slate-400 hover:bg-white/5 hover:text-slate-100"
               )}

@@ -71,6 +71,7 @@ const LEARNING_ROLES = new Set(["student"]);
  */
 const ADMIN_PORTAL_PREFIXES = [
   "/dashboard",
+  "/companies",
   "/students",
   "/courses",
   "/coaches",

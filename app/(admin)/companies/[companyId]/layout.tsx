@@ -1,19 +1,22 @@
 import { notFound } from "next/navigation";
-import { isCompanyId } from "@/lib/companies";
+import { schoolExistsBySlug } from "@/lib/queries";
 
-export default function CompanyLayout({
+// The tenant set is dynamic (real orgs in the DB), so do not pre-render a
+// hardcoded list of slugs.
+export const dynamic = "force-dynamic";
+
+export default async function CompanyLayout({
   children,
   params,
 }: {
   children: React.ReactNode;
   params: { companyId: string };
 }) {
-  if (!isCompanyId(params.companyId)) {
+  // Real validation against the organizations table (replaces the old mock
+  // isCompanyId check). Unknown slug -> 404.
+  const exists = await schoolExistsBySlug(params.companyId);
+  if (!exists) {
     notFound();
   }
   return <>{children}</>;
-}
-
-export function generateStaticParams() {
-  return [{ companyId: "avinu" }, { companyId: "masteri" }, { companyId: "bayena" }];
 }

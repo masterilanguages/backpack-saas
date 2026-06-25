@@ -4,12 +4,23 @@ import { supabaseAdmin } from "./supabase";
 
 export async function getSchoolBySlug(slug: string) {
   const { data, error } = await supabaseAdmin
-    .from("schools")
+    .from("organizations")
     .select("*")
     .eq("slug", slug)
     .single();
   if (error) throw error;
   return data;
+}
+
+/** Lightweight existence check for a tenant slug (no throw on miss). */
+export async function schoolExistsBySlug(slug: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from("organizations")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error) return false;
+  return Boolean(data);
 }
 
 // ── Students ──────────────────────────────────────────────────────────────────
@@ -18,7 +29,7 @@ export async function getStudents(schoolId: string) {
   const { data, error } = await supabaseAdmin
     .from("students")
     .select("*")
-    .eq("school_id", schoolId)
+    .eq("org_id", schoolId)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -30,7 +41,7 @@ export async function createStudent(schoolId: string, input: {
 }) {
   const { data, error } = await supabaseAdmin
     .from("students")
-    .insert({ school_id: schoolId, ...input })
+    .insert({ org_id: schoolId, ...input })
     .select()
     .single();
   if (error) throw error;
@@ -62,7 +73,7 @@ export async function getLeads(schoolId: string) {
   const { data, error } = await supabaseAdmin
     .from("leads")
     .select("*")
-    .eq("school_id", schoolId)
+    .eq("org_id", schoolId)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -74,7 +85,7 @@ export async function createLead(schoolId: string, input: {
 }) {
   const { data, error } = await supabaseAdmin
     .from("leads")
-    .insert({ school_id: schoolId, ...input })
+    .insert({ org_id: schoolId, ...input })
     .select()
     .single();
   if (error) throw error;
@@ -92,7 +103,7 @@ export async function getVocabulary(schoolId: string) {
   const { data, error } = await supabaseAdmin
     .from("vocabulary")
     .select("*")
-    .eq("school_id", schoolId)
+    .eq("org_id", schoolId)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -103,7 +114,7 @@ export async function createVocabItem(schoolId: string, input: {
 }) {
   const { data, error } = await supabaseAdmin
     .from("vocabulary")
-    .insert({ school_id: schoolId, ...input })
+    .insert({ org_id: schoolId, ...input })
     .select()
     .single();
   if (error) throw error;
@@ -116,7 +127,7 @@ export async function getLessons(schoolId: string) {
   const { data, error } = await supabaseAdmin
     .from("lessons")
     .select("*")
-    .eq("school_id", schoolId)
+    .eq("org_id", schoolId)
     .order("date", { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -128,7 +139,7 @@ export async function createLesson(schoolId: string, input: {
 }) {
   const { data, error } = await supabaseAdmin
     .from("lessons")
-    .insert({ school_id: schoolId, ...input })
+    .insert({ org_id: schoolId, ...input })
     .select()
     .single();
   if (error) throw error;
@@ -141,7 +152,7 @@ export async function getTasks(schoolId: string) {
   const { data, error } = await supabaseAdmin
     .from("tasks")
     .select("*")
-    .eq("school_id", schoolId)
+    .eq("org_id", schoolId)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -153,7 +164,7 @@ export async function createTask(schoolId: string, input: {
 }) {
   const { data, error } = await supabaseAdmin
     .from("tasks")
-    .insert({ school_id: schoolId, ...input })
+    .insert({ org_id: schoolId, ...input })
     .select()
     .single();
   if (error) throw error;
@@ -174,7 +185,7 @@ export async function getTransactions(schoolId: string) {
   const { data, error } = await supabaseAdmin
     .from("transactions")
     .select("*")
-    .eq("school_id", schoolId)
+    .eq("org_id", schoolId)
     .order("date", { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -186,7 +197,7 @@ export async function createTransaction(schoolId: string, input: {
 }) {
   const { data, error } = await supabaseAdmin
     .from("transactions")
-    .insert({ school_id: schoolId, ...input })
+    .insert({ org_id: schoolId, ...input })
     .select()
     .single();
   if (error) throw error;
@@ -199,7 +210,7 @@ export async function getTeamMembers(schoolId: string) {
   const { data, error } = await supabaseAdmin
     .from("team_members")
     .select("*")
-    .eq("school_id", schoolId)
+    .eq("org_id", schoolId)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -211,7 +222,7 @@ export async function getNotes(schoolId: string) {
   const { data, error } = await supabaseAdmin
     .from("notes")
     .select("*")
-    .eq("school_id", schoolId)
+    .eq("org_id", schoolId)
     .order("pinned", { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -241,7 +252,7 @@ export async function getCalendarEvents(schoolId: string) {
   const { data, error } = await supabaseAdmin
     .from("calendar_events")
     .select("*")
-    .eq("school_id", schoolId)
+    .eq("org_id", schoolId)
     .order("date", { ascending: true });
   if (error) throw error;
   return data ?? [];

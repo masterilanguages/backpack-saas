@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
 import { getSchoolBySlug, getTeamMembers } from "@/lib/queries";
 import { supabaseAdmin } from "@/lib/supabase";
+import { requireOrgRole } from "@/lib/supabase-ssr";
 
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
+  const ctx = await requireOrgRole(params.slug, ["owner", "admin", "coach"]);
+  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const school = await getSchoolBySlug(params.slug);
   const team = await getTeamMembers(school.id);
   return NextResponse.json(team);
 }
 
 export async function POST(req: Request, { params }: { params: { slug: string } }) {
+  const ctx = await requireOrgRole(params.slug, ["owner", "admin", "coach"]);
+  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const school = await getSchoolBySlug(params.slug);
   const body = await req.json();
   const { data, error } = await supabaseAdmin.from("team_members").insert({ school_id: school.id, ...body }).select().single();
