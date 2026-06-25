@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { browserClient } from "@/lib/supabase-ssr";
+import { browserClient } from "@/lib/supabase-browser";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
