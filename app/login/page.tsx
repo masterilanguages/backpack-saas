@@ -11,7 +11,9 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get("from") ?? "/dashboard";
+  // Default neutro al rol: "/" deja que el middleware enrute por rol
+  // (alumno -> /learn, staff -> /dashboard) en un solo salto.
+  const from = searchParams.get("from") ?? "/";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
