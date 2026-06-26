@@ -114,6 +114,14 @@ export default function PlatformSchoolsPage() {
           <p className="mt-2 text-sm text-slate-600">
             Esta consola es solo para administradores de plataforma de Backpack.
           </p>
+          <form action="/auth/signout" method="post" className="mt-5">
+            <button
+              type="submit"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+            >
+              Cerrar sesión
+            </button>
+          </form>
         </div>
       </div>
     );
@@ -121,6 +129,24 @@ export default function PlatformSchoolsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-slate-900">Backpack</span>
+            <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Platform
+            </span>
+          </div>
+          <form action="/auth/signout" method="post">
+            <button
+              type="submit"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+            >
+              Cerrar sesión
+            </button>
+          </form>
+        </div>
+      </header>
       <div className="mx-auto max-w-5xl px-6 py-10">
         <PageHeader
           title="Schools"
