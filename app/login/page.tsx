@@ -32,6 +32,22 @@ function LoginForm() {
       return;
     }
 
+    // En el apex/www (backpacksystems.com) NO hay tenant: el subdominio es lo que
+    // elige la escuela. Si quien entra es platform-admin, mándalo a su consola de
+    // plataforma en vez de dejarlo en el marketing. En un subdominio de escuela
+    // NO aplica: ahi el middleware enruta por rol (owner -> /dashboard, etc.).
+    const host = window.location.hostname;
+    const root = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "backpacksystems.com";
+    const isApex = host === root || host === `www.${root}` || host === "localhost";
+    if (isApex && (from === "/" || from === "")) {
+      const res = await fetch("/api/platform/schools").catch(() => null);
+      if (res && res.ok) {
+        router.push("/platform/schools");
+        router.refresh();
+        return;
+      }
+    }
+
     router.push(from);
     router.refresh();
   };
