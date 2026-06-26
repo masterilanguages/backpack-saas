@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSchoolBySlug, getStudentsWithProgress, createStudent, updateStudent, deleteStudent } from "@/lib/queries";
+import { createStudentAccount } from "@/lib/onboarding";
 import { requireOrgRole } from "@/lib/supabase-ssr";
 
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
@@ -16,7 +17,13 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const school = await getSchoolBySlug(params.slug);
   const body = await req.json();
   const student = await createStudent(school.id, body);
-  return NextResponse.json(student, { status: 201 });
+  // Si trae email, crea tambien la CUENTA REAL (usuario auth + membership student)
+  // ademas del registro de roster. Sin email = solo roster.
+  let account = null;
+  if (body.email) {
+    account = await createStudentAccount(school.id, body.email, body.name);
+  }
+  return NextResponse.json({ ...student, _account: account }, { status: 201 });
 }
 
 export async function PATCH(req: Request, { params }: { params: { slug: string } }) {

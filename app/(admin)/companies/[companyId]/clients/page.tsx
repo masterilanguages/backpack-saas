@@ -161,6 +161,16 @@ export default function ClientsPage() {
             const newStudent = await res.json();
             setStudents((prev) => [newStudent, ...prev]);
             setModalOpen(false);
+            const acc = newStudent._account;
+            if (acc?.tempPassword) {
+              window.alert(
+                `Cuenta creada para ${acc.email}.\n\nContraseña temporal: ${acc.tempPassword}\n\nCompártela con el alumno (debe cambiarla al entrar a su portal).`,
+              );
+            } else if (acc?.alreadyExisted) {
+              window.alert(`${acc.email} ya tenía cuenta; se vinculó a esta escuela.`);
+            } else if (acc?.error) {
+              window.alert(`Se agregó al roster, pero la cuenta no se creó: ${acc.error}`);
+            }
           }}
           onClose={() => setModalOpen(false)}
         />
