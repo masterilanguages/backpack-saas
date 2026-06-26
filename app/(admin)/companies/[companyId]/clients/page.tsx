@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import DataTable from "@/components/DataTable";
 import StatusBadge from "@/components/StatusBadge";
@@ -37,6 +37,7 @@ interface Student {
 
 export default function ClientsPage() {
   const { companyId } = useParams<{ companyId: string }>();
+  const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -89,6 +90,10 @@ export default function ClientsPage() {
       render: (s) => (
         <ActionMenu
           items={[
+            {
+              label: "View details",
+              onClick: () => router.push(`/companies/${companyId}/clients/${s.id}`),
+            },
             {
               label: "Edit",
               onClick: () => setEditing(s),

@@ -122,6 +122,45 @@ export async function deleteStudent(id: string) {
   if (error) throw error;
 }
 
+/**
+ * Detalle completo de UN alumno: su registro + perfil del learning + sus
+ * palabras + su journal (relacionado por email = created_by, case-insensitive).
+ */
+export async function getStudentDetail(orgId: string, studentId: string) {
+  const { data: student, error } = await supabaseAdmin
+    .from("students")
+    .select("*")
+    .eq("id", studentId)
+    .eq("org_id", orgId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!student) return null;
+
+  const email = (student.email ?? "").trim();
+  if (!email) return { student, profile: null, words: [], journal: [] };
+
+  const [profRes, wordsRes, journalRes] = await Promise.all([
+    supabaseAdmin.from("user_profile").select("*").ilike("created_by", email).limit(1),
+    supabaseAdmin
+      .from("word")
+      .select("id, word, translation, language, mastered, is_starred, times_practiced, created_date")
+      .ilike("created_by", email)
+      .order("created_date", { ascending: false }),
+    supabaseAdmin
+      .from("journal_entry")
+      .select("id, date, text, created_date")
+      .ilike("created_by", email)
+      .order("created_date", { ascending: false }),
+  ]);
+
+  return {
+    student,
+    profile: (profRes.data ?? [])[0] ?? null,
+    words: wordsRes.data ?? [],
+    journal: journalRes.data ?? [],
+  };
+}
+
 // ── Leads ─────────────────────────────────────────────────────────────────────
 
 export async function getLeads(schoolId: string) {
