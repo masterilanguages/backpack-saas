@@ -15,7 +15,12 @@ export default function DataTable<T extends { id: string }>({
   filters = [],
   emptyTitle = "No records found",
   emptyDescription = "Try adjusting your search or filters.",
-  showActions = true,
+  // Por defecto NO renderizar un menu de acciones generico: era un ActionMenu
+  // SIN items (caia a DEFAULT_ITEMS View details/Edit/Delete sin handlers -> no
+  // hacia nada) y ademas duplicaba el menu real que cada pagina define en sus
+  // columnas (de ahi el "doble ⋮"). Las paginas que quieran acciones las ponen
+  // en una columna propia (como clients).
+  showActions = false,
 }: {
   columns: ColumnDef<T>[];
   rows: T[];
