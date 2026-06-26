@@ -11,6 +11,17 @@ import { PlusIcon } from "@/components/Icons";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { ColumnDef } from "@/lib/types";
 
+interface StudentProgress {
+  hasProfile: boolean;
+  language: string | null;
+  day: number | null;
+  xp: number | null;
+  streak: number | null;
+  words: number;
+  journal: number;
+  lastActive: string | null;
+}
+
 interface Student {
   id: string;
   name: string;
@@ -21,6 +32,7 @@ interface Student {
   since: string;
   total_value: number;
   status: string;
+  progress?: StudentProgress;
 }
 
 export default function ClientsPage() {
@@ -48,16 +60,27 @@ export default function ClientsPage() {
         </div>
       ),
     },
-    { key: "language", header: "Language", render: (s) => s.language ?? "—" },
-    { key: "level", header: "Level", render: (s) => s.level ?? "—" },
-    { key: "phone", header: "Phone", render: (s) => s.phone ?? "—" },
-    { key: "since", header: "Since", render: (s) => s.since ? formatDate(s.since) : "—" },
+    { key: "language", header: "Idioma", render: (s) => s.progress?.language ?? s.language ?? "—" },
     {
-      key: "total_value",
-      header: "Lifetime Value",
-      render: (s) => (
-        <span className="font-medium text-slate-900">{formatCurrency(s.total_value ?? 0)}</span>
-      ),
+      key: "words",
+      header: "Palabras",
+      render: (s) => <span className="font-medium text-slate-900">{s.progress?.words ?? 0}</span>,
+    },
+    { key: "journal", header: "Journal", render: (s) => s.progress?.journal ?? 0 },
+    {
+      key: "day",
+      header: "Progreso",
+      render: (s) => (s.progress?.day != null ? `Día ${s.progress.day}` : "—"),
+    },
+    {
+      key: "perfil",
+      header: "Perfil",
+      render: (s) =>
+        s.progress?.hasProfile ? (
+          <StatusBadge status="Activo" tone="green" />
+        ) : (
+          <span className="text-xs text-slate-400">Sin perfil</span>
+        ),
     },
     { key: "status", header: "Status", render: (s) => <StatusBadge status={s.status} /> },
     {

@@ -35,6 +35,61 @@ export async function getStudents(schoolId: string) {
   return data ?? [];
 }
 
+/**
+ * Students ENRIQUECIDOS con su progreso real del Learning Portal. Une cada
+ * alumno con su user_profile + conteos de palabras/journal, todo por org_id
+ * (que 0300 anadio a las tablas de learning) y relacionado por email
+ * (= created_by). Asi el admin ve datos reales, no los placeholders.
+ */
+export async function getStudentsWithProgress(orgId: string) {
+  const students = await getStudents(orgId);
+  const [profilesRes, wordsRes, journalsRes] = await Promise.all([
+    supabaseAdmin
+      .from("user_profile")
+      .select("created_by, language, current_day, xp, daily_streak, last_active_date")
+      .eq("org_id", orgId),
+    supabaseAdmin.from("word").select("created_by").eq("org_id", orgId),
+    supabaseAdmin.from("journal_entry").select("created_by").eq("org_id", orgId),
+  ]);
+
+  const norm = (e?: string | null) => (e ?? "").trim().toLowerCase();
+  const profByEmail = new Map<string, any>();
+  for (const p of profilesRes.data ?? []) {
+    const k = norm(p.created_by);
+    if (k) profByEmail.set(k, p);
+  }
+  const countBy = (rows: Array<{ created_by?: string | null }> | null) => {
+    const m = new Map<string, number>();
+    for (const r of rows ?? []) {
+      const k = norm(r.created_by);
+      if (k) m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  };
+  const wordCount = countBy(wordsRes.data as any);
+  const journalCount = countBy(journalsRes.data as any);
+
+  return students.map((s: any) => {
+    const k = norm(s.email);
+    const p = profByEmail.get(k);
+    return {
+      ...s,
+      // el idioma REAL del perfil pisa el placeholder (asi la columna/filtro/busqueda muestran lo real)
+      language: p?.language ?? s.language,
+      progress: {
+        hasProfile: Boolean(p),
+        language: p?.language ?? null,
+        day: p?.current_day ?? null,
+        xp: p?.xp ?? null,
+        streak: p?.daily_streak ?? null,
+        words: wordCount.get(k) ?? 0,
+        journal: journalCount.get(k) ?? 0,
+        lastActive: p?.last_active_date ?? null,
+      },
+    };
+  });
+}
+
 export async function createStudent(schoolId: string, input: {
   name: string; email?: string; phone?: string; language?: string;
   level?: string; status?: string;
