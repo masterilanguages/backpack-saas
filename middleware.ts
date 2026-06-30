@@ -101,6 +101,7 @@ const PUBLIC_PATHS = new Set([
   "/auth/confirm",
   "/auth/reset",
   "/api/auth/forgot", // "olvidé mi contraseña": lo llama un usuario SIN sesión
+  "/api/auth/signup", // auto-registro de alumno: lo llama un usuario SIN sesión
 ]);
 
 /** Default landing path per portal group, used to redirect after auth. */

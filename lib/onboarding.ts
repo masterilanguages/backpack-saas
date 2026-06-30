@@ -88,6 +88,65 @@ export async function createStudentAccount(
 }
 
 /**
+ * AUTO-REGISTRO de alumno (self-service desde el login público de la escuela).
+ * A diferencia de createStudentAccount (que genera contraseña temporal para que
+ * el admin la reparta), aquí el ALUMNO elige su propia contraseña y entra solo.
+ *
+ * Seguridad multi-tenant: si el email YA existe en Auth, NO lo adjuntamos a esta
+ * escuela (no podemos verificar que quien se registra es el dueño de esa cuenta)
+ * -> devolvemos "EMAIL_EXISTS" para que inicie sesión. Solo crea membership
+ * cuando el usuario es NUEVO. El acceso real lo da SIEMPRE el membership(student)
+ * en la org del subdominio, así que un alumno solo entra a SU escuela.
+ */
+export async function selfRegisterStudent(
+  orgId: string,
+  email: string,
+  name: string | undefined,
+  password: string,
+): Promise<CreateStudentAccountResult> {
+  const clean = email.trim().toLowerCase();
+  if (!clean) {
+    return { userId: null, email: clean, created: false, alreadyExisted: false, tempPassword: null, membership: false, error: "Falta el email" };
+  }
+  if (!password || password.length < 8) {
+    return { userId: null, email: clean, created: false, alreadyExisted: false, tempPassword: null, membership: false, error: "PASSWORD_SHORT" };
+  }
+
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email: clean,
+    password,
+    email_confirm: true, // mailer_autoconfirm -> entra directo
+    user_metadata: name ? { full_name: name } : {},
+    app_metadata: { user_role: "user" }, // app_role() => 'user' = student
+  });
+
+  if (!data?.user) {
+    // Lo mas comun: el email ya existe. En auto-registro NO reutilizamos esa
+    // cuenta (no verificamos propiedad) -> pedimos que inicie sesion.
+    const existing = await findUserIdByEmail(clean);
+    return {
+      userId: null,
+      email: clean,
+      created: false,
+      alreadyExisted: Boolean(existing),
+      tempPassword: null,
+      membership: false,
+      error: existing ? "EMAIL_EXISTS" : (error?.message ?? "No se pudo crear el usuario"),
+    };
+  }
+
+  const userId = data.user.id;
+  const { error: memErr } = await supabaseAdmin
+    .from("memberships")
+    .upsert(
+      { org_id: orgId, user_id: userId, role: "student" },
+      { onConflict: "org_id,user_id", ignoreDuplicates: true },
+    );
+
+  return { userId, email: clean, created: true, alreadyExisted: false, tempPassword: null, membership: !memErr, error: memErr?.message };
+}
+
+/**
  * NUCLEO de alta de un COACH como CUENTA REAL: usuario en Supabase Auth +
  * membership(coach). Espejo de createStudentAccount, pero el rol del membership
  * es "coach" (no "student") -> el middleware lo rutea al Portal Admin (los roles
