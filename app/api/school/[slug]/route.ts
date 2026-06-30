@@ -6,5 +6,6 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
   const ctx = await requireOrgRole(params.slug, ["owner", "admin", "coach"]);
   if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const school = await getSchoolBySlug(params.slug);
-  return NextResponse.json(school);
+  // adjuntamos el rol del usuario en ESTA org para que el cliente acote la vista
+  return NextResponse.json({ ...school, role: ctx.role });
 }

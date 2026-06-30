@@ -86,3 +86,58 @@ export async function createStudentAccount(
 
   return { userId, email: clean, created, alreadyExisted, tempPassword, membership: !memErr, error: memErr?.message };
 }
+
+/**
+ * NUCLEO de alta de un COACH como CUENTA REAL: usuario en Supabase Auth +
+ * membership(coach). Espejo de createStudentAccount, pero el rol del membership
+ * es "coach" (no "student") -> el middleware lo rutea al Portal Admin (los roles
+ * owner/admin/coach van al admin; student va al Learning Portal). app_metadata
+ * marca "staff" (no es aprendiz); el acceso real lo da SIEMPRE el membership.
+ * Idempotente: si el usuario ya existe solo asegura la membership.
+ */
+export async function createCoachAccount(
+  orgId: string,
+  email: string,
+  name?: string,
+): Promise<CreateStudentAccountResult> {
+  const clean = email.trim().toLowerCase();
+  if (!clean) {
+    return { userId: null, email: clean, created: false, alreadyExisted: false, tempPassword: null, membership: false, error: "Falta el email" };
+  }
+
+  let userId: string | null = null;
+  let created = false;
+  let alreadyExisted = false;
+  let tempPassword: string | null = null;
+
+  const tp = genTempPassword();
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email: clean,
+    password: tp,
+    email_confirm: true,
+    user_metadata: name ? { full_name: name } : {},
+    app_metadata: { user_role: "staff" },
+  });
+
+  if (data?.user) {
+    userId = data.user.id;
+    created = true;
+    tempPassword = tp;
+  } else {
+    userId = await findUserIdByEmail(clean);
+    alreadyExisted = Boolean(userId);
+    if (!userId) {
+      return { userId: null, email: clean, created: false, alreadyExisted: false, tempPassword: null, membership: false, error: error?.message ?? "No se pudo crear el usuario" };
+    }
+  }
+
+  // Membership(coach) idempotente (unique(org_id, user_id)).
+  const { error: memErr } = await supabaseAdmin
+    .from("memberships")
+    .upsert(
+      { org_id: orgId, user_id: userId, role: "coach" },
+      { onConflict: "org_id,user_id", ignoreDuplicates: true },
+    );
+
+  return { userId, email: clean, created, alreadyExisted, tempPassword, membership: !memErr, error: memErr?.message };
+}

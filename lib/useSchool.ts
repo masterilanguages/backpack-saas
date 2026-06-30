@@ -13,6 +13,7 @@ export interface School {
   accent_color: string;
   logo_url?: string;
   plan: string;
+  role?: "owner" | "admin" | "coach" | "student";
 }
 
 export function useSchool(): { school: School | null; loading: boolean } {

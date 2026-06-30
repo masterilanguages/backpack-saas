@@ -3,7 +3,7 @@ import { getSchoolBySlug, getLeads, createLead } from "@/lib/queries";
 import { requireOrgRole } from "@/lib/supabase-ssr";
 
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
-  const ctx = await requireOrgRole(params.slug, ["owner", "admin", "coach"]);
+  const ctx = await requireOrgRole(params.slug, ["owner", "admin"]);
   if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const school = await getSchoolBySlug(params.slug);
   const leads = await getLeads(school.id);
@@ -11,7 +11,7 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
 }
 
 export async function POST(req: Request, { params }: { params: { slug: string } }) {
-  const ctx = await requireOrgRole(params.slug, ["owner", "admin", "coach"]);
+  const ctx = await requireOrgRole(params.slug, ["owner", "admin"]);
   if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const school = await getSchoolBySlug(params.slug);
   const body = await req.json();

@@ -71,6 +71,8 @@ export default function Sidebar({
   const companyId = params.companyId;
   // Real org for the active tenant (fetched from /api/school/[companyId]).
   const { school } = useSchool();
+  // Vista por rol: el coach ve una versión acotada (centrada en alumnos).
+  const isCoach = school?.role === "coach";
 
   const schoolName = school?.name ?? companyId ?? "School";
   const accent = school?.accent_color ?? ACCENT_FALLBACK;
@@ -83,24 +85,32 @@ export default function Sidebar({
   ];
 
   const base = companyId ? `/companies/${companyId}` : "";
-  const companyNav: NavItem[] = companyId
+  // Secciones que un coach NO ve (admin/owner): ventas, gestión de equipo,
+  // dinero y comunicación masiva. El coach queda centrado en sus alumnos.
+  const COACH_HIDDEN = new Set(["leads", "team", "finances", "newsletter"]);
+  const allCompanyNav: { key: string; href: string; label: string; icon: IconName }[] = companyId
     ? [
-        { href: `${base}/dashboard`, label: "Dashboard", icon: "dashboard" },
-        { href: `${base}/leads`, label: NAV_LABELS.leads, icon: "leads" },
-        { href: `${base}/clients`, label: NAV_LABELS.clients, icon: "clients" },
-        { href: `${base}/projects`, label: NAV_LABELS.projects, icon: "projects" },
-        { href: `${base}/tasks`, label: NAV_LABELS.tasks, icon: "tasks" },
-        { href: `${base}/calendar`, label: "Calendar", icon: "calendar" },
-        { href: `${base}/notes`, label: "Notes", icon: "notes" },
-        { href: `${base}/files`, label: "Files", icon: "files" },
-        { href: `${base}/team`, label: NAV_LABELS.team, icon: "team" },
-        { href: `${base}/finances`, label: "Finances", icon: "finances" },
-        { href: `${base}/newsletter`, label: "Newsletter", icon: "email" },
+        { key: "dashboard", href: `${base}/dashboard`, label: "Dashboard", icon: "dashboard" },
+        { key: "leads", href: `${base}/leads`, label: NAV_LABELS.leads, icon: "leads" },
+        { key: "clients", href: `${base}/clients`, label: NAV_LABELS.clients, icon: "clients" },
+        { key: "projects", href: `${base}/projects`, label: NAV_LABELS.projects, icon: "projects" },
+        { key: "tasks", href: `${base}/tasks`, label: NAV_LABELS.tasks, icon: "tasks" },
+        { key: "calendar", href: `${base}/calendar`, label: "Calendar", icon: "calendar" },
+        { key: "notes", href: `${base}/notes`, label: "Notes", icon: "notes" },
+        { key: "files", href: `${base}/files`, label: "Files", icon: "files" },
+        { key: "team", href: `${base}/team`, label: NAV_LABELS.team, icon: "team" },
+        { key: "finances", href: `${base}/finances`, label: "Finances", icon: "finances" },
+        { key: "newsletter", href: `${base}/newsletter`, label: "Newsletter", icon: "email" },
       ]
     : [];
+  const companyNav: NavItem[] = allCompanyNav
+    .filter((i) => !isCoach || !COACH_HIDDEN.has(i.key))
+    .map(({ key: _key, ...item }) => item);
 
+  // El coach solo ve módulos de aprendizaje (Vocabulary, Progress).
+  const COACH_MODULES = new Set(["vocabulary", "progress"]);
   const moduleNav: NavItem[] = companyId
-    ? NAV_MODULES.map((m) => ({
+    ? NAV_MODULES.filter((m) => !isCoach || COACH_MODULES.has(m.id)).map((m) => ({
         href: `${base}/modules/${m.id}`,
         label: m.label,
         icon: "module" as IconName,
@@ -149,21 +159,23 @@ export default function Sidebar({
         </div>
 
         <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
-          <div>
-            <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              General
-            </p>
-            <div className="space-y-0.5">
-              {globalNav.map((item) => (
-                <NavLink
-                  key={item.href}
-                  item={item}
-                  active={isActive(item.href)}
-                  onNavigate={onClose}
-                />
-              ))}
+          {!isCoach && (
+            <div>
+              <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                General
+              </p>
+              <div className="space-y-0.5">
+                {globalNav.map((item) => (
+                  <NavLink
+                    key={item.href}
+                    item={item}
+                    active={isActive(item.href)}
+                    onNavigate={onClose}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {companyId && (
             <>
@@ -207,7 +219,7 @@ export default function Sidebar({
         </nav>
 
         <div className="shrink-0 border-t border-white/10 px-3 py-3">
-          {companyId ? (
+          {companyId && !isCoach ? (
             <Link
               href={`/companies/${companyId}/settings`}
               onClick={onClose}
@@ -221,11 +233,11 @@ export default function Sidebar({
               <Icon name="settings" className="h-[18px] w-[18px]" />
               Settings
             </Link>
-          ) : (
+          ) : !companyId ? (
             <p className="px-3 py-2 text-xs text-slate-500">
               Select a company to manage it
             </p>
-          )}
+          ) : null}
         </div>
       </aside>
     </>

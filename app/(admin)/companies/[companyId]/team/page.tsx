@@ -6,6 +6,7 @@ import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
 import EmptyState from "@/components/EmptyState";
 import CreateModal from "@/components/CreateModal";
+import AccountCreatedModal, { type AccountInfo } from "@/components/AccountCreatedModal";
 import { PlusIcon, SearchIcon } from "@/components/Icons";
 
 interface TeamMember {
@@ -27,6 +28,7 @@ export default function TeamPage() {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
 
   useEffect(() => {
     fetch(`/api/school/${companyId}/team`).then((r) => r.json()).then(setTeam);
@@ -97,9 +99,13 @@ export default function TeamPage() {
             const member = await res.json();
             setTeam((prev) => [member, ...prev]);
             setModalOpen(false);
+            if (member._account) setAccountInfo(member._account);
           }}
           onClose={() => setModalOpen(false)}
         />
+      )}
+      {accountInfo && (
+        <AccountCreatedModal account={accountInfo} kind="coach" onClose={() => setAccountInfo(null)} />
       )}
     </div>
   );
