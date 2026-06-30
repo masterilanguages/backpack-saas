@@ -422,7 +422,7 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
           ))}
 
           {/* Notebook top strip */}
-          <div className="relative z-10 flex items-center justify-between px-6 pt-5 pb-3" style={{ borderBottom: '2px solid rgba(200,180,140,0.4)' }}>
+          <div className="relative z-10 flex items-center justify-between pl-16 pr-6 pt-5 pb-3" style={{ borderBottom: '2px solid rgba(200,180,140,0.4)' }}>
             <div className="flex items-center gap-2">
               <BookOpen className="w-4 h-4" style={{ color: '#9b7e5a' }} />
               <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }}>
@@ -454,7 +454,7 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="relative z-10 mx-6 mt-3 rounded-xl p-4 text-sm"
+                className="relative z-10 ml-16 mr-6 mt-3 rounded-xl p-4 text-sm"
                 style={{ background: 'rgba(90,107,90,0.07)', border: '1px solid rgba(90,107,90,0.2)', fontFamily: 'Georgia, serif', color: '#3d4a2e', lineHeight: '1.8' }}
               >
                 <div className="flex justify-between items-start mb-2">
@@ -468,7 +468,7 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
 
           {/* Vocab word bubbles — above the writing area */}
           {suggestedVocab.length > 0 && (
-            <div className="relative z-10 px-6 pb-4 pt-4" style={{ borderBottom: '1px dashed rgba(200,180,140,0.5)' }}>
+            <div className="relative z-10 pl-16 pr-6 pb-4 pt-4" style={{ borderBottom: '1px dashed rgba(200,180,140,0.5)' }}>
               <p className="text-xs mb-3 text-center font-semibold tracking-wide uppercase" style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }}>
                 Your latest words — use them in your entry ({usedWords.length}/{suggestedVocab.length})
               </p>
@@ -533,7 +533,7 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
 
           {/* Translation Exercises */}
           {suggestedVocab.length > 0 && (
-            <div className="relative z-10 px-6 pb-4 pt-2" style={{ borderTop: '1px dashed rgba(200,180,140,0.5)' }}>
+            <div className="relative z-10 pl-16 pr-6 pb-4 pt-2" style={{ borderTop: '1px dashed rgba(200,180,140,0.5)' }}>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }}>
                   📝 Rewrite in {langName}
@@ -599,7 +599,7 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="relative z-10 mx-6 mb-4 rounded-xl px-4 py-3"
+                className="relative z-10 ml-16 mr-6 mb-4 rounded-xl px-4 py-3"
                 style={{ background: 'rgba(212,165,116,0.15)', border: '1px solid rgba(212,165,116,0.4)' }}
               >
                 {generatingQuestion ? (
@@ -618,7 +618,7 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
           </AnimatePresence>
 
           {/* Signature + controls */}
-          <div className="relative z-10 px-6 pb-5 pt-2 flex items-end justify-between gap-4" style={{ borderTop: '1px solid rgba(200,180,140,0.3)' }}>
+          <div className="relative z-10 pl-16 pr-6 pb-5 pt-2 flex items-end justify-between gap-4" style={{ borderTop: '1px solid rgba(200,180,140,0.3)' }}>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="isPublic" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} className="w-4 h-4" />
               <label htmlFor="isPublic" className="text-xs cursor-pointer" style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }}>Share publicly</label>
