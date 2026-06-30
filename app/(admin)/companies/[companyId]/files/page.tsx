@@ -7,7 +7,6 @@ import DataTable from "@/components/DataTable";
 import StatusBadge from "@/components/StatusBadge";
 import ActionMenu from "@/components/ActionMenu";
 import { PlusIcon } from "@/components/Icons";
-import { formatDate } from "@/lib/utils";
 import type { ColumnDef, Tone } from "@/lib/types";
 
 interface FileRow {
@@ -38,12 +37,15 @@ export default function FilesPage() {
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const load = () =>
     fetch(`/api/school/${companyId}/files`)
       .then((r) => r.json())
       .then((d) => setFiles(Array.isArray(d) ? d : []))
-      .catch(() => setFiles([]))
-      .finally(() => setLoading(false));
+      .catch(() => setFiles([]));
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,9 +55,9 @@ export default function FilesPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`/api/school/${companyId}/files`, { method: "POST", body: fd });
-      const created = await res.json();
-      if (created && created.id) setFiles((prev) => [{ ...created, url: null }, ...prev]);
+      await fetch(`/api/school/${companyId}/files`, { method: "POST", body: fd });
+      // refrescar: el GET genera la URL firmada (para ver/descargar) y trae la fecha real
+      await load();
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -92,7 +94,14 @@ export default function FilesPage() {
     },
     { key: "size", header: "Size", render: (f) => f.size ?? "—" },
     { key: "owner", header: "Owner", render: (f) => f.owner ?? "—" },
-    { key: "created_at", header: "Modified", render: (f) => formatDate(f.created_at) },
+    {
+      key: "created_at",
+      header: "Modified",
+      render: (f) =>
+        f.created_at
+          ? new Date(f.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          : "—",
+    },
     {
       key: "id",
       header: "",
