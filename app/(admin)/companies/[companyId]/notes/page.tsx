@@ -31,7 +31,10 @@ function NoteCard({ note, onEdit, onDelete }: { note: { id: string; title: strin
       </div>
       <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{note.body}</p>
       <p className="mt-3 text-xs text-slate-400">
-        {note.author} · {formatDate(note.created_at)}
+        {note.author} ·{" "}
+        {note.created_at
+          ? new Date(note.created_at).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })
+          : "—"}
       </p>
     </div>
   );
