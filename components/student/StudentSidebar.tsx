@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 
 const NAV = [
+  { href: "/schedule",       label: "Schedule",  emoji: "🗓️" },
   { href: "/home",      label: "Dashboard", emoji: "🏠" },
   { href: "/learn",          label: "Learn",     emoji: "🎬" },
   { href: "/learn/lessons",  label: "Lessons",   emoji: "📖" },
