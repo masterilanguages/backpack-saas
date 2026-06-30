@@ -12,15 +12,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
-
-const languages = [
-  { id: "hebrew", name: "Hebrew", emoji: "🇮🇱", active: true },
-  { id: "english", name: "English", emoji: "🇺🇸", active: true },
-  { id: "spanish", name: "Spanish", emoji: "🇪🇸", active: true },
-  { id: "french", name: "French", emoji: "🇫🇷", active: false },
-  { id: "portuguese", name: "Portuguese", emoji: "🇧🇷", active: false },
-  { id: "italian", name: "Italian", emoji: "🇮🇹", active: false },
-];
+import { LEARNING_LANGUAGES as languages } from "@/lib/learningLanguages";
 
 export default function LanguageSelect() {
   const navigate = useNavigate();

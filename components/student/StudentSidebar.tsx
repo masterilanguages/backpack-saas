@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
+import LanguageSwitcher from "./LanguageSwitcher";
 
 const NAV = [
   { href: "/schedule",       label: "Schedule",  emoji: "🗓️" },
@@ -74,8 +75,9 @@ export default function StudentSidebar({
           })}
         </nav>
 
-        {/* Settings + sign out footer */}
+        {/* Language + settings + sign out footer */}
         <div className="shrink-0 space-y-0.5 border-t border-slate-800 px-3 py-3">
+          <LanguageSwitcher />
           <Link
             href="/settings"
             onClick={onClose}
