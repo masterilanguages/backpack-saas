@@ -35,7 +35,9 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
     : isControlPanel
     ? "Backpack"
     : "Portfolio overview";
-  const avatarInitials = school?.name ? initials(school.name) : "BP";
+  // Identidad del usuario logueado (para que el coach/staff sepa que es SU sesión).
+  const userDisplay = school?.userName || school?.userEmail || "";
+  const avatarInitials = userDisplay ? initials(userDisplay) : "BP";
 
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 backdrop-blur sm:px-6">
@@ -60,6 +62,18 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
       <div className="flex shrink-0 items-center gap-3">
         <CompanySwitcher />
+        {userDisplay && (
+          <div className="hidden text-right leading-tight sm:block">
+            <p className="max-w-[170px] truncate text-xs font-semibold text-slate-800">
+              {school?.userName || school?.userEmail}
+            </p>
+            {school?.userName && school?.userEmail && (
+              <p className="max-w-[170px] truncate text-[11px] text-slate-400">
+                {school.userEmail}
+              </p>
+            )}
+          </div>
+        )}
         <div className="hidden h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700 sm:flex">
           {avatarInitials}
         </div>

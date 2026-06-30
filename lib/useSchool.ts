@@ -14,6 +14,8 @@ export interface School {
   logo_url?: string;
   plan: string;
   role?: "owner" | "admin" | "coach" | "student";
+  userEmail?: string;
+  userName?: string | null;
 }
 
 export function useSchool(): { school: School | null; loading: boolean } {

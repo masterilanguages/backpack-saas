@@ -84,6 +84,8 @@ export interface SessionOrgRole {
   role: MembershipRole;
   /** Email del usuario (ownership de filas personales = created_by email). */
   email: string;
+  /** Nombre para mostrar (user_metadata.full_name) si existe. */
+  name: string | null;
   /** slug de la organización activa (echo del input, ya validado). */
   slug: string;
 }
@@ -306,6 +308,7 @@ export async function getSessionOrgRole(
     orgId: (org.id ?? membership.org_id) as string,
     role: membership.role as MembershipRole,
     email: user.email ?? "",
+    name: ((user.user_metadata as { full_name?: string } | null)?.full_name) ?? null,
     slug: org.slug as string,
   };
 }
