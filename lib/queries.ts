@@ -41,15 +41,16 @@ export async function getStudents(schoolId: string) {
  * (que 0300 anadio a las tablas de learning) y relacionado por email
  * (= created_by). Asi el admin ve datos reales, no los placeholders.
  */
-export async function getStudentsWithProgress(orgId: string) {
+export async function getStudentsWithProgress(orgId: string, coachId?: string | null) {
   const students = await getStudents(orgId);
-  const [profilesRes, wordsRes, journalsRes] = await Promise.all([
+  const [profilesRes, wordsRes, journalsRes, teamRes] = await Promise.all([
     supabaseAdmin
       .from("user_profile")
       .select("created_by, language, current_day, xp, daily_streak, last_active_date")
       .eq("org_id", orgId),
     supabaseAdmin.from("word").select("created_by").eq("org_id", orgId),
     supabaseAdmin.from("journal_entry").select("created_by").eq("org_id", orgId),
+    supabaseAdmin.from("team_members").select("id, name").eq("org_id", orgId),
   ]);
 
   const norm = (e?: string | null) => (e ?? "").trim().toLowerCase();
@@ -68,12 +69,18 @@ export async function getStudentsWithProgress(orgId: string) {
   };
   const wordCount = countBy(wordsRes.data as any);
   const journalCount = countBy(journalsRes.data as any);
+  const coachNameById = new Map<string, string>();
+  for (const t of (teamRes.data as any[]) ?? []) coachNameById.set(t.id, t.name);
 
-  return students.map((s: any) => {
+  const enriched = students.map((s: any) => {
     const k = norm(s.email);
     const p = profByEmail.get(k);
+    const assignedCoachId = (s.meta as any)?.coach_id ?? null;
     return {
       ...s,
+      // coach asignado (vive en meta.coach_id); resolvemos su nombre para mostrar
+      coach_id: assignedCoachId,
+      coach: assignedCoachId ? coachNameById.get(assignedCoachId) ?? null : null,
       // el idioma REAL del perfil pisa el placeholder (asi la columna/filtro/busqueda muestran lo real)
       language: p?.language ?? s.language,
       progress: {
@@ -88,6 +95,9 @@ export async function getStudentsWithProgress(orgId: string) {
       },
     };
   });
+
+  // Si es un coach, solo SUS alumnos asignados.
+  return coachId ? enriched.filter((s) => s.coach_id === coachId) : enriched;
 }
 
 export async function createStudent(schoolId: string, input: {
@@ -105,16 +115,36 @@ export async function createStudent(schoolId: string, input: {
 
 export async function updateStudent(id: string, input: Partial<{
   name: string; email: string; phone: string; language: string;
-  level: string; status: string;
+  level: string; status: string; coach_id: string | null;
 }>) {
+  const { coach_id, ...rest } = input as any;
+  const patch: any = { ...rest };
+  // La asignacion de coach vive en meta.coach_id (sin DDL). Merge para no pisar
+  // otras claves de meta si las hubiera.
+  if (coach_id !== undefined) {
+    const { data: cur } = await supabaseAdmin.from("students").select("meta").eq("id", id).single();
+    patch.meta = { ...((cur?.meta as object) ?? {}), coach_id: coach_id || null };
+  }
   const { data, error } = await supabaseAdmin
     .from("students")
-    .update(input)
+    .update(patch)
     .eq("id", id)
     .select()
     .single();
   if (error) throw error;
   return data;
+}
+
+/** Resuelve el id del team_member (coach) a partir del email con que inicia sesión. */
+export async function getCoachIdByEmail(orgId: string, email: string): Promise<string | null> {
+  const e = (email ?? "").trim().toLowerCase();
+  if (!e) return null;
+  const { data } = await supabaseAdmin
+    .from("team_members")
+    .select("id, email")
+    .eq("org_id", orgId);
+  const m = (data as any[] ?? []).find((t) => (t.email ?? "").trim().toLowerCase() === e);
+  return m?.id ?? null;
 }
 
 export async function deleteStudent(id: string) {
@@ -222,7 +252,7 @@ export async function createVocabItem(schoolId: string, input: {
  * resuelto por email (created_by). Esto es "los words que tenemos" — distinto
  * del catálogo curado en la tabla `vocabulary`.
  */
-export async function getSchoolWords(orgId: string) {
+export async function getSchoolWords(orgId: string, coachId?: string | null) {
   const norm = (e?: string | null) => (e ?? "").trim().toLowerCase();
   // Algunas traducciones del portal se guardaron como JSON crudo de la IA
   // (p.ej. {"response":"to dance"}); las desenvolvemos para la vista del admin.
@@ -252,16 +282,29 @@ export async function getSchoolWords(orgId: string) {
     const k = norm(s.email);
     if (k) nameByEmail.set(k, s.name);
   }
-  return (wordsRes.data ?? []).map((w: any) => ({
+  // Si es un coach: solo las palabras de SUS alumnos asignados (por email).
+  let allowedEmails: Set<string> | null = null;
+  if (coachId) {
+    allowedEmails = new Set(
+      (students as any[])
+        .filter((s) => (s.meta as any)?.coach_id === coachId)
+        .map((s) => norm(s.email))
+        .filter(Boolean),
+    );
+  }
+  let rows = (wordsRes.data ?? []).map((w: any) => ({
     ...w,
     translation: cleanTranslation(w.translation),
     student: nameByEmail.get(norm(w.created_by)) ?? w.created_by ?? "—",
+    _email: norm(w.created_by),
   }));
+  if (allowedEmails) rows = rows.filter((w: any) => allowedEmails!.has(w._email));
+  return rows.map(({ _email, ...w }: any) => w);
 }
 
 // ── Lessons ───────────────────────────────────────────────────────────────────
 
-export async function getLessons(schoolId: string) {
+export async function getLessons(schoolId: string, coachId?: string | null) {
   const [lessonsRes, students] = await Promise.all([
     supabaseAdmin
       .from("lessons")
@@ -274,10 +317,18 @@ export async function getLessons(schoolId: string) {
   // resolver el nombre del alumno por su FK student_id (relacional)
   const nameById = new Map<string, string>();
   for (const s of (students as any[]) ?? []) nameById.set(s.id, s.name);
-  return (lessonsRes.data ?? []).map((l: any) => ({
+  let rows = (lessonsRes.data ?? []).map((l: any) => ({
     ...l,
     student: l.student_id ? nameById.get(l.student_id) ?? "—" : "—",
   }));
+  // Si es un coach: solo lecciones de SUS alumnos asignados.
+  if (coachId) {
+    const allowedIds = new Set(
+      (students as any[]).filter((s) => (s.meta as any)?.coach_id === coachId).map((s) => s.id),
+    );
+    rows = rows.filter((l: any) => l.student_id && allowedIds.has(l.student_id));
+  }
+  return rows;
 }
 
 export async function createLesson(schoolId: string, input: {

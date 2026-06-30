@@ -32,6 +32,8 @@ interface Student {
   since: string;
   total_value: number;
   status: string;
+  coach?: string | null;
+  coach_id?: string | null;
   progress?: StudentProgress;
 }
 
@@ -39,6 +41,7 @@ export default function ClientsPage() {
   const { companyId } = useParams<{ companyId: string }>();
   const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
+  const [team, setTeam] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
@@ -53,8 +56,13 @@ export default function ClientsPage() {
   useEffect(() => {
     fetch(`/api/school/${companyId}/students`)
       .then((r) => r.json())
-      .then(setStudents)
+      .then((d) => setStudents(Array.isArray(d) ? d : []))
       .finally(() => setLoading(false));
+    // team para el dropdown de "Coach asignado" (owner/admin; un coach recibe [])
+    fetch(`/api/school/${companyId}/team`)
+      .then((r) => r.json())
+      .then((d) => setTeam(Array.isArray(d) ? d : []))
+      .catch(() => setTeam([]));
   }, [companyId]);
 
   const columns: ColumnDef<Student>[] = [
@@ -89,6 +97,11 @@ export default function ClientsPage() {
         ) : (
           <span className="text-xs text-slate-400">Sin perfil</span>
         ),
+    },
+    {
+      key: "coach",
+      header: "Coach",
+      render: (s) => s.coach ?? <span className="text-xs text-slate-400">Sin asignar</span>,
     },
     { key: "status", header: "Status", render: (s) => <StatusBadge status={s.status} /> },
     {
@@ -186,6 +199,7 @@ export default function ClientsPage() {
             language: editing.language ?? "",
             level: editing.level ?? "",
             status: editing.status ?? "",
+            coach: editing.coach ?? "",
           }}
           fields={[
             { name: "name", label: "Name", required: true },
@@ -194,15 +208,23 @@ export default function ClientsPage() {
             { name: "language", label: "Language" },
             { name: "level", label: "Level", type: "select", options: ["Complete Beginner", "Beginner", "Intermediate", "Advanced"] },
             { name: "status", label: "Status", type: "select", options: ["Active", "Trial", "Paused", "Churned"] },
+            { name: "coach", label: "Coach asignado", type: "select", options: team.map((t) => t.name) },
           ]}
           onSubmit={async (data) => {
+            // "coach" es el NOMBRE elegido; lo mapeamos a coach_id (vive en meta).
+            const { coach, ...rest } = data;
+            const coach_id = team.find((t) => t.name === coach)?.id ?? null;
             const res = await fetch(`/api/school/${companyId}/students`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ id: editing.id, ...data }),
+              body: JSON.stringify({ id: editing.id, ...rest, coach_id }),
             });
             const updated = await res.json();
-            setStudents((prev) => prev.map((x) => (x.id === editing.id ? { ...x, ...updated } : x)));
+            setStudents((prev) =>
+              prev.map((x) =>
+                x.id === editing.id ? { ...x, ...updated, coach_id, coach: coach || null } : x,
+              ),
+            );
             setEditing(null);
           }}
           onClose={() => setEditing(null)}

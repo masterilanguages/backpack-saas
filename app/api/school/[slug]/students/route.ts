@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSchoolBySlug, getStudentsWithProgress, createStudent, updateStudent, deleteStudent } from "@/lib/queries";
+import { getSchoolBySlug, getStudentsWithProgress, createStudent, updateStudent, deleteStudent, getCoachIdByEmail } from "@/lib/queries";
 import { createStudentAccount } from "@/lib/onboarding";
 import { requireOrgRole } from "@/lib/supabase-ssr";
 
@@ -7,7 +7,14 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
   const ctx = await requireOrgRole(params.slug, ["owner", "admin", "coach"]);
   if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const school = await getSchoolBySlug(params.slug);
-  const students = await getStudentsWithProgress(school.id);
+  // Un coach solo ve SUS alumnos asignados. Si no resolvemos su team_member
+  // (email sin vincular), no ve ninguno (seguro por defecto).
+  let coachId: string | null = null;
+  if (ctx.role === "coach") {
+    coachId = await getCoachIdByEmail(school.id, ctx.email);
+    if (!coachId) return NextResponse.json([]);
+  }
+  const students = await getStudentsWithProgress(school.id, coachId);
   return NextResponse.json(students);
 }
 
