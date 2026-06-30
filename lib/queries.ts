@@ -260,8 +260,16 @@ export async function createLead(schoolId: string, input: {
   return data;
 }
 
-export async function updateLead(id: string, input: Partial<{ status: string; owner: string; value: number }>) {
+export async function updateLead(id: string, input: Partial<{
+  name: string; email: string; contact: string; source: string;
+  status: string; owner: string; value: number;
+}>) {
   const { error } = await supabaseAdmin.from("leads").update(input).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteLead(id: string) {
+  const { error } = await supabaseAdmin.from("leads").delete().eq("id", id);
   if (error) throw error;
 }
 

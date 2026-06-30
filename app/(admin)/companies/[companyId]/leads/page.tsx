@@ -6,6 +6,8 @@ import PageHeader from "@/components/PageHeader";
 import DataTable from "@/components/DataTable";
 import StatusBadge from "@/components/StatusBadge";
 import NewLeadModal from "@/components/NewLeadModal";
+import CreateModal from "@/components/CreateModal";
+import ActionMenu from "@/components/ActionMenu";
 import { PlusIcon } from "@/components/Icons";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { ColumnDef } from "@/lib/types";
@@ -27,6 +29,16 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [newLeadOpen, setNewLeadOpen] = useState(false);
+  const [editing, setEditing] = useState<Lead | null>(null);
+
+  const onDelete = async (id: string) => {
+    await fetch(`/api/school/${companyId}/leads`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setLeads((prev) => prev.filter((l) => l.id !== id));
+  };
 
   useEffect(() => {
     fetch(`/api/school/${companyId}/leads`)
@@ -55,7 +67,26 @@ export default function LeadsPage() {
     },
     { key: "status", header: "Status", render: (l) => <StatusBadge status={l.status} /> },
     { key: "owner", header: "Owner", render: (l) => l.owner ?? "—" },
-    { key: "created_at", header: "Created", render: (l) => formatDate(l.created_at) },
+    {
+      key: "created_at",
+      header: "Created",
+      render: (l) =>
+        l.created_at
+          ? new Date(l.created_at).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })
+          : "—",
+    },
+    {
+      key: "id",
+      header: "",
+      render: (l) => (
+        <ActionMenu
+          items={[
+            { label: "Edit", onClick: () => setEditing(l) },
+            { label: "Delete", destructive: true, onClick: () => onDelete(l.id) },
+          ]}
+        />
+      ),
+    },
   ];
 
   return (
@@ -109,6 +140,48 @@ export default function LeadsPage() {
           setNewLeadOpen(false);
         }}
       />
+      {editing && (
+        <CreateModal
+          title="Edit lead"
+          submitLabel="Update"
+          initialValues={{
+            name: editing.name ?? "",
+            email: editing.email ?? "",
+            contact: editing.contact ?? "",
+            source: editing.source ?? "",
+            value: String(editing.value ?? 0),
+            status: editing.status ?? "",
+            owner: editing.owner ?? "",
+          }}
+          fields={[
+            { name: "name", label: "Name", required: true },
+            { name: "email", label: "Email" },
+            { name: "contact", label: "Contact" },
+            { name: "source", label: "Source" },
+            { name: "value", label: "Est. value" },
+            {
+              name: "status",
+              label: "Status",
+              type: "select",
+              options: ["New", "Contacted", "Qualified", "Proposal Sent", "Won", "Lost"],
+            },
+            { name: "owner", label: "Owner" },
+          ]}
+          onSubmit={async (data) => {
+            const value = parseFloat(data.value) || 0;
+            await fetch(`/api/school/${companyId}/leads`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: editing.id, ...data, value }),
+            });
+            setLeads((prev) =>
+              prev.map((x) => (x.id === editing.id ? { ...x, ...data, value } : x)),
+            );
+            setEditing(null);
+          }}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }
