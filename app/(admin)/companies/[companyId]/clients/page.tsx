@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useSchool } from "@/lib/useSchool";
 import PageHeader from "@/components/PageHeader";
 import DataTable from "@/components/DataTable";
 import StatusBadge from "@/components/StatusBadge";
@@ -40,6 +41,8 @@ interface Student {
 export default function ClientsPage() {
   const { companyId } = useParams<{ companyId: string }>();
   const router = useRouter();
+  const { school } = useSchool();
+  const isCoach = school?.role === "coach";
   const [students, setStudents] = useState<Student[]>([]);
   const [team, setTeam] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,22 +117,27 @@ export default function ClientsPage() {
               label: "View details",
               onClick: () => router.push(`/companies/${companyId}/clients/${s.id}`),
             },
-            {
-              label: "Edit",
-              onClick: () => setEditing(s),
-            },
-            {
-              label: "Delete",
-              destructive: true,
-              onClick: async () => {
-                await fetch(`/api/school/${companyId}/students`, {
-                  method: "DELETE",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ id: s.id }),
-                });
-                setStudents((prev) => prev.filter((x) => x.id !== s.id));
-              },
-            },
+            // El coach NO edita la ficha ni da de baja alumnos (solo consulta).
+            ...(isCoach
+              ? []
+              : [
+                  {
+                    label: "Edit",
+                    onClick: () => setEditing(s),
+                  },
+                  {
+                    label: "Delete",
+                    destructive: true,
+                    onClick: async () => {
+                      await fetch(`/api/school/${companyId}/students`, {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: s.id }),
+                      });
+                      setStudents((prev) => prev.filter((x) => x.id !== s.id));
+                    },
+                  },
+                ]),
           ]}
         />
       ),
@@ -142,13 +150,15 @@ export default function ClientsPage() {
         title="Students"
         description="Everyone currently enrolled."
         actions={
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
-            <PlusIcon /> Add student
-          </button>
+          isCoach ? undefined : (
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+            >
+              <PlusIcon /> Add student
+            </button>
+          )
         }
       />
       <DataTable

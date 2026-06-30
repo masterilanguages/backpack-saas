@@ -19,7 +19,8 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
 }
 
 export async function POST(req: Request, { params }: { params: { slug: string } }) {
-  const ctx = await requireOrgRole(params.slug, ["owner", "admin", "coach"]);
+  // Alta de alumno = solo owner/admin (el coach no da alta/baja, segun Plan-Fundacion).
+  const ctx = await requireOrgRole(params.slug, ["owner", "admin"]);
   if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const school = await getSchoolBySlug(params.slug);
   const body = await req.json();
@@ -34,7 +35,8 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
 }
 
 export async function PATCH(req: Request, { params }: { params: { slug: string } }) {
-  const ctx = await requireOrgRole(params.slug, ["owner", "admin", "coach"]);
+  // Editar la ficha base del alumno = solo owner/admin (el coach no edita la ficha).
+  const ctx = await requireOrgRole(params.slug, ["owner", "admin"]);
   if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id, ...input } = await req.json();
   const student = await updateStudent(id, input);
@@ -42,7 +44,8 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
 }
 
 export async function DELETE(req: Request, { params }: { params: { slug: string } }) {
-  const ctx = await requireOrgRole(params.slug, ["owner", "admin", "coach"]);
+  // Baja de alumno = solo owner/admin.
+  const ctx = await requireOrgRole(params.slug, ["owner", "admin"]);
   if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id } = await req.json();
   await deleteStudent(id);
