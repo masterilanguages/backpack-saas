@@ -10,10 +10,6 @@ import { cn, formatDate } from "@/lib/utils";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-const now = new Date();
-const YEAR = now.getFullYear();
-const MONTH = now.getMonth();
-
 const EVENT_COLOR = "#0d9488"; // teal = eventos del calendario
 const LESSON_COLOR = "#6366f1"; // indigo = lecciones
 
@@ -31,6 +27,23 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [lessons, setLessons] = useState<any[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  // Mes visible (navegable). YEAR/MONTH derivan de aquí, asi el resto no cambia.
+  const [view, setView] = useState(() => {
+    const d = new Date();
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+  const YEAR = view.y;
+  const MONTH = view.m;
+  const monthLabel = new Date(YEAR, MONTH, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+  const shiftMonth = (delta: number) =>
+    setView((v) => {
+      const d = new Date(v.y, v.m + delta, 1);
+      return { y: d.getFullYear(), m: d.getMonth() };
+    });
+  const goToday = () => {
+    const d = new Date();
+    setView({ y: d.getFullYear(), m: d.getMonth() });
+  };
 
   useEffect(() => {
     fetch(`/api/school/${companyId}/calendar`)
@@ -57,7 +70,7 @@ export default function CalendarPage() {
       .filter((l) => l.date)
       .map((l) => ({
         id: `lesson-${l.id}`,
-        title: `${l.topic || "Lección"}${l.student && l.student !== "—" ? ` · ${l.student}` : ""}`,
+        title: `${l.topic || "Lesson"}${l.student && l.student !== "—" ? ` · ${l.student}` : ""}`,
         date: l.date,
         time: l.time,
         type: "Lesson",
@@ -86,7 +99,7 @@ export default function CalendarPage() {
     <div>
       <PageHeader
         title="Calendar"
-        description={`${now.toLocaleString("default", { month: "long" })} ${YEAR}`}
+        description="Lessons and events"
         actions={
           <button
             type="button"
@@ -98,14 +111,42 @@ export default function CalendarPage() {
         }
       />
 
-      {/* leyenda */}
-      <div className="mb-3 flex items-center gap-4 text-xs text-slate-500">
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: EVENT_COLOR }} /> Eventos
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: LESSON_COLOR }} /> Lecciones
-        </span>
+      {/* Navegación de mes + leyenda */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => shiftMonth(-1)}
+            aria-label="Previous month"
+            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-600 transition hover:bg-slate-50"
+          >
+            ‹
+          </button>
+          <span className="min-w-[150px] text-center text-sm font-semibold text-slate-800">{monthLabel}</span>
+          <button
+            type="button"
+            onClick={() => shiftMonth(1)}
+            aria-label="Next month"
+            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-600 transition hover:bg-slate-50"
+          >
+            ›
+          </button>
+          <button
+            type="button"
+            onClick={goToday}
+            className="ml-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+          >
+            Today
+          </button>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-slate-500">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: EVENT_COLOR }} /> Events
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: LESSON_COLOR }} /> Lessons
+          </span>
+        </div>
       </div>
 
       {/* Month grid (tablet and up) */}
@@ -166,7 +207,7 @@ export default function CalendarPage() {
         </div>
         {sorted.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-slate-400">
-            Sin eventos ni lecciones. Crea uno con "New event" o programa una lección.
+            No events or lessons yet. Add one with "New event" or schedule a lesson.
           </p>
         ) : (
           <ul className="divide-y divide-slate-100">

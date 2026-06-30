@@ -5,7 +5,10 @@ import { requireOrgRole } from "@/lib/supabase-ssr";
 import { createCoachAccount } from "@/lib/onboarding";
 
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
-  const ctx = await requireOrgRole(params.slug, ["owner", "admin"]);
+  // Lectura del team permitida a coach tambien: la necesita el desplegable de
+  // Coach en "New Lesson" (y el autocompletado). GESTIONAR el team (POST) sigue
+  // siendo solo owner/admin.
+  const ctx = await requireOrgRole(params.slug, ["owner", "admin", "coach"]);
   if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const school = await getSchoolBySlug(params.slug);
   const team = await getTeamMembers(school.id);

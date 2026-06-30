@@ -169,7 +169,7 @@ export default function StudentDetailPage() {
 
       {/* Notas de coaching — por alumno (owner/admin siempre; coach solo en SUS alumnos) */}
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-card">
-        <h2 className="text-sm font-semibold text-slate-900">📝 Notas de coaching</h2>
+        <h2 className="text-sm font-semibold text-slate-900">📝 Coaching notes</h2>
         <div className="mt-3 flex gap-2">
           <input
             value={newNote}
@@ -177,7 +177,7 @@ export default function StudentDetailPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter") addNote();
             }}
-            placeholder="Escribe una observación…"
+            placeholder="Write an observation…"
             className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
           />
           <button
@@ -186,11 +186,11 @@ export default function StudentDetailPage() {
             disabled={savingNote || !newNote.trim()}
             className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-60"
           >
-            {savingNote ? "…" : "Añadir"}
+            {savingNote ? "…" : "Add"}
           </button>
         </div>
         {notes.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-400">Sin notas todavía.</p>
+          <p className="mt-3 text-sm text-slate-400">No notes yet.</p>
         ) : (
           <ul className="mt-4 space-y-3">
             {notes.map((n) => (
@@ -202,7 +202,7 @@ export default function StudentDetailPage() {
                   <p className="text-sm text-slate-800">{n.text}</p>
                   <p className="mt-0.5 text-xs text-slate-400">
                     {n.author} ·{" "}
-                    {new Date(n.at).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" })}
+                    {new Date(n.at).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}
                   </p>
                 </div>
                 <button
@@ -210,7 +210,7 @@ export default function StudentDetailPage() {
                   onClick={() => deleteNote(n.id)}
                   className="shrink-0 text-xs text-slate-400 opacity-0 transition hover:text-red-600 group-hover:opacity-100"
                 >
-                  borrar
+                  Delete
                 </button>
               </li>
             ))}
