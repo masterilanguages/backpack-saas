@@ -105,7 +105,7 @@ const PUBLIC_PATHS = new Set([
 
 /** Default landing path per portal group, used to redirect after auth. */
 const ADMIN_HOME = "/dashboard";
-const LEARNING_HOME = "/learn";
+const LEARNING_HOME = "/media";
 
 // ── In-process slug -> org cache (cheap, request-bursty, short TTL) ───────────
 // Per-instance only; real caching authority is the STABLE RPC. Keeps a single

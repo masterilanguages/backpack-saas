@@ -36,9 +36,9 @@ const PAGE_ROUTES: Record<string, string> = {
   myprogram: "/home/my-program",
   fluentpath: "/home/fluent-path",
   level1world: "/home/level1-world",
-  // learn / video transcription
-  learn: "/learn",
-  videos: "/learn",
+  // learn / video transcription — merged into the Library page
+  learn: "/media",
+  videos: "/media",
   // songs / singing
   songs: "/learn/songs",
   songlistenpage: "/learn/songs/listen",

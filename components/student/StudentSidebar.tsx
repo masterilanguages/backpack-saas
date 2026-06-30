@@ -7,12 +7,11 @@ import { useAuth } from "@/lib/AuthContext";
 const NAV = [
   { href: "/schedule",       label: "Schedule",  emoji: "🗓️" },
   { href: "/home",      label: "Dashboard", emoji: "🏠" },
-  { href: "/learn",          label: "Learn",     emoji: "🎬" },
   { href: "/learn/lessons",  label: "Lessons",   emoji: "📖" },
   { href: "/practice",       label: "Practice",  emoji: "🗣️" },
   { href: "/library",        label: "Backpack",  emoji: "🎒" },
   { href: "/journal",        label: "Journal",   emoji: "📓" },
-  { href: "/media",          label: "Media",     emoji: "📺" },
+  { href: "/media",          label: "Library",   emoji: "📺" },
   { href: "/progress",       label: "Progress",  emoji: "📈" },
 ];
 
