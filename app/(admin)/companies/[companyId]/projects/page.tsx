@@ -27,7 +27,7 @@ export default function ProjectsPage() {
   const company = useCompany();
   const slug = company.id;
   const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [students, setStudents] = useState<{ id: string; name: string }[]>([]);
+  const [students, setStudents] = useState<{ id: string; name: string; coach?: string | null }[]>([]);
   const [team, setTeam] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -117,6 +117,13 @@ export default function ProjectsPage() {
       {modalOpen && (
         <CreateModal
           title="New Lesson"
+          onFieldChange={(name, value) => {
+            // al elegir el alumno, autocompletar su coach asignado
+            if (name === "student") {
+              const stu = students.find((s) => s.name === value);
+              return { coach: stu?.coach ?? "" };
+            }
+          }}
           fields={[
             { name: "student", label: "Student", type: "select", required: true, options: students.map((s) => s.name) },
             { name: "coach", label: "Coach", type: "select", options: team.map((t) => t.name) },

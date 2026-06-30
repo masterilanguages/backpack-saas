@@ -16,6 +16,7 @@ export default function CreateModal({
   onClose,
   initialValues,
   submitLabel = "Save",
+  onFieldChange,
 }: {
   title: string;
   fields: FieldDef[];
@@ -23,8 +24,26 @@ export default function CreateModal({
   onClose: () => void;
   initialValues?: Record<string, string>;
   submitLabel?: string;
+  /** Opcional: al cambiar un campo, devuelve overrides para DERIVAR otros
+   *  (p.ej. al elegir Student, autocompletar Coach). */
+  onFieldChange?: (
+    name: string,
+    value: string,
+    form: Record<string, string>,
+  ) => Record<string, string> | void;
 }) {
   const [form, setForm] = useState<Record<string, string>>(initialValues ?? {});
+
+  const handleChange = (name: string, value: string) => {
+    setForm((p) => {
+      let next = { ...p, [name]: value };
+      if (onFieldChange) {
+        const extra = onFieldChange(name, value, next);
+        if (extra) next = { ...next, ...extra };
+      }
+      return next;
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +64,7 @@ export default function CreateModal({
                   required={f.required}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   value={form[f.name] ?? ""}
-                  onChange={(e) => setForm((p) => ({ ...p, [f.name]: e.target.value }))}
+                  onChange={(e) => handleChange(f.name, e.target.value)}
                 >
                   <option value="">Select…</option>
                   {f.options?.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -56,7 +75,7 @@ export default function CreateModal({
                   rows={3}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   value={form[f.name] ?? ""}
-                  onChange={(e) => setForm((p) => ({ ...p, [f.name]: e.target.value }))}
+                  onChange={(e) => handleChange(f.name, e.target.value)}
                 />
               ) : (
                 <input
@@ -64,7 +83,7 @@ export default function CreateModal({
                   required={f.required}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   value={form[f.name] ?? ""}
-                  onChange={(e) => setForm((p) => ({ ...p, [f.name]: e.target.value }))}
+                  onChange={(e) => handleChange(f.name, e.target.value)}
                 />
               )}
             </div>
