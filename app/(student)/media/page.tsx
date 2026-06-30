@@ -856,8 +856,8 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
     return a.title.localeCompare(b.title);
   });
 
-  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'coach';
-  const canDelete = currentUser?.role === 'admin';
+  const canEdit = true;
+  const canDelete = true;
   const canAssign = currentUser?.role === 'admin' || currentUser?.role === 'coach';
 
   const myVideos = myProgram.map((prog: any) => {
