@@ -95,7 +95,7 @@ const LEARNING_PORTAL_PREFIXES = [
 ];
 
 /** Public paths reachable WITHOUT a session (still scoped to a valid tenant). */
-const PUBLIC_PATHS = new Set(["/login", "/auth/callback", "/auth/confirm"]);
+const PUBLIC_PATHS = new Set(["/login", "/auth/callback", "/auth/confirm", "/auth/reset"]);
 
 /** Default landing path per portal group, used to redirect after auth. */
 const ADMIN_HOME = "/dashboard";

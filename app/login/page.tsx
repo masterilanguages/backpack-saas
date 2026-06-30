@@ -9,6 +9,10 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"signin" | "forgot">("signin");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   // Default neutro al rol: "/" deja que el middleware enrute por rol
@@ -52,6 +56,75 @@ function LoginForm() {
     router.refresh();
   };
 
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    await fetch("/api/auth/forgot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: forgotEmail, origin: window.location.origin }),
+    }).catch(() => {});
+    setForgotLoading(false);
+    setForgotSent(true); // siempre confirmamos (no revelar si el email existe)
+  };
+
+  if (mode === "forgot") {
+    return (
+      <div className="mt-6">
+        {forgotSent ? (
+          <div className="text-center">
+            <p className="text-sm font-medium text-emerald-600">✓ Check your email</p>
+            <p className="mt-2 text-sm text-slate-500">
+              If an account exists for that email, we sent a reset link.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signin");
+                setForgotSent(false);
+              }}
+              className="mt-4 text-sm font-medium text-teal-600 hover:text-teal-700"
+            >
+              Back to sign in
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleForgot} className="space-y-4">
+            <p className="text-sm text-slate-500">
+              Enter your email and we&apos;ll send you a reset link.
+            </p>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+              <input
+                type="email"
+                required
+                autoFocus
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-teal-500 focus:outline-none"
+                placeholder="you@example.com"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={forgotLoading}
+              className="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-60"
+            >
+              {forgotLoading ? "Sending…" : "Send reset link"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("signin")}
+              className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-700"
+            >
+              Back to sign in
+            </button>
+          </form>
+        )}
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="mt-6 space-y-4">
       <div>
@@ -84,6 +157,13 @@ function LoginForm() {
         className="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-60"
       >
         {loading ? "Checking…" : "Enter"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setMode("forgot")}
+        className="w-full text-center text-xs font-medium text-slate-500 transition hover:text-slate-700"
+      >
+        Forgot password?
       </button>
     </form>
   );
