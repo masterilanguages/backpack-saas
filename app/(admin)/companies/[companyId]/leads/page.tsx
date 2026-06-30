@@ -95,9 +95,9 @@ export default function LeadsPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: fullName,
-              contact: `${fullName} · ${phone}`,
+              // el telefono va DENTRO de contact (la tabla leads no tiene columna phone)
+              contact: phone ? `${fullName} · ${phone}` : fullName,
               email,
-              phone,
               source: "Manual",
               value: 0,
               status: "New",
@@ -105,7 +105,7 @@ export default function LeadsPage() {
             }),
           });
           const newLead = await res.json();
-          setLeads((prev) => [newLead, ...prev]);
+          if (newLead && newLead.id) setLeads((prev) => [newLead, ...prev]);
           setNewLeadOpen(false);
         }}
       />
