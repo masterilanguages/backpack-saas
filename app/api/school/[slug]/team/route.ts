@@ -16,7 +16,7 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const school = await getSchoolBySlug(params.slug);
   const body = await req.json();
-  const { data, error } = await supabaseAdmin.from("team_members").insert({ school_id: school.id, ...body }).select().single();
+  const { data, error } = await supabaseAdmin.from("team_members").insert({ org_id: school.id, ...body }).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data, { status: 201 });
 }

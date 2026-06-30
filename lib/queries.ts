@@ -262,17 +262,26 @@ export async function getSchoolWords(orgId: string) {
 // ── Lessons ───────────────────────────────────────────────────────────────────
 
 export async function getLessons(schoolId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("lessons")
-    .select("*")
-    .eq("org_id", schoolId)
-    .order("date", { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  const [lessonsRes, students] = await Promise.all([
+    supabaseAdmin
+      .from("lessons")
+      .select("*")
+      .eq("org_id", schoolId)
+      .order("date", { ascending: false }),
+    getStudents(schoolId),
+  ]);
+  if (lessonsRes.error) throw lessonsRes.error;
+  // resolver el nombre del alumno por su FK student_id (relacional)
+  const nameById = new Map<string, string>();
+  for (const s of (students as any[]) ?? []) nameById.set(s.id, s.name);
+  return (lessonsRes.data ?? []).map((l: any) => ({
+    ...l,
+    student: l.student_id ? nameById.get(l.student_id) ?? "—" : "—",
+  }));
 }
 
 export async function createLesson(schoolId: string, input: {
-  coach?: string; language?: string; date?: string; time?: string;
+  student_id?: string; coach?: string; language?: string; date?: string; time?: string;
   topic?: string; status?: string; notes?: string;
 }) {
   const { data, error } = await supabaseAdmin
@@ -282,6 +291,11 @@ export async function createLesson(schoolId: string, input: {
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function deleteLesson(id: string) {
+  const { error } = await supabaseAdmin.from("lessons").delete().eq("id", id);
+  if (error) throw error;
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────

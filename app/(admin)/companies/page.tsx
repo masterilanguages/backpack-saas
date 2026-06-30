@@ -17,7 +17,10 @@ export default function CompaniesPage() {
   const [schools, setSchools] = useState<School[]>([]);
 
   useEffect(() => {
-    fetch("/api/schools").then((r) => r.json()).then(setSchools);
+    fetch("/api/platform/schools")
+      .then((r) => r.json())
+      .then((d) => setSchools(Array.isArray(d) ? d : []))
+      .catch(() => setSchools([]));
   }, []);
 
   return (

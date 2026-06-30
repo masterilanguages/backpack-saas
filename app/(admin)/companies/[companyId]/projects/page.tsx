@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCompany } from "@/lib/useCompany";
-import { useLocalStorage } from "@/lib/useLocalStorage";
 import PageHeader from "@/components/PageHeader";
 import DataTable from "@/components/DataTable";
 import StatusBadge from "@/components/StatusBadge";
@@ -10,74 +9,75 @@ import ActionMenu from "@/components/ActionMenu";
 import CreateModal from "@/components/CreateModal";
 import { PlusIcon } from "@/components/Icons";
 import { formatDate } from "@/lib/utils";
-import { masteriLessons } from "@/lib/mock/masteri";
-import type { ColumnDef, MasteriLesson } from "@/lib/types";
+import type { ColumnDef } from "@/lib/types";
 
-function MasteriLessonsTable({
-  lessons,
-  onDelete,
-}: {
-  lessons: MasteriLesson[];
-  onDelete: (id: string) => void;
-}) {
-  const columns: ColumnDef<MasteriLesson>[] = [
+interface Lesson {
+  id: string;
+  student_id: string | null;
+  student: string;
+  coach: string | null;
+  language: string | null;
+  date: string | null;
+  time: string | null;
+  topic: string | null;
+  status: string;
+}
+
+export default function ProjectsPage() {
+  const company = useCompany();
+  const slug = company.id;
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [students, setStudents] = useState<{ id: string; name: string }[]>([]);
+  const [team, setTeam] = useState<{ id: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`/api/school/${slug}/lessons`).then((r) => r.json()),
+      fetch(`/api/school/${slug}/students`).then((r) => r.json()),
+      fetch(`/api/school/${slug}/team`).then((r) => r.json()),
+    ])
+      .then(([l, s, t]) => {
+        setLessons(Array.isArray(l) ? l : []);
+        setStudents(Array.isArray(s) ? s : []);
+        setTeam(Array.isArray(t) ? t : []);
+      })
+      .finally(() => setLoading(false));
+  }, [slug]);
+
+  const onDelete = async (id: string) => {
+    await fetch(`/api/school/${slug}/lessons`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setLessons((prev) => prev.filter((l) => l.id !== id));
+  };
+
+  const columns: ColumnDef<Lesson>[] = [
     {
       key: "student",
       header: "Student",
       render: (l) => <span className="font-medium text-slate-900">{l.student}</span>,
     },
-    { key: "coach", header: "Coach" },
-    { key: "language", header: "Language" },
-    { key: "level", header: "Level" },
+    { key: "coach", header: "Coach", render: (l) => l.coach ?? "—" },
+    { key: "language", header: "Language", render: (l) => l.language ?? "—" },
     {
       key: "date",
       header: "When",
-      render: (l) => `${formatDate(l.date)} · ${l.time}`,
+      render: (l) => (l.date ? `${formatDate(l.date)}${l.time ? ` · ${l.time}` : ""}` : "—"),
     },
-    { key: "topic", header: "Topic", className: "max-w-[260px] truncate" },
+    { key: "topic", header: "Topic", className: "max-w-[260px] truncate", render: (l) => l.topic ?? "—" },
     { key: "status", header: "Status", render: (l) => <StatusBadge status={l.status} /> },
     {
       key: "id",
       header: "",
       render: (l) => (
-        <ActionMenu
-          items={[
-            { label: "Delete", destructive: true, onClick: () => onDelete(l.id) },
-          ]}
-        />
+        <ActionMenu items={[{ label: "Delete", destructive: true, onClick: () => onDelete(l.id) }]} />
       ),
     },
   ];
-
-  return (
-    <DataTable
-      columns={columns}
-      rows={lessons}
-      searchKeys={["student", "coach", "language", "topic"]}
-      searchPlaceholder="Search lessons..."
-      filters={[
-        {
-          key: "status",
-          label: "Statuses",
-          options: ["Scheduled", "Completed", "Cancelled", "No-Show"],
-        },
-        {
-          key: "language",
-          label: "Languages",
-          options: ["Hebrew", "Spanish", "German"],
-        },
-      ]}
-    />
-  );
-}
-
-export default function ProjectsPage() {
-  const company = useCompany();
-  const [lessons, setLessons] = useLocalStorage<MasteriLesson[]>(
-    "masteri-lessons",
-    masteriLessons
-  );
-  const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div>
@@ -94,41 +94,58 @@ export default function ProjectsPage() {
           </button>
         }
       />
-      <MasteriLessonsTable
-        lessons={lessons}
-        onDelete={(id) => setLessons((prev) => prev.filter((l) => l.id !== id))}
-      />
+      {loading ? (
+        <p className="px-1 py-8 text-sm text-slate-400">Cargando…</p>
+      ) : (
+        <DataTable<Lesson>
+          columns={columns}
+          rows={lessons}
+          searchKeys={["student", "coach", "language", "topic"]}
+          searchPlaceholder="Search lessons..."
+          filters={[
+            { key: "status", label: "Statuses", options: ["Scheduled", "Completed", "Cancelled", "No-Show"] },
+            {
+              key: "language",
+              label: "Languages",
+              options: Array.from(new Set(lessons.map((l) => l.language).filter(Boolean))) as string[],
+            },
+          ]}
+          emptyTitle="No lessons yet"
+          emptyDescription="Programa la primera sesión con el botón 'New lesson'."
+        />
+      )}
       {modalOpen && (
         <CreateModal
           title="New Lesson"
           fields={[
-            { name: "student", label: "Student", required: true },
-            { name: "coach", label: "Coach" },
+            { name: "student", label: "Student", type: "select", required: true, options: students.map((s) => s.name) },
+            { name: "coach", label: "Coach", type: "select", options: team.map((t) => t.name) },
             { name: "language", label: "Language" },
-            { name: "level", label: "Level" },
             { name: "date", label: "Date", type: "date" },
             { name: "time", label: "Time" },
             { name: "topic", label: "Topic" },
-            {
-              name: "status",
-              label: "Status",
-              type: "select",
-              options: ["Scheduled", "Completed", "No-Show"],
-            },
+            { name: "status", label: "Status", type: "select", options: ["Scheduled", "Completed", "Cancelled", "No-Show"] },
           ]}
-          onSubmit={(data) => {
-            const newLesson: MasteriLesson = {
-              id: Date.now().toString(),
-              student: data.student,
-              coach: data.coach ?? "",
-              language: data.language ?? "",
-              level: data.level ?? "",
-              date: data.date ?? new Date().toISOString().slice(0, 10),
-              time: data.time ?? "",
-              topic: data.topic ?? "",
-              status: (data.status as MasteriLesson["status"]) ?? "Scheduled",
-            };
-            setLessons((prev) => [newLesson, ...prev]);
+          onSubmit={async (data) => {
+            const student = students.find((s) => s.name === data.student);
+            const res = await fetch(`/api/school/${slug}/lessons`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                student_id: student?.id ?? null,
+                coach: data.coach || null,
+                language: data.language || null,
+                date: data.date || null,
+                time: data.time || null,
+                topic: data.topic || null,
+                status: data.status || "Scheduled",
+              }),
+            });
+            const created = await res.json();
+            if (created && created.id) {
+              setLessons((prev) => [{ ...created, student: student?.name ?? "—" }, ...prev]);
+            }
+            setModalOpen(false);
           }}
           onClose={() => setModalOpen(false)}
         />
