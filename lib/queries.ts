@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./supabase";
+import { randomUUID } from "crypto";
 
 // ── School ────────────────────────────────────────────────────────────────────
 
@@ -145,6 +146,49 @@ export async function getCoachIdByEmail(orgId: string, email: string): Promise<s
     .eq("org_id", orgId);
   const m = (data as any[] ?? []).find((t) => (t.email ?? "").trim().toLowerCase() === e);
   return m?.id ?? null;
+}
+
+// ── Notas de coaching por alumno (en students.meta.coach_notes, sin DDL) ───────
+export interface CoachNote { id: string; text: string; author: string; at: string; }
+
+/** El coach asignado del alumno (para validar permiso). */
+export async function getStudentCoachId(studentId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin.from("students").select("meta").eq("id", studentId).single();
+  return ((data?.meta as any)?.coach_id) ?? null;
+}
+
+export async function addCoachNote(
+  studentId: string,
+  input: { text: string; author: string },
+): Promise<CoachNote> {
+  const { data: cur } = await supabaseAdmin.from("students").select("meta").eq("id", studentId).single();
+  const meta = ((cur?.meta as any) ?? {}) as Record<string, any>;
+  const note: CoachNote = {
+    id: randomUUID(),
+    text: input.text,
+    author: input.author,
+    at: new Date().toISOString(), // sellado por el servidor
+  };
+  const notes = Array.isArray(meta.coach_notes) ? meta.coach_notes : [];
+  const { error } = await supabaseAdmin
+    .from("students")
+    .update({ meta: { ...meta, coach_notes: [note, ...notes] } })
+    .eq("id", studentId);
+  if (error) throw error;
+  return note;
+}
+
+export async function deleteCoachNote(studentId: string, noteId: string) {
+  const { data: cur } = await supabaseAdmin.from("students").select("meta").eq("id", studentId).single();
+  const meta = ((cur?.meta as any) ?? {}) as Record<string, any>;
+  const notes = (Array.isArray(meta.coach_notes) ? meta.coach_notes : []).filter(
+    (n: any) => n.id !== noteId,
+  );
+  const { error } = await supabaseAdmin
+    .from("students")
+    .update({ meta: { ...meta, coach_notes: notes } })
+    .eq("id", studentId);
+  if (error) throw error;
 }
 
 export async function deleteStudent(id: string) {

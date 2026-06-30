@@ -24,5 +24,8 @@ export async function GET(
     detail.journal = [];
   }
 
-  return NextResponse.json(detail);
+  return NextResponse.json({
+    ...detail,
+    coach_notes: (detail.student as any)?.meta?.coach_notes ?? [],
+  });
 }

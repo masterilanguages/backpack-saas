@@ -81,7 +81,7 @@ export default function Sidebar({
   const base = companyId ? `/companies/${companyId}` : "";
   // Secciones que un coach NO ve (admin/owner): ventas, gestión de equipo,
   // dinero y comunicación masiva. El coach queda centrado en sus alumnos.
-  const COACH_HIDDEN = new Set(["leads", "team", "finances", "newsletter"]);
+  const COACH_HIDDEN = new Set(["leads", "team", "finances", "newsletter", "notes"]);
   const allCompanyNav: { key: string; href: string; label: string; icon: IconName }[] = companyId
     ? [
         { key: "dashboard", href: `${base}/dashboard`, label: "Dashboard", icon: "dashboard" },

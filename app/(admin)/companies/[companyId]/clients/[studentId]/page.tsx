@@ -17,6 +17,7 @@ interface Word {
   created_date: string;
 }
 interface Journal { id: string; date: string; text: string; created_date: string; }
+interface CoachNote { id: string; text: string; author: string; at: string; }
 interface Profile {
   language?: string;
   native_language?: string;
@@ -31,6 +32,7 @@ interface Detail {
   profile: Profile | null;
   words: Word[];
   journal: Journal[];
+  coach_notes?: CoachNote[];
 }
 
 function parseTranslation(t?: string): string {
@@ -65,13 +67,48 @@ export default function StudentDetailPage() {
   const { companyId, studentId } = useParams<{ companyId: string; studentId: string }>();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notes, setNotes] = useState<CoachNote[]>([]);
+  const [newNote, setNewNote] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
 
   useEffect(() => {
     fetch(`/api/school/${companyId}/students/${studentId}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then(setDetail)
+      .then((d) => {
+        setDetail(d);
+        setNotes(d?.coach_notes ?? []);
+      })
       .finally(() => setLoading(false));
   }, [companyId, studentId]);
+
+  const addNote = async () => {
+    const text = newNote.trim();
+    if (!text) return;
+    setSavingNote(true);
+    try {
+      const res = await fetch(`/api/school/${companyId}/students/${studentId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const note = await res.json();
+      if (note && note.id) {
+        setNotes((prev) => [note, ...prev]);
+        setNewNote("");
+      }
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  const deleteNote = async (noteId: string) => {
+    await fetch(`/api/school/${companyId}/students/${studentId}/notes`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ noteId }),
+    });
+    setNotes((prev) => prev.filter((n) => n.id !== noteId));
+  };
 
   const back = (
     <Link
@@ -127,6 +164,57 @@ export default function StudentDetailPage() {
           <p className="mt-2 text-sm text-slate-400">
             Este alumno aún no tiene perfil de aprendizaje (no ha entrado al portal).
           </p>
+        )}
+      </div>
+
+      {/* Notas de coaching — por alumno (owner/admin siempre; coach solo en SUS alumnos) */}
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+        <h2 className="text-sm font-semibold text-slate-900">📝 Notas de coaching</h2>
+        <div className="mt-3 flex gap-2">
+          <input
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") addNote();
+            }}
+            placeholder="Escribe una observación…"
+            className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
+          />
+          <button
+            type="button"
+            onClick={addNote}
+            disabled={savingNote || !newNote.trim()}
+            className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-60"
+          >
+            {savingNote ? "…" : "Añadir"}
+          </button>
+        </div>
+        {notes.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-400">Sin notas todavía.</p>
+        ) : (
+          <ul className="mt-4 space-y-3">
+            {notes.map((n) => (
+              <li
+                key={n.id}
+                className="group flex items-start justify-between gap-3 border-b border-slate-50 pb-3 last:border-0"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm text-slate-800">{n.text}</p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    {n.author} ·{" "}
+                    {new Date(n.at).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" })}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => deleteNote(n.id)}
+                  className="shrink-0 text-xs text-slate-400 opacity-0 transition hover:text-red-600 group-hover:opacity-100"
+                >
+                  borrar
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
