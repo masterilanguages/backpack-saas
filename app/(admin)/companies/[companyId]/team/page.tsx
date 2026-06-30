@@ -6,6 +6,7 @@ import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
 import EmptyState from "@/components/EmptyState";
 import CreateModal from "@/components/CreateModal";
+import ActionMenu from "@/components/ActionMenu";
 import AccountCreatedModal, { type AccountInfo } from "@/components/AccountCreatedModal";
 import { PlusIcon, SearchIcon } from "@/components/Icons";
 
@@ -28,11 +29,21 @@ export default function TeamPage() {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<TeamMember | null>(null);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
 
   useEffect(() => {
-    fetch(`/api/school/${companyId}/team`).then((r) => r.json()).then(setTeam);
+    fetch(`/api/school/${companyId}/team`).then((r) => r.json()).then((d) => setTeam(Array.isArray(d) ? d : []));
   }, [companyId]);
+
+  const onDelete = async (id: string) => {
+    await fetch(`/api/school/${companyId}/team`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setTeam((prev) => prev.filter((m) => m.id !== id));
+  };
 
   const filtered = useMemo(() =>
     team.filter((m) =>
@@ -68,7 +79,15 @@ export default function TeamPage() {
                   <p className="truncate font-semibold text-slate-900">{m.name}</p>
                   <p className="truncate text-sm text-slate-500">{m.role ?? "—"}</p>
                 </div>
-                <StatusBadge status={m.status} />
+                <div className="flex shrink-0 items-center gap-1">
+                  <StatusBadge status={m.status} />
+                  <ActionMenu
+                    items={[
+                      { label: "Edit", onClick: () => setEditing(m) },
+                      { label: "Delete", destructive: true, onClick: () => onDelete(m.id) },
+                    ]}
+                  />
+                </div>
               </div>
               {m.speciality && <p className="mt-3 text-xs text-slate-500">{m.speciality}</p>}
               <div className="mt-3 space-y-1 text-xs text-slate-500">
@@ -102,6 +121,38 @@ export default function TeamPage() {
             if (member._account) setAccountInfo(member._account);
           }}
           onClose={() => setModalOpen(false)}
+        />
+      )}
+      {editing && (
+        <CreateModal
+          title="Edit team member"
+          submitLabel="Update"
+          initialValues={{
+            name: editing.name ?? "",
+            role: editing.role ?? "",
+            email: editing.email ?? "",
+            phone: editing.phone ?? "",
+            speciality: editing.speciality ?? "",
+            status: editing.status ?? "",
+          }}
+          fields={[
+            { name: "name", label: "Name", required: true },
+            { name: "role", label: "Role" },
+            { name: "email", label: "Email" },
+            { name: "phone", label: "Phone" },
+            { name: "speciality", label: "Speciality" },
+            { name: "status", label: "Status", type: "select", options: ["Active", "Freelance", "Inactive"] },
+          ]}
+          onSubmit={async (data) => {
+            await fetch(`/api/school/${companyId}/team`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: editing.id, ...data }),
+            });
+            setTeam((prev) => prev.map((x) => (x.id === editing.id ? { ...x, ...data } : x)));
+            setEditing(null);
+          }}
+          onClose={() => setEditing(null)}
         />
       )}
       {accountInfo && (

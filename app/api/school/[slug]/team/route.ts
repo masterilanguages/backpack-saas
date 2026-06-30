@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSchoolBySlug, getTeamMembers } from "@/lib/queries";
+import { getSchoolBySlug, getTeamMembers, updateTeamMember, deleteTeamMember } from "@/lib/queries";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireOrgRole } from "@/lib/supabase-ssr";
 import { createCoachAccount } from "@/lib/onboarding";
@@ -33,4 +33,21 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
     account = await createCoachAccount(school.id, body.email, body.name);
   }
   return NextResponse.json({ ...data, _account: account }, { status: 201 });
+}
+
+export async function PATCH(req: Request, { params }: { params: { slug: string } }) {
+  const ctx = await requireOrgRole(params.slug, ["owner", "admin"]);
+  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const { id, ...input } = await req.json();
+  await updateTeamMember(id, input);
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(req: Request, { params }: { params: { slug: string } }) {
+  const ctx = await requireOrgRole(params.slug, ["owner", "admin"]);
+  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const school = await getSchoolBySlug(params.slug);
+  const { id } = await req.json();
+  await deleteTeamMember(school.id, id);
+  return NextResponse.json({ ok: true });
 }

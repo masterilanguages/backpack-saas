@@ -471,6 +471,32 @@ export async function getTeamMembers(schoolId: string) {
   return data ?? [];
 }
 
+export async function updateTeamMember(id: string, input: Partial<{
+  name: string; role: string; email: string; phone: string; speciality: string; status: string;
+}>) {
+  const { error } = await supabaseAdmin.from("team_members").update(input).eq("id", id);
+  if (error) throw error;
+}
+
+/** Borra al coach del roster Y revoca su acceso (membership en esta org). El
+ *  usuario auth global NO se borra (podría ser coach en otra escuela). */
+export async function deleteTeamMember(orgId: string, id: string) {
+  const { data: tm } = await supabaseAdmin.from("team_members").select("email").eq("id", id).single();
+  await supabaseAdmin.from("team_members").delete().eq("id", id);
+  const email = (tm?.email ?? "").trim().toLowerCase();
+  if (!email) return;
+  for (let p = 1; p <= 20; p++) {
+    const { data } = await supabaseAdmin.auth.admin.listUsers({ page: p, perPage: 200 });
+    if (!data) break;
+    const u = data.users.find((x) => (x.email ?? "").toLowerCase() === email);
+    if (u) {
+      await supabaseAdmin.from("memberships").delete().eq("org_id", orgId).eq("user_id", u.id);
+      break;
+    }
+    if (data.users.length < 200) break;
+  }
+}
+
 // ── Notes ─────────────────────────────────────────────────────────────────────
 
 export async function getNotes(schoolId: string) {
