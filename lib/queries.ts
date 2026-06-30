@@ -215,6 +215,50 @@ export async function createVocabItem(schoolId: string, input: {
   return data;
 }
 
+// ── School words (vocabulario REAL del Learning Portal, agregado por escuela) ───
+/**
+ * Las palabras que los alumnos de la escuela REALMENTE tienen en el portal
+ * (tabla `word`, learning), agregadas por org_id y con el nombre del alumno
+ * resuelto por email (created_by). Esto es "los words que tenemos" — distinto
+ * del catálogo curado en la tabla `vocabulary`.
+ */
+export async function getSchoolWords(orgId: string) {
+  const norm = (e?: string | null) => (e ?? "").trim().toLowerCase();
+  // Algunas traducciones del portal se guardaron como JSON crudo de la IA
+  // (p.ej. {"response":"to dance"}); las desenvolvemos para la vista del admin.
+  const cleanTranslation = (t: any): string => {
+    if (typeof t !== "string") return t ?? "";
+    const s = t.trim();
+    if (s.startsWith("{") && s.endsWith("}")) {
+      try {
+        const o = JSON.parse(s);
+        return o.response ?? o.translation ?? o.text ?? s;
+      } catch {
+        return s;
+      }
+    }
+    return s;
+  };
+  const [wordsRes, students] = await Promise.all([
+    supabaseAdmin
+      .from("word")
+      .select("id, word, translation, language, mastered, is_starred, times_practiced, created_by, created_date")
+      .eq("org_id", orgId)
+      .order("created_date", { ascending: false }),
+    getStudents(orgId),
+  ]);
+  const nameByEmail = new Map<string, string>();
+  for (const s of (students as any[]) ?? []) {
+    const k = norm(s.email);
+    if (k) nameByEmail.set(k, s.name);
+  }
+  return (wordsRes.data ?? []).map((w: any) => ({
+    ...w,
+    translation: cleanTranslation(w.translation),
+    student: nameByEmail.get(norm(w.created_by)) ?? w.created_by ?? "—",
+  }));
+}
+
 // ── Lessons ───────────────────────────────────────────────────────────────────
 
 export async function getLessons(schoolId: string) {

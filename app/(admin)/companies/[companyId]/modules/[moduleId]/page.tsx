@@ -19,6 +19,8 @@ import {
   masteriVocabulary,
 } from "@/lib/mock/masteri";
 import LandingPageEditor from "@/components/LandingPageEditor";
+import VocabularyModule from "@/components/modules/VocabularyModule";
+import ProgressModule from "@/components/modules/ProgressModule";
 import type { Company, CurriculumUnit, StudentProgress, VocabularyItem } from "@/lib/types";
 
 /* ================= Masteri: Curriculum ================= */
@@ -226,6 +228,11 @@ export default function ModulePage() {
   }
 
   const key = `${company.id}/${moduleDef.id}`;
+
+  // Módulos REALES (cableados a BD). Renderizan su propia cabecera + datos reales.
+  if (key === "masteri/vocabulary") return <VocabularyModule slug={company.id} />;
+  if (key === "masteri/progress") return <ProgressModule slug={company.id} />;
+
   let content: React.ReactNode = null;
   switch (key) {
     case "masteri/curriculum":
