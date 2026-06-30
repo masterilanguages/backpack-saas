@@ -16,20 +16,37 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     const sb = browserClient();
-    // El browser client (detectSessionInUrl) procesa el token/code del enlace de
-    // recuperación y establece la sesión; escuchamos el cambio + chequeo inicial.
-    const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        setReady(true);
+    let cancelled = false;
+    (async () => {
+      // El enlace de recovery devuelve la sesión en el HASH del URL
+      // (#access_token=...&refresh_token=...&type=recovery). El client
+      // @supabase/ssr (PKCE) NO lo procesa solo, así que lo establecemos a mano.
+      const hash = window.location.hash.replace(/^#/, "");
+      if (hash) {
+        const p = new URLSearchParams(hash);
+        const access_token = p.get("access_token");
+        const refresh_token = p.get("refresh_token");
+        if (access_token && refresh_token) {
+          const { error } = await sb.auth.setSession({ access_token, refresh_token });
+          if (!cancelled) {
+            setReady(!error);
+            setChecking(false);
+            // quitamos el token del URL (no dejarlo a la vista / en el historial)
+            window.history.replaceState(null, "", window.location.pathname);
+          }
+          return;
+        }
+      }
+      // Fallback: ¿ya hay sesión? (o un ?code= PKCE que el client haya manejado)
+      const { data } = await sb.auth.getSession();
+      if (!cancelled) {
+        setReady(Boolean(data.session));
         setChecking(false);
       }
-    });
-    sb.auth.getSession().then(({ data }) => {
-      if (data.session) setReady(true);
-      // pequeño margen para que detectSessionInUrl termine
-      setTimeout(() => setChecking(false), 800);
-    });
-    return () => sub.subscription.unsubscribe();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const submit = async (e: React.FormEvent) => {
