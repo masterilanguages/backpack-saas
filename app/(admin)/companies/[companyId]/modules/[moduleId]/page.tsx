@@ -229,9 +229,10 @@ export default function ModulePage() {
 
   const key = `${company.id}/${moduleDef.id}`;
 
-  // Módulos REALES (cableados a BD). Renderizan su propia cabecera + datos reales.
-  if (key === "masteri/vocabulary") return <VocabularyModule slug={company.id} />;
-  if (key === "masteri/progress") return <ProgressModule slug={company.id} />;
+  // Módulos REALES (cableados a BD por org_id) — para CUALQUIER escuela, no solo
+  // Masteri. Cada escuela ve SUS datos porque el fetch va por slug -> org_id.
+  if (moduleDef.id === "vocabulary") return <VocabularyModule slug={company.id} />;
+  if (moduleDef.id === "progress") return <ProgressModule slug={company.id} />;
 
   let content: React.ReactNode = null;
   switch (key) {
