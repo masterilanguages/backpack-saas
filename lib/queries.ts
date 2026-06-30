@@ -460,3 +460,52 @@ export async function getCalendarEvents(schoolId: string) {
   if (error) throw error;
   return data ?? [];
 }
+
+export async function createCalendarEvent(schoolId: string, input: {
+  title: string; date: string; time?: string; type?: string;
+}) {
+  const { data, error } = await supabaseAdmin
+    .from("calendar_events")
+    .insert({ org_id: schoolId, ...input })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteCalendarEvent(id: string) {
+  const { error } = await supabaseAdmin.from("calendar_events").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ── Files ─────────────────────────────────────────────────────────────────────
+// El binario vive en Supabase Storage (bucket FILES_BUCKET, ruta org_id/...);
+// la tabla `files` guarda solo metadatos + storage_path.
+export const FILES_BUCKET = "school-files";
+
+export async function getFiles(schoolId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("files")
+    .select("*")
+    .eq("org_id", schoolId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createFileRecord(schoolId: string, input: {
+  name: string; type?: string; size?: string; storage_path?: string; owner?: string;
+}) {
+  const { data, error } = await supabaseAdmin
+    .from("files")
+    .insert({ org_id: schoolId, ...input })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteFileRecord(id: string) {
+  const { error } = await supabaseAdmin.from("files").delete().eq("id", id);
+  if (error) throw error;
+}
