@@ -8,7 +8,6 @@ const NAV = [
   { href: "/home",      label: "Dashboard", emoji: "🏠" },
   { href: "/learn",          label: "Learn",     emoji: "🎬" },
   { href: "/learn/lessons",  label: "Lessons",   emoji: "📖" },
-  { href: "/learn/songs",    label: "Songs",     emoji: "🎵" },
   { href: "/practice",       label: "Practice",  emoji: "🗣️" },
   { href: "/library",        label: "Backpack",  emoji: "🎒" },
   { href: "/journal",        label: "Journal",   emoji: "📓" },
