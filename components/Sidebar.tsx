@@ -78,12 +78,6 @@ export default function Sidebar({
   const accent = school?.accent_color ?? ACCENT_FALLBACK;
   const brandInitial = schoolName.trim().charAt(0).toUpperCase() || "B";
 
-  const globalNav: NavItem[] = [
-    { href: "/", label: "Control Panel", icon: "dashboard" },
-    { href: "/dashboard", label: "Overview", icon: "dashboard" },
-    { href: "/companies", label: "Companies", icon: "building" },
-  ];
-
   const base = companyId ? `/companies/${companyId}` : "";
   // Secciones que un coach NO ve (admin/owner): ventas, gestión de equipo,
   // dinero y comunicación masiva. El coach queda centrado en sus alumnos.
@@ -159,24 +153,6 @@ export default function Sidebar({
         </div>
 
         <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
-          {!isCoach && (
-            <div>
-              <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                General
-              </p>
-              <div className="space-y-0.5">
-                {globalNav.map((item) => (
-                  <NavLink
-                    key={item.href}
-                    item={item}
-                    active={isActive(item.href)}
-                    onNavigate={onClose}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
           {companyId && (
             <>
               <div>
