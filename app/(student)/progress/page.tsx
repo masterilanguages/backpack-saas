@@ -1,8 +1,6 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import { Link } from "@/lib/router-compat";
-import { ArrowLeft } from "lucide-react";
 import { base44 as base44Client } from "@/api/base44Client";
 // base44Client is a JS shim whose `entities` are built dynamically, so TS can't
 // see entity keys. Cast to `any` for ergonomic access — the runtime shape is
@@ -175,36 +173,33 @@ export default function Progress() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="min-h-screen">
+      <div className="mx-auto w-full max-w-6xl pb-16">
 
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Link to="/home" className="text-white/60 hover:text-white">
-            <ArrowLeft className="w-6 h-6" />
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold text-white">📊 Progress Tracking</h1>
-            <p className="text-white/60">Your last 30 days of learning activity</p>
-          </div>
+        <div className="mb-8 pt-1">
+          <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight text-white">
+            <span>📊</span> Progress Tracking
+          </h1>
+          <p className="mt-1.5 text-sm text-slate-400">Your last 30 days of learning activity</p>
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="mb-8 grid grid-cols-3 gap-4">
           {[
             { label: 'Current Day', value: userProfile?.current_day || 1 },
             { label: 'Daily Streak 🔥', value: userProfile?.daily_streak || 0 },
             { label: 'Total Words', value: wordRatings.length },
           ].map((stat) => (
-            <div key={stat.label} className="bg-white/5 backdrop-blur-xl rounded-xl border border-white/10 p-5 text-center">
-              <p className="text-white/60 text-sm mb-1">{stat.label}</p>
+            <div key={stat.label} className="rounded-2xl border border-slate-800 bg-slate-900 p-5 text-center">
+              <p className="mb-1 text-sm text-slate-400">{stat.label}</p>
               <p className="text-4xl font-bold text-white">{stat.value.toLocaleString()}</p>
             </div>
           ))}
         </div>
 
         {/* Graphs: left column stacked, right column explanations */}
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col gap-6 lg:flex-row">
 
           {/* Left: stacked graphs */}
           <div className="flex flex-col gap-5 lg:w-1/2">
@@ -214,36 +209,37 @@ export default function Progress() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.08 }}
-                className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-5"
+                className="rounded-2xl border border-slate-800 bg-slate-900 p-5"
                 style={{ height: 240 }}
               >
                 <div className="mb-3">
-                  <h3 className="text-base font-bold text-white">{graph.title}</h3>
-                  <p className="text-white/40 text-xs">{graph.description}</p>
+                  <h3 className="text-base font-semibold text-white">{graph.title}</h3>
+                  <p className="text-xs text-slate-400">{graph.description}</p>
                 </div>
                 <ResponsiveContainer width="100%" height={160}>
                   <LineChart data={chartData} margin={{ top: 4, right: 8, left: -22, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" />
                     <XAxis
                       dataKey="day"
-                      stroke="rgba(255,255,255,0.2)"
-                      tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }}
+                      stroke="rgba(148,163,184,0.25)"
+                      tick={{ fontSize: 10, fill: 'rgba(148,163,184,0.7)' }}
                       interval={6}
                     />
                     <YAxis
-                      stroke="rgba(255,255,255,0.2)"
-                      tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }}
+                      stroke="rgba(148,163,184,0.25)"
+                      tick={{ fontSize: 10, fill: 'rgba(148,163,184,0.7)' }}
                       allowDecimals={false}
                       domain={[0, 'auto']}
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        border: '1px solid rgba(255,255,255,0.15)',
+                        backgroundColor: 'rgba(15, 23, 42, 0.97)',
+                        border: '1px solid rgba(148,163,184,0.2)',
                         borderRadius: '8px',
                         fontSize: 12,
                       }}
-                      labelStyle={{ color: 'rgba(255,255,255,0.6)' }}
+                      labelStyle={{ color: 'rgba(148,163,184,0.8)' }}
+                      itemStyle={{ color: '#e2e8f0' }}
                       formatter={(value) => [value, graph.title]}
                     />
                     <Line
@@ -270,27 +266,23 @@ export default function Progress() {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.08 + 0.05 }}
-                  className="flex flex-col justify-center rounded-2xl border border-white/10 p-6"
-                  style={{
-                    background: `linear-gradient(135deg, ${graph.color}12 0%, rgba(255,255,255,0.03) 100%)`,
-                    borderColor: `${graph.color}30`,
-                    height: 240,
-                  }}
+                  className="flex flex-col justify-center rounded-2xl border border-slate-800 bg-slate-900 p-6"
+                  style={{ height: 240, borderLeft: `3px solid ${graph.color}` }}
                 >
                   <div
-                    className="inline-flex items-center gap-2 mb-3 text-xs font-semibold uppercase tracking-wider px-3 py-1 rounded-full w-fit"
-                    style={{ background: `${graph.color}25`, color: graph.color }}
+                    className="mb-3 inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider"
+                    style={{ background: `${graph.color}22`, color: graph.color }}
                   >
                     <span
-                      className="w-2 h-2 rounded-full"
+                      className="h-2 w-2 rounded-full"
                       style={{ background: graph.color }}
                     />
                     {graph.title}
                   </div>
                   <ul className="space-y-1.5">
                     {insight.map((point, i) => (
-                      <li key={i} className="text-white text-sm flex items-start gap-2">
-                        <span className="mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: graph.color }} />
+                      <li key={i} className="flex items-start gap-2 text-sm text-slate-200">
+                        <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: graph.color }} />
                         {point}
                       </li>
                     ))}
