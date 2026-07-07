@@ -698,30 +698,57 @@ export default function Home() {
         ) : (
           <div className="space-y-10">
 
-            {/* PRIMARY CTA */}
-            <div className="text-center py-4">
-              {!isMasterUser && (
-                <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
-                  <button
-                    type="button"
-                    onClick={() => navigate(createPageUrl('Backpack'))}
-                    className="rounded-2xl p-4 text-left transition bg-slate-900 border border-slate-800 hover:border-teal-500/50"
-                  >
-                    <span className="text-2xl">🎒</span>
-                    <p className="mt-2 font-bold text-sm text-white">Backpack</p>
-                    <p className="text-xs mt-1 text-slate-400">Your words & mnemonics</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate(createPageUrl('Days'))}
-                    className="rounded-2xl p-4 text-left transition bg-slate-900 border border-slate-800 hover:border-teal-500/50"
-                  >
-                    <span className="text-2xl">📅</span>
-                    <p className="mt-2 font-bold text-sm text-white">Schedule</p>
-                    <p className="text-xs mt-1 text-slate-400">Sessions & lessons</p>
-                  </button>
-                </div>
-              )}
+            {/* Greeting — light overview only; the full stats live on the Progress page. */}
+            <div className="text-center">
+              <h1 className="text-3xl font-bold tracking-tight text-white">
+                {(userProfile?.full_name || currentUser?.full_name)
+                  ? `¡Hola, ${String(userProfile?.full_name || currentUser?.full_name).split(' ')[0]}!`
+                  : '¡Hola!'}
+              </h1>
+              <p className="mt-1.5 text-sm text-slate-400">
+                Day {userProfile?.current_day || 1} of 100
+                {typeof userProfile?.daily_streak === 'number' && userProfile.daily_streak > 0
+                  ? ` · 🔥 ${userProfile.daily_streak} day streak`
+                  : ''}
+              </p>
+            </div>
+
+            {/* Continue → Schedule */}
+            <button
+              type="button"
+              onClick={() => navigate('/learn/lessons/days')}
+              className="mx-auto flex w-full max-w-md items-center justify-between rounded-2xl border border-teal-500/40 bg-teal-500/10 px-5 py-4 text-left transition hover:bg-teal-500/15"
+            >
+              <span className="flex items-center gap-3">
+                <span className="text-2xl">▶️</span>
+                <span>
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-teal-300">Continue</span>
+                  <span className="block font-bold text-white">Session {userProfile?.current_day || 1}</span>
+                </span>
+              </span>
+              <ChevronRight className="h-5 w-5 text-teal-300" />
+            </button>
+
+            {/* Quick access */}
+            <div className="mx-auto grid max-w-md grid-cols-3 gap-3">
+              {[
+                { label: 'Backpack', emoji: '🎒', href: '/library' },
+                { label: 'Journal', emoji: '📓', href: '/journal' },
+                { label: 'Practice', emoji: '🗣️', href: '/practice' },
+                { label: 'Library', emoji: '📺', href: '/media' },
+                { label: 'Progress', emoji: '📈', href: '/progress' },
+                { label: 'Schedule', emoji: '📅', href: '/learn/lessons/days' },
+              ].map((s) => (
+                <button
+                  key={s.label}
+                  type="button"
+                  onClick={() => navigate(s.href)}
+                  className="flex flex-col items-center gap-1.5 rounded-2xl border border-slate-800 bg-slate-900 p-4 transition hover:border-teal-500/50"
+                >
+                  <span className="text-2xl">{s.emoji}</span>
+                  <span className="text-xs font-semibold text-white">{s.label}</span>
+                </button>
+              ))}
             </div>
 
             {/* RECOMMENDED FOR YOU */}
@@ -729,8 +756,11 @@ export default function Home() {
               <RecommendedForYou userProfile={userProfile} />
             )}
 
-            {/* SCHEDULE SECTION */}
-            {(() => {
+            {/* SCHEDULE SECTION — moved to the Schedule page (/learn/lessons/days).
+                Disabled here so the Dashboard is a lean overview and no longer
+                duplicates the schedule. Kept inert (not deleted) to avoid touching
+                the admin session-management logic it contains. */}
+            {false && (() => {
               const hasContent = uniqueDays.some((d: any) => (d.subsections || []).length > 0);
               return (
               <div className="flex justify-center">
