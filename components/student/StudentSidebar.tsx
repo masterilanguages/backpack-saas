@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/AuthContext";
 import LanguageSwitcher from "./LanguageSwitcher";
 
 const NAV = [
-  { href: "/schedule",       label: "Schedule",  emoji: "🗓️" },
+  { href: "/learn/lessons/days", label: "Schedule",  emoji: "🗓️" },
   { href: "/home",      label: "Dashboard", emoji: "🏠" },
   { href: "/learn/lessons",  label: "Lessons",   emoji: "📖" },
   { href: "/practice",       label: "Practice",  emoji: "🗣️" },

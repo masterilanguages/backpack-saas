@@ -109,12 +109,12 @@ export default function Days() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
+    <div className="min-h-screen bg-slate-950 p-6">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-white">Days</h1>
-            <p className="text-white/60">Day {currentDay} of 100</p>
+            <p className="text-slate-400">Day {currentDay} of 100</p>
           </div>
           {isAdmin && (
             <Button onClick={() => {
@@ -125,7 +125,7 @@ export default function Days() {
                 title: `Day ${nextDayNum}`,
                 subsections: []
               });
-            }} className="bg-green-500 hover:bg-green-600">
+            }} className="bg-teal-500 hover:bg-teal-400 text-white">
               + Add Day
             </Button>
           )}
@@ -142,33 +142,33 @@ export default function Days() {
                 key={day.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 overflow-hidden ${
+                className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden ${
                   !unlocked ? 'opacity-50' : ''
                 }`}
               >
                 <button
                   onClick={() => unlocked && setEditingDay(isEditing ? null : day.id)}
                   disabled={!unlocked}
-                  className="w-full p-6 text-left flex items-center justify-between hover:bg-white/5 transition-all"
+                  className="w-full p-6 text-left flex items-center justify-between hover:bg-slate-800 transition-all"
                 >
                   <div className="flex items-center gap-4">
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                      progress?.completed ? 'bg-green-500' : unlocked ? 'bg-cyan-500/20 border-2 border-cyan-500' : 'bg-white/10'
+                      progress?.completed ? 'bg-green-500' : unlocked ? 'bg-teal-500/20 border-2 border-teal-500' : 'bg-slate-800'
                     }`}>
                       {progress?.completed ? (
                         <Check className="w-6 h-6 text-white" />
                       ) : !unlocked ? (
-                        <Lock className="w-6 h-6 text-white/40" />
+                        <Lock className="w-6 h-6 text-slate-500" />
                       ) : (
-                        <span className="text-white font-bold">{day.day_number}</span>
+                        <span className="text-teal-400 font-bold">{day.day_number}</span>
                       )}
                     </div>
                     <div>
                       <h3 className="text-white font-bold text-xl">{day.title || `Day ${day.day_number}`}</h3>
-                      {day.description && <p className="text-white/60 text-sm">{day.description}</p>}
+                      {day.description && <p className="text-slate-400 text-sm">{day.description}</p>}
                     </div>
                   </div>
-                  {unlocked && <ChevronRight className={`w-6 h-6 text-white transition-transform ${isEditing ? 'rotate-90' : ''}`} />}
+                  {unlocked && <ChevronRight className={`w-6 h-6 text-slate-400 transition-transform ${isEditing ? 'rotate-90' : ''}`} />}
                 </button>
 
                 <AnimatePresence>
@@ -185,14 +185,14 @@ export default function Days() {
                           return (
                             <div
                               key={subsection.id}
-                              className={`bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 flex items-center gap-3 ${
-                                isCompleted ? 'from-green-500/10 to-green-600/10 border-green-500/30' : ''
+                              className={`border rounded-2xl p-4 flex items-center gap-3 ${
+                                isCompleted ? 'bg-green-500/10 border-green-500/30' : 'bg-slate-800 border-slate-700'
                               }`}
                             >
                               <button
                                 onClick={() => toggleSubsectionMutation.mutate({ dayId: day.id, subsectionId: subsection.id })}
                                 className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center transition-all ${
-                                  isCompleted ? 'bg-green-500 border-green-500' : 'border-white/40 hover:border-cyan-400'
+                                  isCompleted ? 'bg-green-500 border-green-500' : 'border-slate-600 hover:border-teal-400'
                                 }`}
                               >
                                 {isCompleted && <Check className="w-5 h-5 text-white" />}
@@ -204,9 +204,9 @@ export default function Days() {
                                 <span className="text-2xl">{subsection.icon}</span>
                                 <div className="flex-1">
                                   <p className={`text-white font-medium ${isCompleted ? 'line-through opacity-60' : ''}`}>{subsection.name}</p>
-                                  <p className="text-white/60 text-sm">{subsection.duration}</p>
+                                  <p className="text-slate-400 text-sm">{subsection.duration}</p>
                                 </div>
-                                {subsection.page && <ChevronRight className="w-5 h-5 text-white/40" />}
+                                {subsection.page && <ChevronRight className="w-5 h-5 text-slate-500" />}
                               </button>
                               {isAdmin && (
                                 <button
@@ -221,12 +221,12 @@ export default function Days() {
                         })}
 
                         {isAdmin && (
-                          <div className="bg-white/10 rounded-xl p-4 space-y-2">
-                            <Input placeholder="Subsection name" value={newSubsection.name} onChange={(e) => setNewSubsection({...newSubsection, name: e.target.value})} className="bg-white/5 border-white/20 text-white" />
-                            <Input placeholder="Duration (e.g., 10 minutes)" value={newSubsection.duration} onChange={(e) => setNewSubsection({...newSubsection, duration: e.target.value})} className="bg-white/5 border-white/20 text-white" />
-                            <Input placeholder="Emoji icon" value={newSubsection.icon} onChange={(e) => setNewSubsection({...newSubsection, icon: e.target.value})} className="bg-white/5 border-white/20 text-white" />
-                            <Input placeholder="Page name (e.g., BabyVideos)" value={newSubsection.page} onChange={(e) => setNewSubsection({...newSubsection, page: e.target.value})} className="bg-white/5 border-white/20 text-white" />
-                            <Button onClick={() => handleAddSubsection(day.id)} className="w-full bg-green-500 hover:bg-green-600">
+                          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
+                            <Input placeholder="Subsection name" value={newSubsection.name} onChange={(e) => setNewSubsection({...newSubsection, name: e.target.value})} className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500" />
+                            <Input placeholder="Duration (e.g., 10 minutes)" value={newSubsection.duration} onChange={(e) => setNewSubsection({...newSubsection, duration: e.target.value})} className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500" />
+                            <Input placeholder="Emoji icon" value={newSubsection.icon} onChange={(e) => setNewSubsection({...newSubsection, icon: e.target.value})} className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500" />
+                            <Input placeholder="Page name (e.g., BabyVideos)" value={newSubsection.page} onChange={(e) => setNewSubsection({...newSubsection, page: e.target.value})} className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500" />
+                            <Button onClick={() => handleAddSubsection(day.id)} className="w-full bg-teal-500 hover:bg-teal-400 text-white">
                               <Plus className="w-4 h-4 mr-2" /> Add Subsection
                             </Button>
                           </div>

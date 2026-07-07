@@ -1,9 +1,8 @@
+import { redirect } from "next/navigation";
+
+// The real schedule is the day-by-day sessions curriculum. The sidebar "Schedule"
+// item points straight there; this route is kept only as a redirect so any old
+// /schedule links or bookmarks resolve to the real page instead of a dead stub.
 export default function SchedulePage() {
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-widest text-teal-400">Schedule</p>
-      <h1 className="mt-1 text-3xl font-extrabold text-white">Your Schedule</h1>
-      <p className="mt-2 text-slate-400">Upcoming lessons and bookings coming soon.</p>
-    </div>
-  );
+  redirect("/learn/lessons/days");
 }
