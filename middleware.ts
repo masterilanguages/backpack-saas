@@ -322,12 +322,16 @@ export async function middleware(request: NextRequest) {
     return withCookies(supabaseResponse, notFound(request));
   }
 
-  // A logged-in member hitting /login OR the tenant root "/" -> send them to
-  // their portal home BY ROLE. On a tenant subdomain the index page is the
-  // product's marketing surface (built for the apex), so an authenticated
-  // member should never land there: route students to /learn and staff to
-  // /dashboard. This also fixes the post-login bounce when `from=/`.
-  if ((isPublicPath && pathname === "/login") || pathname === "/") {
+  // An authenticated member hitting the tenant root "/" is routed to their portal
+  // home BY ROLE (students -> /learn, staff -> /dashboard), since the index page
+  // is the marketing surface. This also fixes the post-login bounce when `from=/`.
+  //
+  // NOTE: /login is intentionally NOT redirected here. Even for an already
+  // authenticated user we render the login form (e.g. the "Student Login" link
+  // from the marketing site) so every visit to /login is an explicit sign-in —
+  // the user can re-enter or switch accounts instead of being bounced straight
+  // into the app. Their existing session is only replaced when they sign in.
+  if (pathname === "/") {
     const home = LEARNING_ROLES.has(role) ? LEARNING_HOME : ADMIN_HOME;
     return withCookies(supabaseResponse, redirectTo(request, home));
   }
