@@ -25,22 +25,22 @@ export default function SongTranscriptModal({ open, onOpenChange, song, onSave, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-white border-stone-200 max-w-md max-h-[80vh] overflow-y-auto">
+      <DialogContent className="bg-slate-900 border-slate-800 max-w-md max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-stone-800">📝 Song Transcript</DialogTitle>
+          <DialogTitle className="text-white">📝 Song Transcript</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div>
-            <p className="text-sm font-semibold text-stone-700 mb-1">{song?.vocab_words?.[0] || "Song"}</p>
-            <p className="text-xs text-stone-400">Paste lyrics or transcript below</p>
+            <p className="text-sm font-semibold text-white mb-1">{song?.vocab_words?.[0] || "Song"}</p>
+            <p className="text-xs text-slate-400">Paste lyrics or transcript below</p>
           </div>
 
           <Textarea
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
             placeholder="Paste song lyrics or transcript here..."
-            className="bg-stone-50 border-stone-200 text-stone-800 min-h-[200px]"
+            className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 min-h-[200px]"
           />
 
           <div className="flex gap-2">
@@ -50,7 +50,7 @@ export default function SongTranscriptModal({ open, onOpenChange, song, onSave, 
                 onOpenChange(false);
               }}
               variant="outline"
-              className="flex-1"
+              className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800"
               disabled={isSaving}
             >
               Cancel
@@ -58,7 +58,7 @@ export default function SongTranscriptModal({ open, onOpenChange, song, onSave, 
             <Button
               onClick={handleSave}
               disabled={isSaving || !transcript.trim()}
-              className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
+              className="flex-1 bg-teal-500 hover:bg-teal-400 text-white"
             >
               {isSaving ? (
                 <>

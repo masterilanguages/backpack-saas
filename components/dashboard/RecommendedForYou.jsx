@@ -60,7 +60,7 @@ export default function RecommendedForYou({ userProfile }) {
     <div>
       <h2
         className="text-3xl font-bold mb-4 text-center"
-        style={{ color: "#3d4a2e", fontFamily: "Cormorant Garamond, Georgia, serif" }}
+        style={{ color: "#ffffff", fontFamily: "Cormorant Garamond, Georgia, serif" }}
       >
         ✨ Recommended for You
       </h2>
@@ -74,26 +74,26 @@ export default function RecommendedForYou({ userProfile }) {
               whileTap={{ scale: 0.97 }}
               onClick={() => navigate(createPageUrl("MediaLibrary"))}
               className="rounded-xl overflow-hidden cursor-pointer shadow-md"
-              style={{ border: "1px solid rgba(90,107,90,0.2)" }}
+              style={{ border: "1px solid #1e293b" }}
             >
-              <div className="relative w-full aspect-video bg-stone-200">
+              <div className="relative w-full aspect-video bg-slate-800">
                 {thumb ? (
                   <img src={thumb} alt={video.title} className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-stone-300">
-                    <Play className="w-8 h-8 text-stone-500" />
+                  <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                    <Play className="w-8 h-8 text-slate-500" />
                   </div>
                 )}
                 <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                   <Play className="w-8 h-8 text-white" />
                 </div>
               </div>
-              <div className="p-2" style={{ background: "rgba(255,255,255,0.6)" }}>
-                <p className="text-xs font-semibold truncate" style={{ color: "#3d4a2e" }}>
+              <div className="p-2" style={{ background: "#0f172a" }}>
+                <p className="text-xs font-semibold truncate" style={{ color: "#ffffff" }}>
                   {video.title}
                 </p>
                 {video.difficulty_level && video.difficulty_level !== "All" && (
-                  <span className="text-xs" style={{ color: "#6b7c5a" }}>
+                  <span className="text-xs" style={{ color: "#2dd4bf" }}>
                     {video.difficulty_level}
                   </span>
                 )}

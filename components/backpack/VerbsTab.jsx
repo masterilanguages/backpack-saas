@@ -31,14 +31,14 @@ function ConjugationTable({ conjugations, onEdit }) {
   return (
     <div className="grid grid-cols-3 gap-2 mt-2">
       {TENSES.map(tense => (
-        <div key={tense} className="bg-white/80 rounded-lg p-2 border border-stone-100">
-          <p className="text-[10px] font-bold text-stone-400 uppercase mb-1">{TENSE_LABELS[tense]}</p>
+        <div key={tense} className="bg-slate-800 rounded-lg p-2 border border-slate-700">
+          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">{TENSE_LABELS[tense]}</p>
           {persons.map(({ key, label }) => {
             const val = conjugations[tense]?.[key];
             if (!val && val !== '') return null;
             return (
-              <div key={key} className="flex justify-between items-baseline gap-1 py-0.5 border-b border-stone-50 last:border-0">
-                <span className="text-[9px] text-stone-400 shrink-0">{label}</span>
+              <div key={key} className="flex justify-between items-baseline gap-1 py-0.5 border-b border-slate-700 last:border-0">
+                <span className="text-[9px] text-slate-400 shrink-0">{label}</span>
                 <EditableConjugation
                   value={val || ''}
                   onChange={(newVal) => onEdit(tense, key, newVal)}
@@ -69,16 +69,16 @@ function EditableConjugation({ value, onChange }) {
         onChange={e => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(value); setEditing(false); } }}
-        className="text-[11px] text-cyan-600 font-medium text-right bg-cyan-50 border border-cyan-300 rounded px-1 outline-none w-full"
+        className="text-[11px] text-teal-300 font-medium text-right bg-slate-800 border border-teal-500 rounded px-1 outline-none w-full"
       />
     );
   }
   return (
     <span
       onClick={() => { setDraft(value); setEditing(true); }}
-      className="text-[11px] text-cyan-600 font-medium text-right cursor-pointer hover:underline hover:bg-cyan-50 rounded px-0.5"
+      className="text-[11px] text-teal-300 font-medium text-right cursor-pointer hover:underline hover:bg-slate-800 rounded px-0.5"
     >
-      {value || <span className="text-stone-300 italic">—</span>}
+      {value || <span className="text-slate-500 italic">—</span>}
     </span>
   );
 }
@@ -211,7 +211,7 @@ ${valueInstruction}`,
   };
 
   if (verbWords.length === 0) {
-    return <p className="text-stone-400 text-center py-8">No verbs in your backpack yet.</p>;
+    return <p className="text-slate-400 text-center py-8">No verbs in your backpack yet.</p>;
   }
 
   return (
@@ -220,20 +220,20 @@ ${valueInstruction}`,
         const conj = localConjugations[word.id] || word.verb_conjugations;
         const isExpanded = expanded[word.id];
         return (
-          <div key={word.id} className="bg-white/70 border border-stone-200 rounded-xl overflow-hidden">
+          <div key={word.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             <button
               onClick={() => toggleExpand(word)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-all"
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-800 transition-all"
             >
               <div className="flex items-center gap-3 text-left">
-                <span className="text-cyan-600 font-bold text-base">{word.phonetic || word.word}</span>
-                <span className="text-stone-400 text-xs">=</span>
-                <span className="text-stone-600 text-sm">{word.translation}</span>
+                <span className="text-teal-400 font-bold text-base">{word.phonetic || word.word}</span>
+                <span className="text-slate-400 text-xs">=</span>
+                <span className="text-slate-200 text-sm">{word.translation}</span>
                 {(localHebrew[word.id] || isHebrew(word.word) ? (localHebrew[word.id] || word.word) : null) && (
                   (() => {
                     const nativeText = localHebrew[word.id] || word.word;
                     return (
-                      <span className="text-cyan-700 text-sm font-medium" dir={isRTLText(nativeText) ? "rtl" : "ltr"}>{nativeText}</span>
+                      <span className="text-teal-300 text-sm font-medium" dir={isRTLText(nativeText) ? "rtl" : "ltr"}>{nativeText}</span>
                     );
                   })()
                 )}
@@ -241,11 +241,11 @@ ${valueInstruction}`,
               <div className="flex items-center gap-1.5 shrink-0">
                 {conj && <span className="text-[10px] text-green-500 font-semibold">✓ conjugated</span>}
                 {generating[word.id] ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-stone-400" />
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
                 ) : isExpanded ? (
-                  <ChevronUp className="w-4 h-4 text-stone-400" />
+                  <ChevronUp className="w-4 h-4 text-slate-400" />
                 ) : (
-                  <ChevronDown className="w-4 h-4 text-stone-400" />
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
                 )}
               </div>
             </button>
@@ -254,8 +254,8 @@ ${valueInstruction}`,
               <div className="px-4 pb-4">
                 {generating[word.id] ? (
                   <div className="flex items-center justify-center gap-2 py-4">
-                    <Loader2 className="w-4 h-4 animate-spin text-stone-300" />
-                    <span className="text-stone-400 text-sm">Generating conjugations...</span>
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                    <span className="text-slate-400 text-sm">Generating conjugations...</span>
                   </div>
                 ) : conj ? (
                   <ConjugationTable
@@ -265,7 +265,7 @@ ${valueInstruction}`,
                 ) : (
                   <button
                     onClick={() => generateConjugations(word)}
-                    className="w-full py-2 rounded-lg text-sm text-purple-600 border border-purple-200 bg-purple-50 hover:bg-purple-100 transition-all"
+                    className="w-full py-2 rounded-lg text-sm text-teal-300 border border-teal-500/40 bg-teal-500/15 hover:bg-teal-500/25 transition-all"
                   >
                     Generate conjugations
                   </button>

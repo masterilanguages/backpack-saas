@@ -30,10 +30,10 @@ export default function AvatarMenu({
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="bg-slate-900 border-white/20 text-white max-w-sm">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-sm">
           <DialogHeader>
             <DialogTitle>Avatar Options</DialogTitle>
-            <DialogDescription className="text-white/60">
+            <DialogDescription className="text-slate-400">
               Manage {avatarName}'s journey
             </DialogDescription>
           </DialogHeader>
@@ -50,7 +50,7 @@ export default function AvatarMenu({
               </div>
               <div className="text-left">
                 <p className="font-bold text-white">Start New Life From Beginning</p>
-                <p className="text-white/60 text-sm">Reset everything and start fresh as a baby</p>
+                <p className="text-slate-400 text-sm">Reset everything and start fresh as a baby</p>
               </div>
             </motion.button>
           </div>
@@ -65,7 +65,7 @@ export default function AvatarMenu({
               <AlertTriangle className="w-5 h-5" />
               Restart Life?
             </DialogTitle>
-            <DialogDescription className="text-white/60">
+            <DialogDescription className="text-slate-400">
               This will reset {avatarName} back to age 3. Your coins and items will be kept, but all progress will be lost.
             </DialogDescription>
           </DialogHeader>
@@ -74,7 +74,7 @@ export default function AvatarMenu({
             <Button
               variant="outline"
               onClick={() => setConfirmRestart(false)}
-              className="flex-1 border-white/20 text-white hover:bg-white/10"
+              className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800"
             >
               Cancel
             </Button>

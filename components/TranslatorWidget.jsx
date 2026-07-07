@@ -143,7 +143,7 @@ Return JSON with:
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-4 left-4 z-50 px-4 py-2 rounded-xl bg-white text-slate-900 shadow-lg flex items-center gap-2 font-bold"
+          className="fixed bottom-4 left-4 z-50 px-4 py-2 rounded-full bg-slate-900 text-teal-400 border border-slate-800 shadow-lg flex items-center gap-2 font-bold"
         >
           <Languages className="w-4 h-4" />
           Translate
@@ -156,7 +156,7 @@ Return JSON with:
             initial={{ opacity: 0, y: 20, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className="fixed bottom-20 left-4 z-50 w-80 bg-slate-950/95 backdrop-blur-xl border border-purple-500/30 rounded-2xl shadow-2xl flex flex-col"
+            className="fixed bottom-20 left-4 z-50 w-80 bg-slate-900/95 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl flex flex-col"
             style={{ maxHeight: "85vh" }}
           >
             <div className="flex items-center justify-between px-4 pt-4 pb-2 flex-shrink-0">
@@ -164,7 +164,7 @@ Return JSON with:
                 <Languages className="w-4 h-4" />
                 Translate
               </div>
-              <button onClick={() => setIsOpen(false)} className="text-white/60 hover:text-white">
+              <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -175,31 +175,31 @@ Return JSON with:
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="Type a word..."
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
+                  className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500"
                 />
                 <Button
                   type="submit"
                   disabled={!inputText.trim() || isTranslating}
                   size="sm"
-                  className="bg-amber-500 hover:bg-amber-600 flex-shrink-0 text-lg"
+                  className="bg-teal-500 hover:bg-teal-400 flex-shrink-0 text-lg"
                 >
                   {isTranslating ? <Loader2 className="w-4 h-4 animate-spin" /> : "🎒"}
                 </Button>
               </form>
 
               {translation && translation.result && (
-                <div className="bg-white/10 border border-white/20 rounded-xl p-3 space-y-2">
-                  <p className="text-white/50 text-[10px] uppercase mb-0.5">{translation.original}</p>
-                  <p className="text-cyan-300 text-xl font-bold" dir={(isRTLLanguage(targetLanguage) || isRTLText(translation.result.hebrew)) ? "rtl" : "ltr"}>{translation.result.hebrew}</p>
-                  <p className="text-white/70 text-sm">{translation.original}</p>
+                <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 space-y-2">
+                  <p className="text-slate-400 text-[10px] uppercase mb-0.5">{translation.original}</p>
+                  <p className="text-teal-300 text-xl font-bold" dir={(isRTLLanguage(targetLanguage) || isRTLText(translation.result.hebrew)) ? "rtl" : "ltr"}>{translation.result.hebrew}</p>
+                  <p className="text-slate-300 text-sm">{translation.original}</p>
                   <p className="text-white font-semibold text-base">{translation.result.english}</p>
 
                   {translation.result.example_sentence_hebrew && (
-                    <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
-                      <p className="text-white/40 text-[10px] uppercase">Example</p>
-                      <p className="text-emerald-300 text-sm" dir={(isRTLLanguage(targetLanguage) || isRTLText(translation.result.example_sentence_hebrew)) ? "rtl" : "ltr"}>{translation.result.example_sentence_hebrew}</p>
-                      <p className="text-white/60 text-xs">{translation.result.example_sentence_transliteration}</p>
-                      <p className="text-white/50 text-xs italic">"{translation.result.example_sentence_english}"</p>
+                    <div className="mt-2 pt-2 border-t border-slate-700 space-y-1">
+                      <p className="text-slate-400 text-[10px] uppercase">Example</p>
+                      <p className="text-teal-300 text-sm" dir={(isRTLLanguage(targetLanguage) || isRTLText(translation.result.example_sentence_hebrew)) ? "rtl" : "ltr"}>{translation.result.example_sentence_hebrew}</p>
+                      <p className="text-slate-400 text-xs">{translation.result.example_sentence_transliteration}</p>
+                      <p className="text-slate-500 text-xs italic">"{translation.result.example_sentence_english}"</p>
                     </div>
                   )}
                 </div>

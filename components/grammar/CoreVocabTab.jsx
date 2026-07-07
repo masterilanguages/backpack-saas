@@ -210,22 +210,22 @@ function Section({ section, onAddToBackpack }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-stone-200 overflow-hidden">
+    <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full p-4 text-left flex items-center justify-between hover:bg-stone-50/50 transition-all"
-        style={{ background: 'linear-gradient(135deg, #5a6b5a18, #6b7c6312)' }}
+        className="w-full p-4 text-left flex items-center justify-between hover:bg-slate-800 transition-all"
+        style={{ background: 'linear-gradient(135deg, #14b8a61a, #14b8a600)' }}
       >
         <div className="flex items-center gap-3">
           <span className="text-2xl">{section.emoji}</span>
           <div>
-            <h3 className="font-bold text-base" style={{ color: '#3d4a2e', fontFamily: 'Cormorant Garamond, Georgia, serif' }}>
+            <h3 className="font-bold text-base" style={{ color: '#ffffff', fontFamily: 'Cormorant Garamond, Georgia, serif' }}>
               {section.title}
             </h3>
-            <p className="text-stone-400 text-xs">{section.items.length} words</p>
+            <p className="text-slate-400 text-xs">{section.items.length} words</p>
           </div>
         </div>
-        <ChevronDown className={`w-5 h-5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: '#6b7c5a' }} />
+        <ChevronDown className={`w-5 h-5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: '#2dd4bf' }} />
       </button>
 
       <AnimatePresence>
@@ -242,18 +242,18 @@ function Section({ section, onAddToBackpack }) {
                 <div
                   key={idx}
                   className="flex flex-col items-center text-center px-3 py-1.5 rounded-lg group w-fit"
-                  style={{ background: idx % 2 === 0 ? '#ffffff70' : '#f5f0e850', border: '1px solid #e8e4d860' }}
+                  style={{ background: idx % 2 === 0 ? '#1e293b' : '#0f172a', border: '1px solid #334155' }}
                 >
-                  <span className="text-xs font-medium leading-none" style={{ color: '#6b7c5a' }}>{item.roman}</span>
-                  <span className="text-[10px] text-stone-500 leading-none">{item.english}</span>
-                  <span className="text-base font-bold leading-none mt-0.5" dir="rtl" style={{ color: '#3d4a2e' }}>{item.hebrew}</span>
+                  <span className="text-xs font-medium leading-none" style={{ color: '#5eead4' }}>{item.roman}</span>
+                  <span className="text-[10px] text-slate-400 leading-none">{item.english}</span>
+                  <span className="text-base font-bold leading-none mt-0.5" dir="rtl" style={{ color: '#ffffff' }}>{item.hebrew}</span>
                   {onAddToBackpack && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onAddToBackpack({ hebrew: item.hebrew, transliteration: item.roman, english: item.english });
                       }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity mt-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-600 hover:bg-amber-500/30"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity mt-1 px-1.5 py-0.5 rounded text-xs font-medium bg-teal-500/20 text-teal-300 hover:bg-teal-500/30"
                       title="Add to backpack"
                     >
                       +
@@ -272,9 +272,9 @@ function Section({ section, onAddToBackpack }) {
 export default function CoreVocabTab({ onAddToBackpack }) {
   return (
     <div className="space-y-3">
-      <div className="p-4 rounded-xl mb-2" style={{ background: '#5a6b5a18', border: '1px solid #5a6b5a30' }}>
-        <p className="text-sm font-semibold mb-1" style={{ color: '#3d4a2e' }}>📚 Core Vocabulary — The Foundation</p>
-        <p className="text-xs" style={{ color: '#5a6b5a' }}>
+      <div className="p-4 rounded-xl mb-2" style={{ background: '#14b8a614', border: '1px solid #14b8a633' }}>
+        <p className="text-sm font-semibold mb-1" style={{ color: '#ffffff' }}>📚 Core Vocabulary — The Foundation</p>
+        <p className="text-xs" style={{ color: '#e2e8f0' }}>
           These are the highest-ROI words in Hebrew. Master these first and you'll understand the structure of most everyday conversations. Click any word's + to add to backpack.
         </p>
       </div>
