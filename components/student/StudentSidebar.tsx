@@ -4,16 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import LanguageSwitcher from "./LanguageSwitcher";
+import InterfaceLanguageSwitcher from "./InterfaceLanguageSwitcher";
+import { useUI } from "@/lib/i18n/UILanguage";
 
 const NAV = [
-  { href: "/home",      label: "Dashboard", emoji: "🏠" },
-  { href: "/learn/lessons/days", label: "Schedule",  emoji: "🗓️" },
-  { href: "/learn/lessons",  label: "Lessons",   emoji: "📖" },
-  { href: "/practice",       label: "Practice",  emoji: "🗣️" },
-  { href: "/library",        label: "Backpack",  emoji: "🎒" },
-  { href: "/journal",        label: "Journal",   emoji: "📓" },
-  { href: "/media",          label: "Library",   emoji: "📺" },
-  { href: "/progress",       label: "Progress",  emoji: "📈" },
+  { href: "/home",               key: "dashboard", emoji: "🏠" },
+  { href: "/learn/lessons/days", key: "schedule",  emoji: "🗓️" },
+  { href: "/learn/lessons",      key: "lessons",   emoji: "📖" },
+  { href: "/practice",           key: "practice",  emoji: "🗣️" },
+  { href: "/library",            key: "backpack",  emoji: "🎒" },
+  { href: "/journal",            key: "journal",   emoji: "📓" },
+  { href: "/media",              key: "library",   emoji: "📺" },
+  { href: "/progress",           key: "progress",  emoji: "📈" },
 ];
 
 export default function StudentSidebar({
@@ -25,6 +27,7 @@ export default function StudentSidebar({
 }) {
   const pathname = usePathname();
   const { logout } = useAuth();
+  const { t } = useUI();
 
   return (
     <>
@@ -69,14 +72,15 @@ export default function StudentSidebar({
                 }`}
               >
                 <span className="text-base">{item.emoji}</span>
-                <span>{item.label}</span>
+                <span>{t(`nav.${item.key}`)}</span>
               </Link>
             );
           })}
         </nav>
 
-        {/* Language + settings + sign out footer */}
+        {/* Interface + learning language, settings, sign out footer */}
         <div className="shrink-0 space-y-0.5 border-t border-slate-800 px-3 py-3">
+          <InterfaceLanguageSwitcher />
           <LanguageSwitcher />
           <Link
             href="/settings"
@@ -88,7 +92,7 @@ export default function StudentSidebar({
             }`}
           >
             <span className="text-base">⚙️</span>
-            <span>Settings</span>
+            <span>{t("nav.settings")}</span>
           </Link>
           <button
             type="button"
@@ -96,7 +100,7 @@ export default function StudentSidebar({
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/5 hover:text-slate-100"
           >
             <span className="text-base">🚪</span>
-            <span>Sign out</span>
+            <span>{t("nav.signOut")}</span>
           </button>
         </div>
       </aside>

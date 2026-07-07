@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, createPageUrl } from "@/lib/router-compat";
+import { useUI } from "@/lib/i18n/UILanguage";
 import { base44 as base44Client } from "@/api/base44Client";
 // base44Client is a JS shim whose `entities` are built dynamically, so TS can't
 // see entity keys. Cast to `any` for ergonomic access — the runtime shape is
@@ -51,6 +52,7 @@ const storeItems = [
 export default function Home() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { t } = useUI();
   const [buyCoinsDialog, setBuyCoinsDialog] = useState(false);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
@@ -702,13 +704,13 @@ export default function Home() {
             <div className="text-center">
               <h1 className="text-3xl font-bold tracking-tight text-white">
                 {(userProfile?.full_name || currentUser?.full_name)
-                  ? `Hi, ${String(userProfile?.full_name || currentUser?.full_name).split(' ')[0]}!`
-                  : 'Hi there!'}
+                  ? t('dashboard.hiName', { name: String(userProfile?.full_name || currentUser?.full_name).split(' ')[0] })
+                  : t('dashboard.hiThere')}
               </h1>
               <p className="mt-1.5 text-sm text-slate-400">
-                Day {userProfile?.current_day || 1} of 100
+                {t('dashboard.dayOf', { n: userProfile?.current_day || 1 })}
                 {typeof userProfile?.daily_streak === 'number' && userProfile.daily_streak > 0
-                  ? ` · 🔥 ${userProfile.daily_streak} day streak`
+                  ? ` · 🔥 ${t('dashboard.streak', { n: userProfile.daily_streak })}`
                   : ''}
               </p>
             </div>
@@ -722,8 +724,8 @@ export default function Home() {
               <span className="flex items-center gap-3">
                 <span className="text-2xl">▶️</span>
                 <span>
-                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-teal-300">Continue</span>
-                  <span className="block font-bold text-white">Session {userProfile?.current_day || 1}</span>
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-teal-300">{t('dashboard.continue')}</span>
+                  <span className="block font-bold text-white">{t('dashboard.session', { n: userProfile?.current_day || 1 })}</span>
                 </span>
               </span>
               <ChevronRight className="h-5 w-5 text-teal-300" />
@@ -732,21 +734,21 @@ export default function Home() {
             {/* Quick access */}
             <div className="mx-auto grid max-w-md grid-cols-3 gap-3">
               {[
-                { label: 'Backpack', emoji: '🎒', href: '/library' },
-                { label: 'Journal', emoji: '📓', href: '/journal' },
-                { label: 'Practice', emoji: '🗣️', href: '/practice' },
-                { label: 'Library', emoji: '📺', href: '/media' },
-                { label: 'Progress', emoji: '📈', href: '/progress' },
-                { label: 'Schedule', emoji: '📅', href: '/learn/lessons/days' },
+                { key: 'backpack', emoji: '🎒', href: '/library' },
+                { key: 'journal', emoji: '📓', href: '/journal' },
+                { key: 'practice', emoji: '🗣️', href: '/practice' },
+                { key: 'library', emoji: '📺', href: '/media' },
+                { key: 'progress', emoji: '📈', href: '/progress' },
+                { key: 'schedule', emoji: '📅', href: '/learn/lessons/days' },
               ].map((s) => (
                 <button
-                  key={s.label}
+                  key={s.key}
                   type="button"
                   onClick={() => navigate(s.href)}
                   className="flex flex-col items-center gap-1.5 rounded-2xl border border-slate-800 bg-slate-900 p-4 transition hover:border-teal-500/50"
                 >
                   <span className="text-2xl">{s.emoji}</span>
-                  <span className="text-xs font-semibold text-white">{s.label}</span>
+                  <span className="text-xs font-semibold text-white">{t(`nav.${s.key}`)}</span>
                 </button>
               ))}
             </div>
