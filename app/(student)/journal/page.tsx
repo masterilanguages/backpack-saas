@@ -330,19 +330,19 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
   };
 
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(160deg, #f0ece4 0%, #e8e4d8 50%, #eae6da 100%)' }}>
+    <div className="min-h-screen bg-slate-950">
       <div className="max-w-3xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
-          <Link to={createPageUrl("Home")} style={{ color: '#6b7c5a' }}>
+          <Link to={createPageUrl("Home")} className="text-slate-400 hover:text-white transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2" style={{ color: '#3d4a2e', fontFamily: 'Cormorant Garamond, Georgia, serif', fontWeight: 500 }}>
-              <BookOpen className="w-7 h-7" />
+            <h1 className="text-3xl font-bold flex items-center gap-2 text-white">
+              <BookOpen className="w-7 h-7 text-teal-400" />
               Daily Journal
             </h1>
-            <p className="text-sm" style={{ color: '#6b7c5a' }}>
+            <p className="text-sm text-slate-400">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </p>
           </div>
@@ -358,26 +358,21 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
-              className="mb-6 rounded-2xl overflow-hidden"
-              style={{
-                background: "#fffef5",
-                border: "1px solid #e0d8c8",
-                boxShadow: "4px 6px 24px rgba(61,74,46,0.10)"
-              }}
+              className="mb-6 rounded-2xl overflow-hidden bg-slate-900 border border-slate-800"
             >
               {/* Header */}
-              <div className="px-6 pt-5 pb-3 flex items-center gap-3" style={{ borderBottom: "2px solid rgba(200,180,140,0.4)" }}>
-                <Music className="w-4 h-4" style={{ color: "#9b7e5a" }} />
+              <div className="px-6 pt-5 pb-3 flex items-center gap-3 border-b border-slate-800">
+                <Music className="w-4 h-4 text-teal-400" />
                 <div>
-                  <p className="text-xs font-semibold tracking-widest uppercase" style={{ color: "#9b7e5a", fontFamily: "Jost, sans-serif" }}>
+                  <p className="text-xs font-semibold tracking-widest uppercase text-teal-400">
                     Song Journal
                   </p>
-                  <p className="text-base font-medium" style={{ color: "#3d4a2e", fontFamily: "Cormorant Garamond, serif" }}>
+                  <p className="text-base font-medium text-white">
                     {latestMedia.title}
                   </p>
                 </div>
                 {songJournalDone && (
-                  <span className="ml-auto flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(90,160,90,0.12)", color: "#3a7a3a" }}>
+                  <span className="ml-auto flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-300">
                     <CheckCircle className="w-3 h-3" /> Done
                   </span>
                 )}
@@ -399,16 +394,11 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
         {journalMode === "free" && <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative rounded-2xl shadow-2xl overflow-hidden mb-6"
-          style={{
-            background: '#fffef5',
-            border: '1px solid #e0d8c8',
-            boxShadow: '4px 6px 24px rgba(61,74,46,0.12), inset 0 0 0 1px rgba(255,255,255,0.8)'
-          }}
+          className="relative rounded-2xl overflow-hidden mb-6 bg-slate-900 border border-slate-800"
         >
-          {/* Red margin line */}
-          <div className="absolute left-14 top-0 bottom-0 w-px" style={{ background: 'rgba(200,100,100,0.25)' }} />
-          {/* Blue ruled lines */}
+          {/* Margin line */}
+          <div className="absolute left-14 top-0 bottom-0 w-px" style={{ background: 'rgba(45,212,191,0.25)' }} />
+          {/* Ruled lines */}
           {Array.from({ length: 30 }).map((_, i) => (
             <div
               key={i}
@@ -416,29 +406,28 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
               style={{
                 top: `${80 + i * 32}px`,
                 height: '1px',
-                background: 'rgba(100,140,200,0.15)'
+                background: 'rgba(148,163,184,0.12)'
               }}
             />
           ))}
 
           {/* Notebook top strip */}
-          <div className="relative z-10 flex items-center justify-between pl-16 pr-6 pt-5 pb-3" style={{ borderBottom: '2px solid rgba(200,180,140,0.4)' }}>
+          <div className="relative z-10 flex items-center justify-between pl-16 pr-6 pt-5 pb-3 border-b border-slate-800">
             <div className="flex items-center gap-2">
-              <BookOpen className="w-4 h-4" style={{ color: '#9b7e5a' }} />
-              <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }}>
+              <BookOpen className="w-4 h-4 text-slate-400" />
+              <span className="text-xs font-semibold tracking-widest uppercase text-slate-400">
                 {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${wordCount >= 100 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${wordCount >= 100 ? 'bg-teal-500/15 text-teal-300' : 'bg-slate-800 text-slate-400'}`}>
                 {wordCount} / 100 words
               </span>
               {/* Translate to learning language button */}
               <button
                 onClick={handleTranslateEntry}
                 disabled={translatingEntry || !text.trim()}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all disabled:opacity-50"
-                style={{ background: 'rgba(90,107,90,0.12)', color: '#5a6b5a', border: '1px solid rgba(90,107,90,0.25)', fontFamily: 'Jost, sans-serif' }}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all disabled:opacity-50 bg-teal-500/15 text-teal-300 border border-teal-500/30 hover:bg-teal-500/25"
                 title={`Translate to ${langName}`}
               >
                 {translatingEntry ? <Loader2 className="w-3 h-3 animate-spin" /> : <Languages className="w-3 h-3" />}
@@ -454,12 +443,12 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="relative z-10 ml-16 mr-6 mt-3 rounded-xl p-4 text-sm"
-                style={{ background: 'rgba(90,107,90,0.07)', border: '1px solid rgba(90,107,90,0.2)', fontFamily: 'Georgia, serif', color: '#3d4a2e', lineHeight: '1.8' }}
+                className="relative z-10 ml-16 mr-6 mt-3 rounded-xl p-4 text-sm bg-slate-800 border border-slate-700 text-slate-200"
+                style={{ lineHeight: '1.8' }}
               >
                 <div className="flex justify-between items-start mb-2">
-                  <span className="text-xs font-semibold tracking-wider uppercase" style={{ color: '#6b7c5a', fontFamily: 'Jost, sans-serif' }}>{langName} Translation</span>
-                  <button onClick={() => setShowTranslated(false)} style={{ color: '#9b7e5a' }}><X className="w-3.5 h-3.5" /></button>
+                  <span className="text-xs font-semibold tracking-wider uppercase text-teal-400">{langName} Translation</span>
+                  <button onClick={() => setShowTranslated(false)} className="text-slate-400 hover:text-white transition-colors"><X className="w-3.5 h-3.5" /></button>
                 </div>
                 <p dir={isRTLLanguage(userProfile?.language) ? 'rtl' : 'ltr'}>{translatedText}</p>
               </motion.div>
@@ -468,8 +457,8 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
 
           {/* Vocab word bubbles — above the writing area */}
           {suggestedVocab.length > 0 && (
-            <div className="relative z-10 pl-16 pr-6 pb-4 pt-4" style={{ borderBottom: '1px dashed rgba(200,180,140,0.5)' }}>
-              <p className="text-xs mb-3 text-center font-semibold tracking-wide uppercase" style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }}>
+            <div className="relative z-10 pl-16 pr-6 pb-4 pt-4 border-b border-dashed border-slate-700">
+              <p className="text-xs mb-3 text-center font-semibold tracking-wide uppercase text-slate-400">
                 Your latest words — use them in your entry ({usedWords.length}/{suggestedVocab.length})
               </p>
               <div className="flex flex-wrap justify-center gap-2">
@@ -491,18 +480,13 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
                           setText(t => t + ' ' + (word.phonetic || word.word));
                         }
                       }}
-                      className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all px-3 py-2 min-w-[64px]"
-                      style={{
-                        background: isUsed ? 'rgba(90,160,90,0.12)' : 'rgba(255,252,240,0.9)',
-                        border: isUsed ? '1.5px solid rgba(90,160,90,0.5)' : '1.5px solid rgba(200,180,140,0.5)',
-                        boxShadow: isUsed ? 'none' : '0 1px 4px rgba(0,0,0,0.06)'
-                      }}
+                      className={`flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all px-3 py-2 min-w-[64px] border ${isUsed ? 'bg-teal-500/15 border-teal-500/50' : 'bg-slate-800 border-slate-700'}`}
                     >
-                      {isUsed && <CheckCircle className="w-3 h-3 mb-0.5" style={{ color: '#5a9a5a' }} />}
-                      <span className="text-xs font-bold" style={{ color: isUsed ? '#3a7a3a' : '#5a6b5a', fontFamily: 'Jost, sans-serif' }}>
+                      {isUsed && <CheckCircle className="w-3 h-3 mb-0.5 text-teal-400" />}
+                      <span className={`text-xs font-bold ${isUsed ? 'text-teal-300' : 'text-slate-200'}`}>
                         {word.phonetic || word.word}
                       </span>
-                      <span className="text-[10px]" style={{ color: '#9b7e5a' }}>{word.translation}</span>
+                      <span className="text-[10px] text-slate-400">{word.translation}</span>
                     </motion.div>
                   );
                 })}
@@ -517,12 +501,10 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
               onChange={(e) => setText(e.target.value)}
               onClick={handleTextClick}
               placeholder={`Write about your day using your new words above. Try to include: what you did today, how you felt, something you learned, and a goal for tomorrow. Click a word above to insert it!`}
-              className="w-full bg-transparent border-none shadow-none focus:outline-none focus:ring-0 resize-none"
+              className="w-full bg-transparent border-none shadow-none focus:outline-none focus:ring-0 resize-none text-white placeholder:text-slate-500"
               style={{
-                fontFamily: 'Georgia, serif',
                 lineHeight: '32px',
                 fontSize: '15px',
-                color: '#2d3a1e',
                 minHeight: '480px',
                 padding: '4px 0',
               }}
@@ -533,16 +515,15 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
 
           {/* Translation Exercises */}
           {suggestedVocab.length > 0 && (
-            <div className="relative z-10 pl-16 pr-6 pb-4 pt-2" style={{ borderTop: '1px dashed rgba(200,180,140,0.5)' }}>
+            <div className="relative z-10 pl-16 pr-6 pb-4 pt-2 border-t border-dashed border-slate-700">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }}>
+                <p className="text-xs font-semibold tracking-wide uppercase text-slate-400">
                   📝 Rewrite in {langName}
                 </p>
                 {exercises.length > 0 && (
                   <button
                     onClick={() => setShowPhonetics(p => !p)}
-                    className="text-xs px-3 py-1 rounded-full transition-all flex items-center gap-1"
-                    style={{ background: showPhonetics ? 'rgba(90,107,90,0.15)' : 'rgba(200,180,140,0.2)', color: '#5a6b5a', border: '1px solid rgba(90,107,90,0.2)', fontFamily: 'Jost, sans-serif' }}
+                    className={`text-xs px-3 py-1 rounded-full transition-all flex items-center gap-1 border ${showPhonetics ? 'bg-teal-500/15 text-teal-300 border-teal-500/30' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'}`}
                   >
                     {showPhonetics ? '🔤 Hide phonetics' : '🔤 Show phonetics'}
                   </button>
@@ -551,36 +532,34 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
               {exercises.length > 0 && (
                 <div className="space-y-3">
                   {exercises.map((ex, i) => (
-                    <div key={i} className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(255,252,240,0.8)', border: '1px solid rgba(200,180,140,0.4)' }}>
+                    <div key={i} className="rounded-xl p-3 space-y-2 bg-slate-800 border border-slate-700">
                       <div className="flex items-start gap-2">
                         <div className="flex flex-col items-start gap-0.5 flex-shrink-0">
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(90,107,90,0.12)', color: '#5a6b5a', fontFamily: 'Jost, sans-serif' }}>{ex.word}</span>
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-300">{ex.word}</span>
                           {showPhonetics && suggestedVocab.find((w: any) => (w.phonetic || w.word) === ex.word)?.translation && (
-                            <span className="text-[10px] px-2" style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }}>
+                            <span className="text-[10px] px-2 text-slate-400">
                               {suggestedVocab.find((w: any) => (w.phonetic || w.word) === ex.word)?.translation}
                             </span>
                           )}
                         </div>
-                        <p className="text-sm" style={{ color: '#3d4a2e', fontFamily: 'Georgia, serif' }}>{ex.english}</p>
+                        <p className="text-sm text-slate-200">{ex.english}</p>
                       </div>
                       <input
                         type="text"
                         value={ex.userInput}
                         onChange={e => setExercises(prev => prev.map((item, idx) => idx === i ? { ...item, userInput: e.target.value } : item))}
                         placeholder={`Translate to ${langName}...`}
-                        className="w-full px-3 py-1.5 rounded-lg text-sm outline-none"
-                        style={{ background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(200,180,140,0.5)', fontFamily: 'Georgia, serif', color: '#2d3a1e' }}
+                        className="w-full px-3 py-1.5 rounded-lg text-sm outline-none bg-slate-900 border border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500"
                         dir={isRTLLanguage(userProfile?.language) ? 'rtl' : 'ltr'}
                       />
                       {ex.revealed ? (
-                        <p className="text-xs px-2 py-1 rounded-lg" style={{ background: 'rgba(90,160,90,0.1)', color: '#3a7a3a', fontFamily: 'Georgia, serif' }}>
+                        <p className="text-xs px-2 py-1 rounded-lg bg-teal-500/10 text-teal-300">
                           ✅ {ex.answer}
                         </p>
                       ) : (
                         <button
                           onClick={() => setExercises(prev => prev.map((item, idx) => idx === i ? { ...item, revealed: true } : item))}
-                          className="text-xs px-2 py-0.5 rounded-full transition-all"
-                          style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif', background: 'rgba(200,180,140,0.2)' }}
+                          className="text-xs px-2 py-0.5 rounded-full transition-all text-slate-300 bg-slate-700 hover:bg-slate-600"
                         >
                           👁 Reveal answer
                         </button>
@@ -599,18 +578,17 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="relative z-10 ml-16 mr-6 mb-4 rounded-xl px-4 py-3"
-                style={{ background: 'rgba(212,165,116,0.15)', border: '1px solid rgba(212,165,116,0.4)' }}
+                className="relative z-10 ml-16 mr-6 mb-4 rounded-xl px-4 py-3 bg-teal-500/10 border border-teal-500/30"
               >
                 {generatingQuestion ? (
                   <div className="flex items-center gap-2">
-                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#9b7e5a' }} />
-                    <span className="text-xs" style={{ color: '#9b7e5a' }}>Thinking of a question…</span>
+                    <Loader2 className="w-3 h-3 animate-spin text-teal-400" />
+                    <span className="text-xs text-slate-400">Thinking of a question…</span>
                   </div>
                 ) : (
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm italic" style={{ color: '#6b4e2a', fontFamily: 'Georgia, serif' }}>✍️ {aiQuestion}</p>
-                    <button onClick={() => setAiQuestion("")} style={{ color: '#9b7e5a' }}><X className="w-3.5 h-3.5" /></button>
+                    <p className="text-sm italic text-teal-200">✍️ {aiQuestion}</p>
+                    <button onClick={() => setAiQuestion("")} className="text-slate-400 hover:text-white transition-colors"><X className="w-3.5 h-3.5" /></button>
                   </div>
                 )}
               </motion.div>
@@ -618,26 +596,22 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
           </AnimatePresence>
 
           {/* Signature + controls */}
-          <div className="relative z-10 pl-16 pr-6 pb-5 pt-2 flex items-end justify-between gap-4" style={{ borderTop: '1px solid rgba(200,180,140,0.3)' }}>
+          <div className="relative z-10 pl-16 pr-6 pb-5 pt-2 flex items-end justify-between gap-4 border-t border-slate-800">
             <div className="flex items-center gap-2">
-              <input type="checkbox" id="isPublic" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} className="w-4 h-4" />
-              <label htmlFor="isPublic" className="text-xs cursor-pointer" style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }}>Share publicly</label>
+              <input type="checkbox" id="isPublic" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} className="w-4 h-4 accent-teal-500" />
+              <label htmlFor="isPublic" className="text-xs cursor-pointer text-slate-400">Share publicly</label>
             </div>
 
             <div className="flex items-end gap-4">
               <div className="w-40">
-                <Suspense fallback={<div className="h-16 rounded animate-pulse" style={{ background: 'rgba(200,180,140,0.2)' }} />}>
+                <Suspense fallback={<div className="h-16 rounded animate-pulse bg-slate-800" />}>
                   <SignaturePad value={signature} onChange={setSignature} disabled={wordCount < 100} />
                 </Suspense>
               </div>
               <Button
                 onClick={handleSave}
                 disabled={createEntryMutation.isPending || updateEntryMutation.isPending || !text.trim() || !allWordsUsed}
-                className="font-semibold text-sm"
-                style={allWordsUsed
-                  ? { background: '#5a6b5a', color: 'white', fontFamily: 'Jost, sans-serif' }
-                  : { background: 'rgba(200,180,140,0.3)', color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }
-                }
+                className={`font-semibold text-sm ${allWordsUsed ? 'bg-teal-500 text-white hover:bg-teal-400' : 'bg-slate-800 text-slate-500'}`}
               >
                 {allWordsUsed ? (todayEntry ? "Update" : "Save Entry") : `⚠️ ${wordCount}/100 words · ${usedWords.length}/${suggestedVocab.length} vocab`}
               </Button>
@@ -649,29 +623,27 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
         {/* Previous Entries */}
         {entries.filter((e: any) => e.date !== today).length > 0 && (
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold tracking-wider uppercase" style={{ color: '#9b7e5a', fontFamily: 'Jost, sans-serif' }}>Previous Entries</h3>
+            <h3 className="text-sm font-semibold tracking-wider uppercase text-slate-400">Previous Entries</h3>
             {entries.filter((e: any) => e.date !== today).slice(0, 5).map((entry: any, idx: number) => (
               <motion.div
                 key={entry.id}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: idx * 0.05 }}
-                className="rounded-xl p-4"
-                style={{ background: 'rgba(255,254,245,0.8)', border: '1px solid rgba(200,180,140,0.4)' }}
+                className="rounded-2xl p-4 bg-slate-900 border border-slate-800"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold" style={{ color: '#3d4a2e', fontFamily: 'Cormorant Garamond, serif' }}>
+                  <span className="text-sm font-semibold text-white">
                     {new Date(entry.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                   </span>
                   <button
                     onClick={() => updateEntryMutation.mutate({ id: entry.id, data: { is_public: !entry.is_public, author_name: userProfile?.avatar_name || "Anonymous" } })}
-                    className="text-xs px-2 py-0.5 rounded-full"
-                    style={{ background: entry.is_public ? 'rgba(90,107,90,0.15)' : 'rgba(200,180,140,0.2)', color: '#6b7c5a', fontFamily: 'Jost, sans-serif' }}
+                    className={`text-xs px-2 py-0.5 rounded-full ${entry.is_public ? 'bg-teal-500/15 text-teal-300' : 'bg-slate-800 text-slate-400'}`}
                   >
                     {entry.is_public ? '📢 Public' : '🔒 Private'}
                   </button>
                 </div>
-                <p className="text-sm line-clamp-3" style={{ color: '#3d4a2e', fontFamily: 'Georgia, serif', lineHeight: '1.7' }}>{entry.text}</p>
+                <p className="text-sm line-clamp-3 text-slate-200" style={{ lineHeight: '1.7' }}>{entry.text}</p>
               </motion.div>
             ))}
           </div>
@@ -684,7 +656,7 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           style={{ position: 'fixed', left: translationPosition.x, top: translationPosition.y, zIndex: 1000 }}
-          className="bg-slate-800 text-white rounded-lg shadow-2xl p-3 border border-cyan-400"
+          className="bg-slate-900 text-white rounded-lg shadow-2xl p-3 border border-teal-500"
         >
           {translatingWord ? (
             <div className="flex items-center gap-2">
@@ -694,7 +666,7 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
           ) : (
             <div className="space-y-2">
               <div>
-                <p className="text-cyan-400 font-bold text-sm">{wordTranslation.word}</p>
+                <p className="text-teal-400 font-bold text-sm">{wordTranslation.word}</p>
                 <p className="text-white text-xs">
                   {wordTranslation.language === 'hebrew' ? wordTranslation.transliteration : wordTranslation.translation}
                 </p>
@@ -703,7 +675,7 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
                 {wordTranslation.language === 'hebrew' && (
                   <button
                     onClick={() => setWordTranslation((prev: any) => ({ ...prev, showHebrew: !prev.showHebrew }))}
-                    className="text-xs px-2 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 transition-all"
+                    className="text-xs px-2 py-1 rounded bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 transition-all"
                     title="Show Hebrew phonetics"
                   >
                     {wordTranslation.showHebrew ? 'א Transliterate' : 'א Hebrew'}

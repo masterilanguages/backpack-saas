@@ -302,14 +302,13 @@ export default function SpeakingSession() {
       record1: "#ef4444",
       record2: "#ef4444",
       english: "#06b6d4",
-      hebrew: "#8b5cf6",
+      hebrew: "#14b8a6",
       idle: "#6b7280",
     }[phase] || "#6b7280";
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center px-4 py-8"
-      style={{ background: "linear-gradient(160deg, #0f172a 0%, #1e1b4b 100%)" }}
+      className="min-h-screen flex flex-col items-center justify-center px-4 py-8 bg-slate-950"
     >
       {/* Hidden audio player */}
       {songUrl && <audio ref={audioRef} src={songUrl} preload="auto" />}
@@ -318,27 +317,27 @@ export default function SpeakingSession() {
       <div className="w-full max-w-md mb-6 flex items-center gap-3">
         <Link
           to={createPageUrl("Home")}
-          className="text-white/40 hover:text-white transition-colors"
+          className="text-slate-400 hover:text-white transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />
         </Link>
         <div className="flex-1">
           <h1 className="text-white font-bold text-lg">Speaking Session</h1>
           {songTitle && (
-            <p className="text-white/40 text-xs flex items-center gap-1">
+            <p className="text-slate-400 text-xs flex items-center gap-1">
               <Music className="w-3 h-3" />
               {songTitle}
             </p>
           )}
         </div>
         {/* intentionally empty — url input shown below */}
-        <div className="flex gap-1 bg-white/10 rounded-xl p-1">
+        <div className="flex gap-1 bg-slate-800 rounded-xl p-1">
           {MODES.map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
               className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                mode === m ? "bg-white text-slate-900" : "text-white/50 hover:text-white"
+                mode === m ? "bg-teal-500 text-white" : "text-slate-400 hover:text-white"
               }`}
             >
               {m === "auto-loop" ? "🔁 Loop" : "🤲 Free"}
@@ -349,8 +348,8 @@ export default function SpeakingSession() {
 
       {/* Song URL input — shown when no audio is loaded */}
       {!songUrl && (
-        <div className="w-full max-w-md mb-4 bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
-          <p className="text-white/60 text-sm">
+        <div className="w-full max-w-md mb-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+          <p className="text-slate-400 text-sm">
             Paste an MP3 audio URL to use as the backing track:
           </p>
           <div className="flex gap-2">
@@ -358,7 +357,7 @@ export default function SpeakingSession() {
               value={manualUrl}
               onChange={(e) => setManualUrl(e.target.value)}
               placeholder="https://example.com/song.mp3"
-              className="flex-1 bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-sm outline-none placeholder:text-white/30 focus:border-indigo-400"
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm outline-none placeholder:text-slate-500 focus:border-teal-500"
             />
             <button
               onClick={() => {
@@ -367,7 +366,7 @@ export default function SpeakingSession() {
                   setSongTitle("Song");
                 }
               }}
-              className="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold transition-all"
+              className="px-4 py-2 rounded-lg bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold transition-all"
             >
               Load
             </button>
@@ -381,10 +380,10 @@ export default function SpeakingSession() {
           <button
             key={seg.id}
             onClick={() => selectSegment(i)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
               currentSegIdx === i
-                ? "bg-indigo-500 border-indigo-400 text-white"
-                : "bg-white/10 border-white/10 text-white/50 hover:text-white"
+                ? "bg-teal-500 border-teal-400 text-white"
+                : "bg-slate-800 border-slate-700 text-slate-400 hover:text-white"
             }`}
           >
             Line {i + 1}
@@ -395,10 +394,9 @@ export default function SpeakingSession() {
 
       {/* Main card */}
       <div
-        className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
-        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
+        className="w-full max-w-md rounded-2xl overflow-hidden shadow-2xl bg-slate-900 border border-slate-800"
       >
-        <div className="flex items-center justify-center py-3 border-b border-white/10">
+        <div className="flex items-center justify-center py-3 border-b border-slate-800">
           <motion.span
             key={phaseLabel}
             initial={{ opacity: 0, y: -6 }}
@@ -415,13 +413,13 @@ export default function SpeakingSession() {
             key={`en-${currentSegIdx}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-white/80 text-lg font-medium leading-relaxed"
+            className="text-slate-200 text-lg font-medium leading-relaxed"
           >
             {currentSeg.english}
           </motion.p>
           <button
             onClick={() => setShowHebrew((v) => !v)}
-            className="text-xs text-white/30 hover:text-white/60 transition-colors underline underline-offset-2"
+            className="text-xs text-slate-400 hover:text-slate-200 transition-colors underline underline-offset-2"
           >
             {showHebrew ? "hide Hebrew" : "show Hebrew"}
           </button>
@@ -433,20 +431,20 @@ export default function SpeakingSession() {
                 exit={{ opacity: 0, height: 0 }}
               >
                 <p
-                  className="text-indigo-300 text-xl font-bold leading-relaxed"
+                  className="text-teal-300 text-xl font-bold leading-relaxed"
                   dir="rtl"
                   style={{ fontFamily: "serif" }}
                 >
                   {currentSeg.hebrew}
                 </p>
-                <p className="text-white/50 text-sm italic mt-1">{currentSeg.translit}</p>
+                <p className="text-slate-400 text-sm italic mt-1">{currentSeg.translit}</p>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
         <div className="px-6 mb-4">
-          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+          <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
             <motion.div
               className="h-full rounded-full"
               style={{ background: `linear-gradient(90deg, ${phaseColor}, ${phaseColor}aa)` }}
@@ -454,7 +452,7 @@ export default function SpeakingSession() {
               transition={{ duration: 0.1, ease: "linear" }}
             />
           </div>
-          <div className="flex justify-between text-xs text-white/20 mt-1">
+          <div className="flex justify-between text-xs text-slate-500 mt-1">
             <span>Listen</span>
             <span>Speak</span>
             <span>Model</span>
@@ -505,7 +503,7 @@ export default function SpeakingSession() {
         <div className="flex items-center justify-center gap-4 px-6 pb-6">
           <button
             onClick={handleRestart}
-            className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white transition-all"
+            className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-all"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
@@ -513,7 +511,7 @@ export default function SpeakingSession() {
             onClick={togglePlay}
             className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg transition-all hover:scale-105 active:scale-95"
             style={{
-              background: isPlaying ? "#ef4444" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              background: isPlaying ? "#ef4444" : "#14b8a6",
             }}
           >
             {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-1" />}
@@ -521,7 +519,7 @@ export default function SpeakingSession() {
           <button
             onClick={handleNextSegment}
             disabled={currentSegIdx >= segments.length - 1}
-            className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white transition-all disabled:opacity-30"
+            className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-all disabled:opacity-30"
           >
             <SkipForward className="w-4 h-4" />
           </button>
@@ -530,24 +528,24 @@ export default function SpeakingSession() {
 
       {segTakes.length > 0 && (
         <div className="w-full max-w-md mt-5 space-y-2">
-          <p className="text-white/40 text-xs uppercase tracking-wider mb-2">
+          <p className="text-slate-400 text-xs uppercase tracking-wider mb-2">
             Your Takes — Line {currentSegIdx + 1}
           </p>
           {segTakes.map((url, i) => (
             <div
               key={i}
-              className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3"
+              className="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3"
             >
-              <span className="text-white/40 text-xs font-mono">#{i + 1}</span>
-              <audio src={url} controls className="flex-1 h-8" style={{ accentColor: "#8b5cf6" }} />
+              <span className="text-slate-400 text-xs font-mono">#{i + 1}</span>
+              <audio src={url} controls className="flex-1 h-8" style={{ accentColor: "#14b8a6" }} />
               {i === segTakes.length - 1 && (
                 <span className="text-green-400 text-xs font-semibold">latest</span>
               )}
             </div>
           ))}
           {segTakes.length >= 2 && (
-            <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-4 mt-2">
-              <p className="text-indigo-300 text-xs font-semibold mb-2">📊 Session Stats</p>
+            <div className="bg-teal-500/10 border border-teal-500/20 rounded-2xl p-4 mt-2">
+              <p className="text-teal-300 text-xs font-semibold mb-2">📊 Session Stats</p>
               <div className="flex gap-4">
                 {[
                   { label: "Takes", val: segTakes.length },
@@ -555,7 +553,7 @@ export default function SpeakingSession() {
                 ].map(({ label, val }) => (
                   <div key={label} className="text-center">
                     <p className="text-white font-bold text-lg">{val}</p>
-                    <p className="text-white/40 text-xs">{label}</p>
+                    <p className="text-slate-400 text-xs">{label}</p>
                   </div>
                 ))}
               </div>
@@ -564,7 +562,7 @@ export default function SpeakingSession() {
         </div>
       )}
 
-      <p className="text-white/20 text-xs text-center mt-6 max-w-xs">
+      <p className="text-slate-500 text-xs text-center mt-6 max-w-xs">
         Tip: Press play and speak during the red recording windows. Your takes are saved for review.
       </p>
     </div>

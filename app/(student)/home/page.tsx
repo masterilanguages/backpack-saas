@@ -623,23 +623,23 @@ export default function Home() {
   // Don't render if loading or no language (Layout handles redirect)
   if (profileLoading || !userProfile?.language) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full"
+          className="w-12 h-12 border-4 border-teal-400 border-t-transparent rounded-full"
         />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)' }}>
+    <div className="min-h-screen bg-slate-950">
       {/* Animated background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-20 -left-20 w-[500px] h-[500px] rounded-full blur-3xl" style={{ background: 'radial-gradient(circle, rgba(37,99,235,0.08) 0%, transparent 70%)' }} />
-        <div className="absolute top-1/3 right-0 w-96 h-96 rounded-full blur-3xl" style={{ background: 'radial-gradient(circle, rgba(96,165,250,0.06) 0%, transparent 70%)' }} />
-        <div className="absolute bottom-0 left-1/4 w-80 h-80 rounded-full blur-3xl" style={{ background: 'radial-gradient(circle, rgba(29,78,216,0.05) 0%, transparent 70%)' }} />
+        <div className="absolute -top-20 -left-20 w-[500px] h-[500px] rounded-full blur-3xl" style={{ background: 'radial-gradient(circle, rgba(20,184,166,0.08) 0%, transparent 70%)' }} />
+        <div className="absolute top-1/3 right-0 w-96 h-96 rounded-full blur-3xl" style={{ background: 'radial-gradient(circle, rgba(45,212,191,0.06) 0%, transparent 70%)' }} />
+        <div className="absolute bottom-0 left-1/4 w-80 h-80 rounded-full blur-3xl" style={{ background: 'radial-gradient(circle, rgba(13,148,136,0.05) 0%, transparent 70%)' }} />
       </div>
 
 
@@ -648,8 +648,8 @@ export default function Home() {
 
         {/* Managing user banner */}
         {managingUserEmail && currentUser?.role === 'admin' && (
-          <div className="mt-4 bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-center">
-            <p className="text-blue-300 font-medium text-sm">👤 Managing: {managingUserEmail}</p>
+          <div className="mt-4 bg-teal-500/10 border border-teal-500/30 rounded-lg p-3 text-center">
+            <p className="text-teal-300 font-medium text-sm">👤 Managing: {managingUserEmail}</p>
             <Button
               onClick={() => {
                 localStorage.removeItem('admin_managing_user');
@@ -678,7 +678,7 @@ export default function Home() {
           >
             <button
               onClick={() => { setSelectedActivity(null); setTimer(0); setTimerRunning(false); }}
-              className="mb-6 text-white/60 hover:text-white flex items-center gap-2 mx-auto"
+              className="mb-6 text-slate-400 hover:text-white flex items-center gap-2 mx-auto"
             >
               <ArrowRight className="w-4 h-4 rotate-180" /> Back to levels
             </button>
@@ -705,22 +705,20 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => navigate(createPageUrl('Backpack'))}
-                    className="rounded-xl p-4 text-left transition hover:opacity-90"
-                    style={{ background: 'rgba(15,40,100,0.5)', border: '1px solid rgba(96,165,250,0.2)' }}
+                    className="rounded-2xl p-4 text-left transition bg-slate-900 border border-slate-800 hover:border-teal-500/50"
                   >
                     <span className="text-2xl">🎒</span>
-                    <p className="mt-2 font-bold text-sm" style={{ color: '#BFDBFE' }}>Backpack</p>
-                    <p className="text-xs mt-1" style={{ color: '#93C5FD' }}>Your words & mnemonics</p>
+                    <p className="mt-2 font-bold text-sm text-white">Backpack</p>
+                    <p className="text-xs mt-1 text-slate-400">Your words & mnemonics</p>
                   </button>
                   <button
                     type="button"
                     onClick={() => navigate(createPageUrl('Days'))}
-                    className="rounded-xl p-4 text-left transition hover:opacity-90"
-                    style={{ background: 'rgba(15,40,100,0.5)', border: '1px solid rgba(96,165,250,0.2)' }}
+                    className="rounded-2xl p-4 text-left transition bg-slate-900 border border-slate-800 hover:border-teal-500/50"
                   >
                     <span className="text-2xl">📅</span>
-                    <p className="mt-2 font-bold text-sm" style={{ color: '#BFDBFE' }}>Schedule</p>
-                    <p className="text-xs mt-1" style={{ color: '#93C5FD' }}>Sessions & lessons</p>
+                    <p className="mt-2 font-bold text-sm text-white">Schedule</p>
+                    <p className="text-xs mt-1 text-slate-400">Sessions & lessons</p>
                   </button>
                 </div>
               )}
@@ -740,7 +738,7 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-4">
                   <h2
                     className="text-2xl font-bold cursor-pointer hover:opacity-80 transition-opacity"
-                    style={{ color: '#BFDBFE', fontFamily: 'Inter, sans-serif' }}
+                    style={{ color: '#ffffff', fontFamily: 'Inter, sans-serif' }}
                     onClick={() => navigate(createPageUrl("Days"))}
                   >
                     📅 Schedule <ChevronRight className="inline w-5 h-5 mb-1" />
@@ -750,7 +748,7 @@ export default function Home() {
                       onClick={handleCreateSession}
                       disabled={createDayMutation.isPending}
                       className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:opacity-90 disabled:opacity-50"
-                      style={{ background: '#5a6b5a', color: '#f5f0e8' }}
+                      style={{ background: '#14b8a6', color: '#ffffff' }}
                     >
                       {createDayMutation.isPending ? '…' : '+ New Session'}
                     </button>
@@ -759,17 +757,17 @@ export default function Home() {
                   <div className="space-y-2">
                     {!hasContent && !isMasterUser && (
                       <div
-                        className="rounded-xl p-5 text-center backdrop-blur-xl"
-                        style={{ background: 'rgba(15,40,100,0.4)', border: '1px solid rgba(96,165,250,0.15)' }}
+                        className="rounded-2xl p-5 text-center"
+                        style={{ background: '#0f172a', border: '1px solid #1e293b' }}
                       >
-                        <p className="text-sm" style={{ color: '#BFDBFE' }}>
+                        <p className="text-sm" style={{ color: '#e2e8f0' }}>
                           No sessions assigned yet. Your coach will add lessons here — check back soon.
                         </p>
                         <button
                           type="button"
                           onClick={() => navigate(createPageUrl('Backpack'))}
                           className="mt-3 text-sm font-semibold underline"
-                          style={{ color: '#93C5FD' }}
+                          style={{ color: '#2dd4bf' }}
                         >
                           Open your Backpack →
                         </button>
@@ -790,15 +788,15 @@ export default function Home() {
                     return (
                       <div key={day.id}>
                         <div
-                          className="backdrop-blur-xl rounded-xl p-3 flex items-center justify-between cursor-pointer transition-all"
-                          style={{ background: 'rgba(15,40,100,0.4)', border: '1px solid rgba(96,165,250,0.15)' }}
+                          className="rounded-2xl p-3 flex items-center justify-between cursor-pointer transition-all"
+                          style={{ background: '#0f172a', border: '1px solid #1e293b' }}
                           onClick={() => {
                             if (isMasterUser) { setExpandedDay(expandedDay === day.day_number ? null : day.day_number); return; }
                             setSessionModal(day);
                           }}
                         >
-                          <h3 className="font-bold text-sm" style={{ color: '#BFDBFE' }}>Session {day.day_number}</h3>
-                          <ChevronDown className={`w-4 h-4 transition-transform ml-auto ${isExpanded ? 'rotate-180' : ''}`} style={{ color: '#60A5FA' }} />
+                          <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>Session {day.day_number}</h3>
+                          <ChevronDown className={`w-4 h-4 transition-transform ml-auto ${isExpanded ? 'rotate-180' : ''}`} style={{ color: '#94a3b8' }} />
                         </div>
                         <AnimatePresence>
                           {isExpanded && (
@@ -815,7 +813,7 @@ export default function Home() {
                                   <button
                                     onClick={() => setLibraryPickerDayId(day.id)}
                                     className="w-full text-left px-3 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1 mb-1"
-                                    style={{ color: '#93C5FD', background: 'rgba(96,165,250,0.06)', border: '1px dashed rgba(96,165,250,0.3)' }}
+                                    style={{ color: '#2dd4bf', background: 'rgba(20,184,166,0.1)', border: '1px dashed rgba(20,184,166,0.4)' }}
                                   >
                                     <Plus className="w-3 h-3" /> + Add item
                                   </button>
@@ -846,14 +844,14 @@ export default function Home() {
                                     return (
                                       <div key={task.id} className="flex flex-col gap-1">
                                         {isEditing ? (
-                                         <div className="flex items-center gap-2 px-3 py-2 bg-white/70 rounded-xl border border-cyan-400/50">
+                                         <div className="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-xl border border-teal-500/50">
                                              {/* Editable title */}
                                              <input
                                                autoFocus
                                                value={editingTaskData.name}
                                                onChange={(e) => setEditingTaskData((prev: any) => ({ ...prev, name: e.target.value }))}
                                                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditedTask(day.id); if (e.key === 'Escape') handleCancelEdit(); }}
-                                               className="flex-1 min-w-0 bg-transparent border-none outline-none text-sm font-medium text-stone-800 placeholder:text-stone-400"
+                                               className="flex-1 min-w-0 bg-transparent border-none outline-none text-sm font-medium text-white placeholder:text-slate-400"
                                                placeholder="Title"
                                              />
                                              {/* YouTube URL — saves on blur */}
@@ -862,11 +860,11 @@ export default function Home() {
                                                onChange={(e) => setEditingTaskData((prev: any) => ({ ...prev, youtube_url: e.target.value }))}
                                                onBlur={() => { if (editingTaskData.youtube_url.trim()) handleSaveEditedTask(day.id); }}
                                                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditedTask(day.id); }}
-                                               className="w-36 bg-stone-100 border border-stone-200 rounded-lg px-2 py-1 text-xs text-stone-700 outline-none focus:border-cyan-400 placeholder:text-stone-400"
+                                               className="w-36 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 outline-none focus:border-teal-500 placeholder:text-slate-400"
                                                placeholder="YouTube URL"
                                              />
                                              {/* MP3 upload — saves immediately */}
-                                             <label className="flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-stone-400 cursor-pointer hover:bg-stone-100 transition-all text-xs text-stone-500 whitespace-nowrap flex-shrink-0">
+                                             <label className="flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-600 cursor-pointer hover:bg-slate-800 transition-all text-xs text-slate-400 whitespace-nowrap flex-shrink-0">
                                                🎵 MP3
                                                <input
                                                  type="file"
@@ -906,8 +904,8 @@ export default function Home() {
                                               setDraggedTask(null);
                                               setDragOverTask(null);
                                             }}
-                                            className={`flex items-center justify-between px-3 py-2 rounded-lg hover:opacity-80 transition-all group ${isDragging ? 'cursor-grabbing opacity-50' : 'cursor-pointer'} ${isDragOver ? 'border-t-2 border-b-2 border-cyan-400 my-2' : ''}`}
-                                            style={{ background: isTaskDone ? 'rgba(96,165,250,0.12)' : 'rgba(96,165,250,0.05)', border: isDragOver ? undefined : '1px solid rgba(96,165,250,0.12)' }}
+                                            className={`flex items-center justify-between px-3 py-2 rounded-lg hover:opacity-80 transition-all group ${isDragging ? 'cursor-grabbing opacity-50' : 'cursor-pointer'} ${isDragOver ? 'border-t-2 border-b-2 border-teal-400 my-2' : ''}`}
+                                            style={{ background: isTaskDone ? 'rgba(20,184,166,0.1)' : 'rgba(30,41,59,0.6)', border: isDragOver ? undefined : '1px solid #1e293b' }}
                                             onClick={async () => {
                                               if (isDragging) return;
                                               // If generic "Watch a video" placeholder with no video, go to library to select one
@@ -968,18 +966,18 @@ export default function Home() {
                                             }}
                                           >
                                             <div className="flex items-center gap-2">
-                                              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isTaskDone ? 'bg-green-500 border-green-500' : 'border-stone-400'}`}>
+                                              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isTaskDone ? 'bg-green-500 border-green-500' : 'border-slate-600'}`}>
                                                 {isTaskDone && <Check className="w-2.5 h-2.5 text-white" />}
                                               </div>
-                                              <span className="text-sm font-medium" style={{ color: '#BFDBFE' }}>{task.name}</span>
+                                              <span className="text-sm font-medium" style={{ color: '#e2e8f0' }}>{task.name}</span>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                             {(task.video_id || extractYouTubeId(task.youtube_url)) && <span className="text-xs" style={{ color: '#60A5FA' }}>▶ video</span>}
-                                             {task.mediaUrl && <span className="text-xs" style={{ color: '#60A5FA' }}>🎵 audio</span>}
+                                             {(task.video_id || extractYouTubeId(task.youtube_url)) && <span className="text-xs" style={{ color: '#2dd4bf' }}>▶ video</span>}
+                                             {task.mediaUrl && <span className="text-xs" style={{ color: '#2dd4bf' }}>🎵 audio</span>}
                                              {isMasterUser && (
                                                 <button
                                                   onClick={(e) => { e.stopPropagation(); handleStartEditTask(day.id, task); }}
-                                                  className="opacity-70 hover:opacity-100 transition-opacity text-stone-400 hover:text-stone-700 text-sm px-1"
+                                                  className="opacity-70 hover:opacity-100 transition-opacity text-slate-400 hover:text-white text-sm px-1"
                                                   title="Edit task"
                                                   >
                                                   <span style={{ display: 'inline-block', transform: 'scaleX(-1)' }}>✏️</span>
@@ -1024,17 +1022,17 @@ export default function Home() {
       {sessionModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setSessionModal(null)}>
           <div
-            className="bg-stone-50 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5"
+            className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5"
             onClick={e => e.stopPropagation()}
           >
             <div className="text-center">
               <div className="text-4xl mb-2">🎬</div>
-              <h2 className="text-2xl font-bold" style={{ color: '#3d4a2e', fontFamily: 'Cormorant Garamond, serif' }}>Session {sessionModal.day_number}</h2>
-              <p className="text-stone-500 text-sm mt-1">Follow the steps below to complete this session</p>
+              <h2 className="text-2xl font-bold" style={{ color: '#ffffff', fontFamily: 'Cormorant Garamond, serif' }}>Session {sessionModal.day_number}</h2>
+              <p className="text-slate-400 text-sm mt-1">Follow the steps below to complete this session</p>
             </div>
-            <div className="bg-white rounded-xl border border-stone-200 p-4 space-y-3">
-              <p className="font-semibold text-stone-700 text-sm">📋 Instructions</p>
-              <ol className="space-y-2 text-stone-600 text-sm list-decimal list-inside">
+            <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-3">
+              <p className="font-semibold text-slate-200 text-sm">📋 Instructions</p>
+              <ol className="space-y-2 text-slate-300 text-sm list-decimal list-inside">
                 <li>Watch the video for this session</li>
                 <li>Follow along with the transcript</li>
                 <li>When you're done, click <strong>"I'm Done"</strong> below</li>
@@ -1052,12 +1050,12 @@ export default function Home() {
                       setSessionModal(null);
                       navigate(createPageUrl('MediaLibrary') + `?videoId=${ytId}&sessionDay=${sessionModal.day_number}&dayId=${sessionModal.id}&taskId=${task.id}`);
                     }}
-                    className="flex items-center gap-3 bg-stone-100 rounded-xl p-3 border border-stone-200 hover:border-stone-400 transition-all w-full text-left"
+                    className="flex items-center gap-3 bg-slate-800 rounded-xl p-3 border border-slate-700 hover:border-teal-500/50 transition-all w-full text-left"
                   >
                     <img src={`https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`} alt="" className="w-20 h-14 rounded-lg object-cover flex-shrink-0" />
                     <div>
-                      <p className="text-stone-700 font-semibold text-sm">{task.name}</p>
-                      <p className="text-stone-400 text-xs mt-0.5">▶ Watch video</p>
+                      <p className="text-slate-200 font-semibold text-sm">{task.name}</p>
+                      <p className="text-slate-400 text-xs mt-0.5">▶ Watch video</p>
                     </div>
                   </button>
                 );
@@ -1079,12 +1077,12 @@ export default function Home() {
                       sessionStorage.setItem('songListenData', JSON.stringify({ title: task.name, mediaUrl: task.mediaUrl, transcript, videoId: '', mediaLibraryId }));
                       navigate('/SongListenPage');
                     }}
-                    className="flex items-center gap-3 bg-stone-100 rounded-xl p-3 border border-stone-200 hover:border-stone-400 transition-all w-full text-left"
+                    className="flex items-center gap-3 bg-slate-800 rounded-xl p-3 border border-slate-700 hover:border-teal-500/50 transition-all w-full text-left"
                   >
-                    <div className="w-20 h-14 rounded-lg flex-shrink-0 flex items-center justify-center text-3xl bg-stone-200">🎵</div>
+                    <div className="w-20 h-14 rounded-lg flex-shrink-0 flex items-center justify-center text-3xl bg-slate-700">🎵</div>
                     <div>
-                      <p className="text-stone-700 font-semibold text-sm">{task.name}</p>
-                      <p className="text-stone-400 text-xs mt-0.5">🎧 Listen</p>
+                      <p className="text-slate-200 font-semibold text-sm">{task.name}</p>
+                      <p className="text-slate-400 text-xs mt-0.5">🎧 Listen</p>
                     </div>
                   </button>
                 );
@@ -1094,7 +1092,7 @@ export default function Home() {
             <div className="pt-1">
               <button
                 onClick={() => setSessionModal(null)}
-                className="w-full py-2.5 rounded-xl border border-stone-300 text-stone-500 text-sm font-medium hover:bg-stone-100 transition-all"
+                className="w-full py-2.5 rounded-xl border border-slate-700 text-slate-400 text-sm font-medium hover:bg-slate-800 transition-all"
               >
                 Cancel
               </button>
@@ -1163,14 +1161,14 @@ export default function Home() {
       )}
       {showSessionFlashcards && sessionFlashcardWords.length === 0 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-stone-50 rounded-2xl max-w-sm w-full p-6 text-center space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 text-center space-y-4">
             <div className="text-4xl">🎒</div>
-            <h3 className="text-xl font-bold" style={{ color: '#3d4a2e' }}>No vocab words yet</h3>
-            <p className="text-stone-500 text-sm">Vocab words will appear here once they've been added to this session.</p>
+            <h3 className="text-xl font-bold" style={{ color: '#ffffff' }}>No vocab words yet</h3>
+            <p className="text-slate-400 text-sm">Vocab words will appear here once they've been added to this session.</p>
             <button
               onClick={() => setShowSessionFlashcards(false)}
               className="w-full py-3 rounded-xl text-white font-bold"
-              style={{ background: '#5a6b5a' }}
+              style={{ background: '#14b8a6' }}
             >
               Got it
             </button>
@@ -1180,7 +1178,7 @@ export default function Home() {
 
         {/* Buy Coins Dialog */}
       <Dialog open={buyCoinsDialog} onOpenChange={setBuyCoinsDialog}>
-        <DialogContent className="bg-slate-900 border-white/20 text-white">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
           <DialogHeader>
             <DialogTitle>💎 Buy Coins</DialogTitle>
           </DialogHeader>
@@ -1218,17 +1216,17 @@ export default function Home() {
 
       {/* Assign Coach Dialog */}
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
-        <DialogContent className="bg-slate-900 border-white/20 text-white">
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
           <DialogHeader>
             <DialogTitle>Assign Coach to Student</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-white/60 text-sm mb-2 block">Coach</label>
+              <label className="text-slate-400 text-sm mb-2 block">Coach</label>
               <select
                 value={selectedCoach}
                 onChange={(e) => setSelectedCoach(e.target.value)}
-                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
               >
                 <option value="">Select coach...</option>
                 {allUsers.filter((user: any) => !['dorong@base44.com', 'liorben@base44.com'].includes(user.email)).map((user: any) => (
@@ -1239,11 +1237,11 @@ export default function Home() {
               </select>
             </div>
             <div>
-              <label className="text-white/60 text-sm mb-2 block">Student</label>
+              <label className="text-slate-400 text-sm mb-2 block">Student</label>
               <select
                 value={selectedStudent}
                 onChange={(e) => setSelectedStudent(e.target.value)}
-                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
               >
                 <option value="">Select student...</option>
                 {allUsers.filter((user: any) => !['dorong@base44.com', 'liorben@base44.com'].includes(user.email)).map((user: any) => (
@@ -1257,7 +1255,7 @@ export default function Home() {
               <Button
                 onClick={() => setShowAssignDialog(false)}
                 variant="outline"
-                className="flex-1 border-white/20 text-white"
+                className="flex-1 border-slate-700 text-white"
               >
                 Cancel
               </Button>
@@ -1279,7 +1277,7 @@ export default function Home() {
                   });
                 }}
                 disabled={createAssignmentMutation.isPending}
-                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500"
+                className="flex-1 bg-teal-500 hover:bg-teal-400"
               >
                 Assign
               </Button>
