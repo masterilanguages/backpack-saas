@@ -311,12 +311,24 @@ const auth = {
 // Each returns the SAME shape the callers destructure today.
 // ---------------------------------------------------------------------------
 const Core = {
-  // InvokeLLM(args) -> the LLM JSON payload (callers read props directly).
+  // InvokeLLM(args) -> the LLM result.
+  // The `invoke-llm` edge function returns the parsed OBJECT when the caller
+  // passes a `response_json_schema`, but `{ response: "<text>" }` for a plain
+  // text prompt. Plain-prompt callers across the app treat the result as a
+  // STRING — they render it directly, call `.trim()`, or store it as a word
+  // `translation`. Returning the raw `{ response }` object to them rendered
+  // "[object Object]" / crashed React ("Objects are not valid as a React child",
+  // e.g. the Journal word translator) and poisoned saved translations with
+  // `{"response":"..."}`. So unwrap `{ response }` to the bare string for the
+  // no-schema case (matching Base44's InvokeLLM). Schema callers get the object
+  // untouched.
   async InvokeLLM(args) {
     const { data, error } = await supabase.functions.invoke('invoke-llm', {
       body: args,
     });
     if (error) throw error;
+    if (args && args.response_json_schema) return data;
+    if (data && typeof data === 'object' && 'response' in data) return data.response;
     return data;
   },
 
