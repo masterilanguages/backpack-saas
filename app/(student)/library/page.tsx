@@ -896,38 +896,38 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
 
   return (
     <>
-    <div className="min-h-screen" style={{ background: 'linear-gradient(160deg, #f0ece4 0%, #e8e4d8 50%, #eae6da 100%)' }}>
+    <div className="min-h-screen bg-slate-950">
 
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="flex items-center gap-4 mb-4">
-          <Link to={createPageUrl("Home")} className="text-stone-400 hover:text-stone-700">
+          <Link to={createPageUrl("Home")} className="text-slate-400 hover:text-white">
             <ArrowLeft className="w-6 h-6" />
           </Link>
-          <h1 className="text-3xl font-bold" style={{ color: '#3a4a3a', fontFamily: 'Cormorant Garamond, serif', fontWeight: 400 }}>🎒 My Backpack</h1>
+          <h1 className="text-3xl font-bold text-white">🎒 My Backpack</h1>
         </div>
 
         {/* Add new word */}
-        <div className="mb-5 bg-white/60 rounded-xl border border-stone-200 p-4">
-          <h3 className="text-sm font-semibold mb-3" style={{ color: '#3d4a2e', fontFamily: 'Jost, sans-serif' }}>+ Add New Word</h3>
+        <div className="mb-5 bg-slate-900 rounded-2xl border border-slate-800 p-4">
+          <h3 className="text-sm font-semibold mb-3 text-white">+ Add New Word</h3>
           <div className="flex gap-2 flex-wrap">
             <Input
               value={addWordForm.phonetic}
               onChange={(e) => setAddWordForm(prev => ({ ...prev, phonetic: e.target.value }))}
               placeholder="Transliteration (e.g. shalom)"
-              className="flex-1 min-w-[140px] bg-white/80 border-stone-300 text-stone-800 text-sm"
+              className="flex-1 min-w-[140px] bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 text-sm focus:border-teal-500"
               onKeyDown={(e) => e.key === 'Enter' && handleAddNewWord()}
             />
             <Input
               value={addWordForm.translation}
               onChange={(e) => setAddWordForm(prev => ({ ...prev, translation: e.target.value }))}
               placeholder="English meaning"
-              className="flex-1 min-w-[140px] bg-white/80 border-stone-300 text-stone-800 text-sm"
+              className="flex-1 min-w-[140px] bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 text-sm focus:border-teal-500"
               onKeyDown={(e) => e.key === 'Enter' && handleAddNewWord()}
             />
             <Button
               onClick={handleAddNewWord}
               disabled={addingWord || (!addWordForm.phonetic.trim() && !addWordForm.translation.trim())}
-              style={{ background: '#5a6b5a', color: 'white' }}
+              className="bg-teal-500 text-white hover:bg-teal-400"
             >
               {addingWord ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
             </Button>
@@ -957,8 +957,8 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
               onClick={() => setActiveTab(tab.id)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
                 activeTab === tab.id
-                  ? tab.id === 'coach' ? 'bg-amber-500 text-white border border-amber-400' : 'bg-stone-700 text-stone-100 border border-stone-600'
-                  : 'bg-white/60 text-stone-500 hover:bg-white/80 border border-stone-200'
+                  ? tab.id === 'coach' ? 'bg-teal-500 text-white border border-teal-400' : 'bg-teal-500 text-white border border-teal-400'
+                  : 'bg-slate-900 text-slate-400 hover:bg-slate-800 border border-slate-800'
               }`}
             >
               {tab.label}
@@ -975,7 +975,7 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by word or translation..."
-              className="bg-white/80 border-stone-300 text-stone-800"
+              className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500"
             />
           </div>
         )}
@@ -996,22 +996,22 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
             // Show session flashcards single card view
             (sessionFlashcardData.words || []).length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-stone-400 text-lg">No words in this session yet</p>
+                <p className="text-slate-400 text-lg">No words in this session yet</p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-4">
                 <div className="flex items-center gap-2 w-full max-w-xs justify-between">
                   <button
                     onClick={() => { setSessionFlashcardData(null); setSingleCardIndex(0); }}
-                    className="px-4 py-2 rounded-xl bg-white/60 border border-stone-200 text-stone-500 font-bold text-lg"
+                    className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 font-bold text-lg"
                   >
                     ←
                   </button>
-                  <span className="text-stone-400 text-sm">{singleCardIndex + 1} / {sessionFlashcardData.words.length}</span>
+                  <span className="text-slate-400 text-sm">{singleCardIndex + 1} / {sessionFlashcardData.words.length}</span>
                   <button
                     onClick={() => setSingleCardIndex(i => Math.min(sessionFlashcardData.words.length - 1, i + 1))}
                     disabled={singleCardIndex === sessionFlashcardData.words.length - 1}
-                    className="px-4 py-2 rounded-xl bg-white/60 border border-stone-200 text-stone-500 disabled:opacity-30 font-bold text-lg"
+                    className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-30 font-bold text-lg"
                   >
                     →
                   </button>
@@ -1057,7 +1057,7 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
             )
           ) : getDisplayWords().length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-stone-400 text-lg">No words at this level yet!</p>
+              <p className="text-slate-400 text-lg">No words at this level yet!</p>
             </div>
           ) : activeTab === 'level5' ? (
             <div className="flex flex-wrap gap-4 justify-center">
@@ -1098,9 +1098,9 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
             return (
               <div className="flex flex-col items-center gap-4">
                 <div className="flex items-center gap-2 w-full max-w-xs justify-between">
-                  <button onClick={() => setSingleCardIndex(i => Math.max(0, i - 1))} disabled={idx === 0} className="px-4 py-2 rounded-xl bg-white/60 border border-stone-200 text-stone-500 disabled:opacity-30 font-bold text-lg">←</button>
-                  <span className="text-stone-400 text-sm">{idx + 1} / {words.length}</span>
-                  <button onClick={() => setSingleCardIndex(i => Math.min(words.length - 1, i + 1))} disabled={idx === words.length - 1} className="px-4 py-2 rounded-xl bg-white/60 border border-stone-200 text-stone-500 disabled:opacity-30 font-bold text-lg">→</button>
+                  <button onClick={() => setSingleCardIndex(i => Math.max(0, i - 1))} disabled={idx === 0} className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-30 font-bold text-lg">←</button>
+                  <span className="text-slate-400 text-sm">{idx + 1} / {words.length}</span>
+                  <button onClick={() => setSingleCardIndex(i => Math.min(words.length - 1, i + 1))} disabled={idx === words.length - 1} className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-30 font-bold text-lg">→</button>
                 </div>
                 <WordCard
                   word={word}
@@ -1167,24 +1167,24 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
 
       {/* Word Sentences Dialog */}
       <Dialog open={!!selectedWord} onOpenChange={() => setSelectedWord(null)}>
-        <DialogContent className="bg-stone-50 border-stone-200 text-stone-800 max-w-sm max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bg-slate-900 border-slate-800 text-slate-200 max-w-sm max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="text-cyan-400">{selectedWord?.phonetic || selectedWord?.word}</span>
-              <span className="text-white/60">=</span>
-              <span className="text-green-400">{selectedWord?.translation}</span>
+              <span className="text-teal-400">{selectedWord?.phonetic || selectedWord?.word}</span>
+              <span className="text-slate-500">=</span>
+              <span className="text-teal-300">{selectedWord?.translation}</span>
             </DialogTitle>
           </DialogHeader>
 
           {loadingSentences ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+              <Loader2 className="w-6 h-6 text-teal-400 animate-spin" />
             </div>
           ) : sentences ? (
             <div className="space-y-4">
-              <p className="text-stone-500 text-sm">Tap words to add to New Words:</p>
+              <p className="text-slate-400 text-sm">Tap words to add to New Words:</p>
               {sentences.map((sentence: any, idx: number) => (
-                <div key={idx} className="bg-white/60 border border-stone-200 rounded-xl p-3">
+                <div key={idx} className="bg-slate-800 border border-slate-700 rounded-xl p-3">
                   <div className="flex flex-wrap gap-x-1 gap-y-2 mb-2">
                                             {sentence.transliterated.split(' ').map((word: any, widx: number) => {
                                               const wordInfo = sentence.words?.find((w: any) =>
@@ -1202,26 +1202,26 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
                                                   }}
                                                   className={`inline-flex flex-col items-start px-0.5 rounded ${
                                                     isQueued
-                                                      ? "text-green-400 bg-green-500/20"
-                                                      : "hover:bg-cyan-500/20 cursor-pointer"
+                                                      ? "text-teal-300 bg-teal-500/20"
+                                                      : "hover:bg-teal-500/20 cursor-pointer"
                                                   }`}
                                                 >
-                                                  <span className="text-white/70 text-[13px] h-[15px] leading-[15px]" dir={isRTLText(wordInfo?.hebrew) ? "rtl" : "ltr"}>{wordInfo?.hebrew || ""}</span>
-                                                  <span className={`text-cyan-400 text-[13px] h-[15px] leading-[15px] ${isQueued ? "" : "underline decoration-dotted"}`}>{word}</span>
+                                                  <span className="text-slate-300 text-[13px] h-[15px] leading-[15px]" dir={isRTLText(wordInfo?.hebrew) ? "rtl" : "ltr"}>{wordInfo?.hebrew || ""}</span>
+                                                  <span className={`text-teal-400 text-[13px] h-[15px] leading-[15px] ${isQueued ? "" : "underline decoration-dotted"}`}>{word}</span>
                                                 </button>
                                               );
                                             })}
                                           </div>
-                  <p className="text-stone-400 text-sm mt-1">{sentence.english}</p>
+                  <p className="text-slate-400 text-sm mt-1">{sentence.english}</p>
                 </div>
               ))}
 
               {newWords.length > 0 && (
-                <div className="pt-2 border-t border-white/10">
-                  <p className="text-amber-400 text-sm mb-2">📝 New Words: {newWords.length}</p>
+                <div className="pt-2 border-t border-slate-700">
+                  <p className="text-teal-400 text-sm mb-2">📝 New Words: {newWords.length}</p>
                   <Button
                     onClick={() => { setSelectedWord(null); setActiveTab("level0"); }}
-                    className="w-full bg-gradient-to-r from-amber-500 to-orange-500"
+                    className="w-full bg-teal-500 text-white hover:bg-teal-400"
                   >
                     Rate New Words
                   </Button>
@@ -1236,17 +1236,17 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
 
       {/* New Word Rating Dialog */}
       <Dialog open={!!activeNewWord} onOpenChange={() => setActiveNewWord(null)}>
-        <DialogContent className="bg-stone-50 border-stone-200 text-stone-800 max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bg-slate-900 border-slate-800 text-slate-200 max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-center">
-              <span className="text-white/70 text-lg block" dir={isRTLText(activeNewWord?.hebrew) ? "rtl" : "ltr"}>{activeNewWord?.hebrew}</span>
-              <span className="text-cyan-400 text-2xl">{activeNewWord?.word}</span>
-              <span className="text-white/60 text-lg block">= {activeNewWord?.meaning}</span>
+              <span className="text-slate-300 text-lg block" dir={isRTLText(activeNewWord?.hebrew) ? "rtl" : "ltr"}>{activeNewWord?.hebrew}</span>
+              <span className="text-teal-400 text-2xl">{activeNewWord?.word}</span>
+              <span className="text-slate-400 text-lg block">= {activeNewWord?.meaning}</span>
             </DialogTitle>
           </DialogHeader>
 
           {/* Mnemonic section - First */}
-          <p className="text-stone-500 text-sm mb-2">Describe your own picture to remember this word:</p>
+          <p className="text-slate-400 text-sm mb-2">Describe your own picture to remember this word:</p>
 
           {/* Custom input */}
           <div className="mb-3">
@@ -1254,10 +1254,10 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
               value={newWordCustomMnemonic}
               onChange={(e) => setNewWordCustomMnemonic(e.target.value)}
               placeholder="e.g. A dog eating an apple..."
-              className="bg-white/60 border-stone-200 text-stone-800 text-sm resize-none h-16 w-full"
+              className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500 text-sm resize-none h-16 w-full"
             />
             {generatingImage && (
-              <div className="flex items-center justify-center gap-2 mt-2 text-white/60 text-sm">
+              <div className="flex items-center justify-center gap-2 mt-2 text-slate-400 text-sm">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Generating picture...
               </div>
@@ -1282,7 +1282,7 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
                     toast.success("Image saved! ✓");
                   }}
                   className={`absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center ${
-                    imageApproved ? "bg-green-500" : "bg-white/20 hover:bg-white/30"
+                    imageApproved ? "bg-teal-500" : "bg-white/20 hover:bg-white/30"
                   }`}
                 >
                   <Check className={`w-4 h-4 ${imageApproved ? "text-white" : "text-white/60"}`} />
@@ -1292,7 +1292,7 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
           )}
 
           {/* Rating - After picture */}
-          <p className="text-stone-500 text-sm mb-2 text-center">How well do you know this word?</p>
+          <p className="text-slate-400 text-sm mb-2 text-center">How well do you know this word?</p>
           <div className="flex gap-2 justify-center mb-4">
             {[{ value: 1, label: "1" }, { value: 2, label: "2" }, { value: 3, label: "3" }, { value: 5, label: "M ⭐" }].map(({ value, label }) => (
               <motion.button
@@ -1301,8 +1301,8 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
                 whileTap={{ scale: 0.95 }}
                 onClick={() => handleNewWordRate(value)}
                 className={`w-12 h-12 rounded-xl font-bold ${
-                  value === 5 ? "bg-green-600 text-white"
-                  : "bg-stone-200 text-stone-700 hover:bg-stone-300"
+                  value === 5 ? "bg-teal-600 text-white"
+                  : "bg-slate-800 text-slate-200 hover:bg-slate-700"
                 }`}
               >
                 {label}
@@ -1311,7 +1311,7 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
           </div>
 
           {/* Next Word button */}
-          <Button onClick={finishNewWord} className="w-full bg-gradient-to-r from-green-500 to-emerald-500">
+          <Button onClick={finishNewWord} className="w-full bg-teal-500 text-white hover:bg-teal-400">
             Next Word →
           </Button>
         </DialogContent>
