@@ -29,12 +29,12 @@ function SentenceWords({ words, onAddToBackpack, showHebrew = true, showTranslit
     <div className="space-y-0.5 w-full">
       {/* Native-script line — RTL for Hebrew/Arabic, LTR for Latin scripts, centered */}
       {showHebrew && (
-        <p className="text-[11px] text-cyan-700 font-semibold text-center leading-snug" dir={nativeIsRTL ? "rtl" : "ltr"}>
+        <p className="text-[11px] text-teal-400 font-semibold text-center leading-snug" dir={nativeIsRTL ? "rtl" : "ltr"}>
           {words.map((w, i) => (
             <span
               key={i}
               onClick={(e) => handleWordClick(e, i)}
-              className={`cursor-pointer rounded px-0.5 transition-all ${activeIndex === i ? 'bg-cyan-100' : 'hover:bg-cyan-50'}`}
+              className={`cursor-pointer rounded px-0.5 transition-all ${activeIndex === i ? 'bg-teal-500/25' : 'hover:bg-teal-500/10'}`}
             >
               {w.hebrew || ''}
               {i < words.length - 1 ? ' ' : ''}
@@ -45,12 +45,12 @@ function SentenceWords({ words, onAddToBackpack, showHebrew = true, showTranslit
 
       {/* Transliteration line — only for languages that need it (Hebrew/Arabic); Latin words are already their own transliteration */}
       {showTransliteration && needsTransliteration(lang) && (
-        <p className="text-[10px] text-stone-500 text-center leading-snug flex flex-nowrap justify-center gap-x-0.5 overflow-hidden">
+        <p className="text-[10px] text-slate-400 text-center leading-snug flex flex-nowrap justify-center gap-x-0.5 overflow-hidden">
           {words.map((w, i) => (
             <span
               key={i}
               onClick={(e) => handleWordClick(e, i)}
-              className={`cursor-pointer rounded px-0.5 transition-all whitespace-nowrap ${activeIndex === i ? 'bg-cyan-100 text-cyan-700' : 'hover:bg-stone-100'}`}
+              className={`cursor-pointer rounded px-0.5 transition-all whitespace-nowrap ${activeIndex === i ? 'bg-teal-500/25 text-teal-300' : 'hover:bg-slate-800'}`}
             >
               {w.word || ''}
             </span>
@@ -61,14 +61,14 @@ function SentenceWords({ words, onAddToBackpack, showHebrew = true, showTranslit
       {/* Active word action popup — one tap to add */}
       {activeIndex !== null && (
         <div className="flex items-center justify-center gap-1 py-1">
-          <span className="flex items-center gap-2 bg-cyan-50 border border-cyan-200 rounded-lg px-2 py-1">
-            <span className="text-[11px] font-semibold text-cyan-700">{words[activeIndex].word}</span>
-            {words[activeIndex].meaning && <span className="text-[10px] text-stone-500">= {words[activeIndex].meaning}</span>}
+          <span className="flex items-center gap-2 bg-teal-500/15 border border-teal-500/30 rounded-lg px-2 py-1">
+            <span className="text-[11px] font-semibold text-teal-300">{words[activeIndex].word}</span>
+            {words[activeIndex].meaning && <span className="text-[10px] text-slate-400">= {words[activeIndex].meaning}</span>}
             <button
               onClick={() => { onAddToBackpack(words[activeIndex].word, words[activeIndex].meaning, words[activeIndex].hebrew); setActiveIndex(null); }}
-              className="flex items-center gap-0.5 bg-green-500 text-white rounded px-1.5 py-0.5 text-[10px] font-bold hover:bg-green-600"
+              className="flex items-center gap-0.5 bg-teal-500 text-white rounded px-1.5 py-0.5 text-[10px] font-bold hover:bg-teal-400"
             ><Plus className="w-3 h-3" /> Add</button>
-            <button onClick={() => setActiveIndex(null)} className="text-stone-300 hover:text-stone-500"><X className="w-3 h-3" /></button>
+            <button onClick={() => setActiveIndex(null)} className="text-slate-500 hover:text-slate-300"><X className="w-3 h-3" /></button>
           </span>
         </div>
       )}
@@ -191,31 +191,31 @@ export default function WordCard({
       key={word.id}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="bg-white/70 border border-stone-200 rounded-lg overflow-hidden w-48 flex flex-col"
+      className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden w-48 flex flex-col"
     >
       {/* Source content label — top of card */}
       {word.example_sentence && (
-        <div className="px-2 py-1 flex items-center justify-center border-b border-stone-100 bg-stone-50">
-          <span className="text-[10px] text-stone-400 italic truncate">
+        <div className="px-2 py-1 flex items-center justify-center border-b border-slate-800 bg-slate-800">
+          <span className="text-[10px] text-slate-400 italic truncate">
             📺 {sessionTitleMap[word.example_sentence] || word.example_sentence}
           </span>
         </div>
       )}
 
       {word.approved && (
-        <div className="flex items-center gap-1 px-2 py-0.5 bg-green-100 border-b border-green-200">
-          <span className="text-green-600 text-[10px] font-semibold">✅ Approved card</span>
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-green-500/15 border-b border-green-500/30">
+          <span className="text-green-400 text-[10px] font-semibold">✅ Approved card</span>
         </div>
       )}
       {word._shared && (
-        <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 border-b border-blue-200">
-          <span className="text-blue-600 text-[10px] font-semibold">⭐ New — tap to rank</span>
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-teal-500/15 border-b border-teal-500/30">
+          <span className="text-teal-300 text-[10px] font-semibold">⭐ New — tap to rank</span>
         </div>
       )}
 
       {/* Large mnemonic image — always visible */}
       <div
-        className="relative cursor-pointer select-none bg-stone-100 overflow-hidden"
+        className="relative cursor-pointer select-none bg-slate-800 overflow-hidden"
         style={{ height: '160px', minHeight: '160px' }}
         onClick={() => setRevealed(r => !r)}
       >
@@ -224,7 +224,7 @@ export default function WordCard({
           <button
             onClick={(e) => { e.stopPropagation(); if (onEnglishToggle) onEnglishToggle(); }}
             className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all leading-none border ${
-              showAllEnglish ? 'bg-stone-700 text-white border-stone-600' : 'bg-white/80 border-stone-200 text-stone-500 hover:bg-white hover:text-stone-700'
+              showAllEnglish ? 'bg-teal-500 text-white border-teal-400' : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-white'
             }`}
             title="Toggle English"
           >
@@ -236,7 +236,7 @@ export default function WordCard({
             <button
               onClick={(e) => { e.stopPropagation(); if (onHebrewToggle) onHebrewToggle(); }}
               className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all leading-none border ${
-                showHebrew ? 'bg-stone-700 text-white border-stone-600' : 'bg-white/80 border-stone-200 text-stone-500 hover:bg-white hover:text-stone-700'
+                showHebrew ? 'bg-teal-500 text-white border-teal-400' : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-white'
               }`}
               title={`Toggle ${languageLabel(lang)}`}
             >
@@ -252,19 +252,19 @@ export default function WordCard({
             onError={() => setImgFailed(true)}
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-cyan-400/10 via-purple-400/10 to-pink-400/10 flex flex-col items-center justify-center text-center px-4 gap-2">
+          <div className="w-full h-full bg-gradient-to-br from-teal-500/15 via-teal-400/5 to-slate-800 flex flex-col items-center justify-center text-center px-4 gap-2">
             {(isGeneratingImage || regeneratingImage) ? (
               <>
-                <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
-                <span className="text-[10px] text-stone-400">Generating image...</span>
+                <Loader2 className="w-6 h-6 animate-spin text-teal-400" />
+                <span className="text-[10px] text-slate-400">Generating image...</span>
               </>
             ) : (
               <>
-                <p className="text-cyan-600 font-bold text-xl" dir={nativeWordRTL ? "rtl" : "ltr"}>{word.word}</p>
-                <p className="text-stone-500 text-sm">{word.phonetic}</p>
+                <p className="text-teal-300 font-bold text-xl" dir={nativeWordRTL ? "rtl" : "ltr"}>{word.word}</p>
+                <p className="text-slate-400 text-sm">{word.phonetic}</p>
                 <button
                   onClick={(e) => { e.stopPropagation(); setImgFailed(false); suggestMnemonicForWord(word); }}
-                  className="text-[9px] text-purple-400 underline mt-1"
+                  className="text-[9px] text-teal-400 underline mt-1"
                 >
                   🎨 Regenerate
                 </button>
@@ -278,37 +278,37 @@ export default function WordCard({
       {/* Word info — click to toggle English reveal */}
       <div className="p-3 flex-1 flex flex-col gap-0.5 cursor-pointer select-none" onClick={() => setRevealed(r => !r)}>
         {showHebrew && (
-          <p className="text-cyan-600 font-bold text-base text-center" dir={nativeWordRTL ? "rtl" : "ltr"}>
+          <p className="text-teal-300 font-bold text-base text-center" dir={nativeWordRTL ? "rtl" : "ltr"}>
             <EditableWord
               text={word.word}
               language={nativeWordRTL ? "he" : "en"}
               editable={isContentEditable(word)}
               onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { word: v } })}
-              className="text-cyan-600 font-bold text-base"
+              className="text-teal-300 font-bold text-base"
               onClick={(e) => e.stopPropagation()}
             />
           </p>
         )}
 
         {showTransliteration && (
-          <p className="text-stone-500 text-sm text-center">
+          <p className="text-slate-400 text-sm text-center">
             <EditableWord
               text={word.phonetic || word.word}
               editable={isContentEditable(word)}
               onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { phonetic: v } })}
-              className="text-stone-500 text-sm"
+              className="text-slate-400 text-sm"
               onClick={(e) => e.stopPropagation()}
             />
           </p>
         )}
 
         {showingEnglish && (
-          <p className="text-stone-700 font-semibold text-base text-center">
+          <p className="text-white font-semibold text-base text-center">
             <EditableWord
               text={word.translation || "(no translation)"}
               editable={isContentEditable(word)}
               onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { translation: v } })}
-              className="text-stone-700 font-semibold text-base"
+              className="text-white font-semibold text-base"
               onClick={(e) => e.stopPropagation()}
             />
           </p>
@@ -317,8 +317,8 @@ export default function WordCard({
 
       {/* Mnemonic explanation below image */}
       {(mnemonicExplanations[word.id] || word.mnemonic_explanation) && (
-        <div className="px-3 py-1.5 bg-purple-50 border-t border-purple-100">
-          <p className="text-[10px] text-purple-600 italic text-center leading-snug">
+        <div className="px-3 py-1.5 bg-teal-500/10 border-t border-teal-500/20">
+          <p className="text-[10px] text-teal-300 italic text-center leading-snug">
             💡 {mnemonicExplanations[word.id] || word.mnemonic_explanation}
           </p>
         </div>
@@ -334,14 +334,14 @@ export default function WordCard({
             onChange={e => setCustomDesc(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') generateCustomMnemonic(); if (e.key === 'Escape') setShowCustomMnemonic(false); }}
             placeholder="Describe a scene..."
-            className="flex-1 text-[10px] px-2 py-1 rounded border border-purple-200 bg-purple-50 text-stone-700 outline-none min-w-0"
+            className="flex-1 text-[10px] px-2 py-1 rounded border border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 outline-none focus:border-teal-500 min-w-0"
           />
           <button
             onClick={generateCustomMnemonic}
             disabled={!customDesc.trim()}
-            className="px-1.5 py-1 bg-purple-500 text-white rounded text-[9px] font-bold hover:bg-purple-600 disabled:opacity-40 flex-shrink-0"
+            className="px-1.5 py-1 bg-teal-500 text-white rounded text-[9px] font-bold hover:bg-teal-400 disabled:opacity-40 flex-shrink-0"
           >✓</button>
-          <button onClick={() => setShowCustomMnemonic(false)} className="text-stone-300 hover:text-stone-500 flex-shrink-0"><X className="w-3 h-3" /></button>
+          <button onClick={() => setShowCustomMnemonic(false)} className="text-slate-500 hover:text-slate-300 flex-shrink-0"><X className="w-3 h-3" /></button>
         </div>
       ) : null}
 
@@ -349,10 +349,10 @@ export default function WordCard({
 
       {/* Verb infinitive badge */}
       {(word.is_verb || /^l/i.test(word.phonetic || '')) && (
-        <div className="px-3 py-1 bg-purple-50 border-b border-purple-100 flex items-center gap-1">
-          <span className="text-[10px] text-purple-500 font-semibold">verb</span>
-          <span className="text-[10px] text-stone-400 mx-1">·</span>
-          <span className="text-[10px] text-purple-600 font-medium">∞ {word.word || word.phonetic}</span>
+        <div className="px-3 py-1 bg-teal-500/10 border-b border-teal-500/20 flex items-center gap-1">
+          <span className="text-[10px] text-teal-300 font-semibold">verb</span>
+          <span className="text-[10px] text-slate-500 mx-1">·</span>
+          <span className="text-[10px] text-teal-300 font-medium">∞ {word.word || word.phonetic}</span>
         </div>
       )}
 
@@ -360,11 +360,11 @@ export default function WordCard({
 
       {/* Example sentence */}
       <div className="px-2 pb-2" onClick={e => e.stopPropagation()}>
-        <div className="bg-stone-50 rounded-lg p-2 border border-stone-100 min-h-[52px] flex flex-col justify-center gap-0.5">
+        <div className="bg-slate-800 rounded-lg p-2 border border-slate-700 min-h-[52px] flex flex-col justify-center gap-0.5">
           {generatingSentence[word.id] ? (
             <div className="flex items-center justify-center gap-1 py-1">
-              <Loader2 className="w-3 h-3 animate-spin text-stone-300" />
-              <span className="text-[10px] text-stone-300">generating...</span>
+              <Loader2 className="w-3 h-3 animate-spin text-slate-500" />
+              <span className="text-[10px] text-slate-500">generating...</span>
             </div>
           ) : cardSentences[word.id] ? (
             <>
@@ -378,10 +378,10 @@ export default function WordCard({
               />
               {/* English + refresh */}
               <div className="flex items-center justify-between gap-1 mt-0.5">
-                <p className="text-[10px] text-stone-400 italic flex-1 text-center">{cardSentences[word.id].english}</p>
+                <p className="text-[10px] text-slate-400 italic flex-1 text-center">{cardSentences[word.id].english}</p>
                 <button
                   onClick={() => generateCardSentence(word)}
-                  className="text-stone-300 hover:text-stone-500 flex-shrink-0 p-0.5 rounded hover:bg-stone-100 transition-all"
+                  className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-0.5 rounded hover:bg-slate-700 transition-all"
                   title="Regenerate sentence"
                 >
                   <RefreshCw className="w-3 h-3" />
@@ -407,8 +407,8 @@ export default function WordCard({
               )}
               className={`flex-1 h-6 rounded text-xs font-bold transition-all ${
                 word.times_practiced === value || (value === 3 && word.times_practiced === 4)
-                  ? value === 5 ? 'bg-green-600 text-white' : 'bg-stone-600 text-white'
-                  : 'bg-stone-100 text-stone-400 hover:bg-stone-200'
+                  ? value === 5 ? 'bg-green-500 text-white' : 'bg-teal-500 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
             >
               {label}
@@ -418,14 +418,14 @@ export default function WordCard({
         <button
           onClick={() => suggestMnemonicForWord(word)}
           disabled={suggestingMnemonic === word.id}
-          className="w-6 h-6 rounded flex items-center justify-center text-sm hover:bg-purple-500/20 transition-all"
+          className="w-6 h-6 rounded flex items-center justify-center text-sm hover:bg-teal-500/20 transition-all"
           title="Generate mnemonic image"
         >
-          {suggestingMnemonic === word.id ? <Loader2 className="w-3 h-3 animate-spin text-purple-500" /> : '🎨'}
+          {suggestingMnemonic === word.id ? <Loader2 className="w-3 h-3 animate-spin text-teal-400" /> : '🎨'}
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); setShowCustomMnemonic(v => !v); setCustomDesc(""); }}
-          className={`w-6 h-6 rounded flex items-center justify-center transition-all ${showCustomMnemonic ? 'bg-purple-200 text-purple-700' : 'hover:bg-purple-500/20 text-stone-400'}`}
+          className={`w-6 h-6 rounded flex items-center justify-center transition-all ${showCustomMnemonic ? 'bg-teal-500/20 text-teal-300' : 'hover:bg-teal-500/20 text-slate-400'}`}
           title="Design your own mnemonic"
         >
           <Pencil className="w-3 h-3" />
@@ -435,7 +435,7 @@ export default function WordCard({
             onClick={() => approveWordMutation.mutate({ id: word.id, approved: !word.approved })}
             disabled={approveWordMutation.isPending}
             className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold transition-all ${
-              word.approved ? 'bg-green-500/30 hover:bg-red-500/20 text-green-700' : 'bg-stone-100 hover:bg-green-500/20 text-stone-400'
+              word.approved ? 'bg-green-500/25 hover:bg-red-500/20 text-green-400' : 'bg-slate-800 hover:bg-green-500/20 text-slate-400'
             }`}
             title={word.approved ? "Unapprove card" : "Approve card for all users"}
           >

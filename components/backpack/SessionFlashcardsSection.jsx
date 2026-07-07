@@ -150,7 +150,7 @@ export default function SessionFlashcardsSection({ userProfile, onSessionSelect 
 
   return (
     <div className="mb-6">
-      <h2 className="text-base font-semibold mb-3" style={{ color: '#3d4a2e', fontFamily: 'Jost, sans-serif' }}>
+      <h2 className="text-base font-semibold mb-3" style={{ color: '#ffffff', fontFamily: 'Jost, sans-serif' }}>
         📖 Session Words
       </h2>
       <div className="grid grid-cols-4 gap-3">
@@ -159,27 +159,27 @@ export default function SessionFlashcardsSection({ userProfile, onSessionSelect 
           const isLoading = loadingSession[day.id];
 
           return (
-            <div key={day.id} className="bg-white/60 border border-stone-200 rounded-xl overflow-hidden flex flex-col">
+            <div key={day.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col">
               {/* Header */}
               <button
                 onClick={() => handleToggleSession(day)}
-                className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/80 transition-all"
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-800 transition-all"
               >
                 <div className="flex items-center gap-2">
                   <span className="text-base">📚</span>
-                  <span className="font-semibold text-sm" style={{ color: '#3d4a2e' }}>
+                  <span className="font-semibold text-sm" style={{ color: '#ffffff' }}>
                     Session {day.day_number} Words
                   </span>
                 </div>
                 <ChevronRight
                   className="w-4 h-4 transition-transform"
-                  style={{ color: '#6b7c5a', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                  style={{ color: '#94a3b8', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
                 />
               </button>
 
               {/* Expanded content — words are pushed to the parent via useEffect once loaded */}
               {isExpanded && isLoading && (
-                <div className="border-t border-stone-100 mt-2 pt-3 flex items-center justify-center text-stone-400">
+                <div className="border-t border-slate-800 mt-2 pt-3 flex items-center justify-center text-slate-400">
                   <Loader2 className="w-4 h-4 animate-spin" />
                 </div>
               )}
@@ -197,15 +197,15 @@ export default function SessionFlashcardsSection({ userProfile, onSessionSelect 
             }));
             navigate(createPageUrl('Library') + '?flashcard=all');
           }}
-          className="bg-white/60 border border-stone-200 rounded-xl overflow-hidden flex items-center justify-between px-4 py-3 hover:bg-white/80 transition-all"
+          className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex items-center justify-between px-4 py-3 hover:bg-slate-800 transition-all"
         >
           <div className="flex items-center gap-2">
             <span className="text-base">⭐</span>
-            <span className="font-semibold text-sm" style={{ color: '#3d4a2e' }}>
+            <span className="font-semibold text-sm" style={{ color: '#ffffff' }}>
               All Words
             </span>
           </div>
-          <ChevronRight className="w-4 h-4" style={{ color: '#6b7c5a' }} />
+          <ChevronRight className="w-4 h-4" style={{ color: '#94a3b8' }} />
         </button>
       </div>
     </div>

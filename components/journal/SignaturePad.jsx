@@ -13,8 +13,8 @@ export default function SignaturePad({ value, onChange, disabled }) {
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -99,14 +99,14 @@ export default function SignaturePad({ value, onChange, disabled }) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <p className="text-slate-700 text-[10px] font-medium">Sign:</p>
+        <p className="text-slate-400 text-[10px] font-medium">Sign:</p>
         <Button
           type="button"
           onClick={clear}
           disabled={disabled}
           variant="outline"
           size="sm"
-          className="border-slate-300 text-slate-600 hover:bg-slate-50 h-5 text-[10px] px-2"
+          className="border-slate-700 text-slate-300 hover:bg-slate-800 h-5 text-[10px] px-2"
         >
           Clear
         </Button>
@@ -122,8 +122,8 @@ export default function SignaturePad({ value, onChange, disabled }) {
         onTouchStart={disabled ? null : startDrawing}
         onTouchMove={disabled ? null : draw}
         onTouchEnd={disabled ? null : stopDrawing}
-        className={`border-2 border-dashed rounded-lg bg-white w-full ${
-          disabled ? 'opacity-50 cursor-not-allowed border-slate-200' : 'border-slate-300'
+        className={`border-2 border-dashed rounded-lg bg-slate-800 w-full ${
+          disabled ? 'opacity-50 cursor-not-allowed border-slate-700' : 'border-slate-600'
         }`}
         style={{
           touchAction: 'none',

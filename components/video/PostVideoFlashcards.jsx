@@ -238,27 +238,27 @@ Return JSON only:
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center px-4 py-6 overflow-y-auto"
-      style={{ background: 'linear-gradient(160deg, #f0ece4 0%, #e8e4d8 100%)' }}>
+      style={{ background: 'linear-gradient(160deg, #020617 0%, #0f172a 100%)' }}>
 
 
 
       {/* Confirm leave dialog */}
       {confirmLeave && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
-          <div className="bg-white border border-stone-200 rounded-2xl p-6 max-w-sm w-full mx-4 text-center space-y-4 shadow-2xl">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-sm w-full mx-4 text-center space-y-4 shadow-2xl">
             <div className="text-4xl">⏸️</div>
-            <h3 className="text-stone-800 font-bold text-lg">Leave this session?</h3>
-            <p className="text-stone-500 text-sm">Your progress so far will be saved.</p>
+            <h3 className="text-white font-bold text-lg">Leave this session?</h3>
+            <p className="text-slate-400 text-sm">Your progress so far will be saved.</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmLeave(false)}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm bg-stone-100 text-stone-600 hover:bg-stone-200"
+                className="flex-1 py-3 rounded-xl font-semibold text-sm bg-slate-800 text-slate-200 hover:bg-slate-700"
               >
                 Keep Going
               </button>
               <button
                 onClick={onClose}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm bg-red-50 text-red-500 border border-red-200 hover:bg-red-100"
+                className="flex-1 py-3 rounded-xl font-semibold text-sm bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20"
               >
                 Leave
               </button>
@@ -280,19 +280,19 @@ Return JSON only:
           >
             {/* Progress */}
             <div className="flex items-center gap-3">
-              <div className="flex-1 h-2 bg-stone-200 rounded-full overflow-hidden">
+              <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-cyan-400 rounded-full transition-all"
+                  className="h-full bg-teal-500 rounded-full transition-all"
                   style={{ width: `${(cardIdx / words.length) * 100}%` }}
                 />
               </div>
-              <span className="text-stone-400 text-xs">{cardIdx + 1} / {words.length}</span>
+              <span className="text-slate-400 text-xs">{cardIdx + 1} / {words.length}</span>
             </div>
 
             {/* Card */}
             <div
               className="w-full rounded-3xl overflow-hidden select-none shadow-lg"
-              style={{ background: '#ffffff', border: '1px solid #e5e7eb' }}
+              style={{ background: '#0f172a', border: '1px solid #1e293b' }}
             >
               {/* Top-right controls: Hebrew/translit toggle + pause */}
               <div className="flex justify-between items-center px-3 pt-3">
@@ -301,7 +301,7 @@ Return JSON only:
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowHebrew(v => !v); }}
                     className={`px-2 py-1 rounded-lg text-xs font-bold transition-all border ${
-                      showHebrew ? 'bg-cyan-50 border-cyan-200 text-cyan-600' : 'bg-stone-50 border-stone-200 text-stone-400'
+                      showHebrew ? 'bg-teal-500/15 border-teal-500/30 text-teal-300' : 'bg-slate-800 border-slate-700 text-slate-400'
                     }`}
                     title={showHebrew ? "Switch to transliteration" : `Switch to ${langLabel}`}
                   >
@@ -309,7 +309,7 @@ Return JSON only:
                   </button>
                   <button
                     onClick={() => setConfirmLeave(true)}
-                    className="text-stone-300 hover:text-stone-600 transition-colors p-1.5 rounded-full hover:bg-stone-100"
+                    className="text-slate-500 hover:text-slate-300 transition-colors p-1.5 rounded-full hover:bg-slate-800"
                     title="Exit session"
                   >
                     <Pause className="w-4 h-4" />
@@ -319,40 +319,40 @@ Return JSON only:
 
               {/* Approved badge - always shown at top if approved */}
               {(approvedState[currentWord.id] !== undefined ? approvedState[currentWord.id] : currentWord.approved) && (
-                <div className="flex items-center justify-center gap-1 px-4 py-2 bg-green-50 border-b border-green-100">
-                  <span className="text-green-600 text-sm font-bold">✅ Approved card</span>
+                <div className="flex items-center justify-center gap-1 px-4 py-2 bg-green-500/10 border-b border-green-500/20">
+                  <span className="text-green-400 text-sm font-bold">✅ Approved card</span>
                 </div>
               )}
 
               {/* Mnemonic image — white bg, contain */}
-              <div className="w-full flex items-center justify-center bg-white" style={{ minHeight: 200 }}>
+              <div className="w-full flex items-center justify-center bg-slate-800" style={{ minHeight: 200 }}>
                 {currentMnemonic?.loading ? (
                   <div className="flex flex-col items-center gap-2 py-12">
-                    <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
-                    <p className="text-stone-400 text-xs">Generating mnemonic...</p>
+                    <Loader2 className="w-8 h-8 text-teal-400 animate-spin" />
+                    <p className="text-slate-400 text-xs">Generating mnemonic...</p>
                   </div>
                 ) : currentMnemonic?.image_url ? (
                   <img
                     src={currentMnemonic.image_url}
                     alt="mnemonic"
                     className="w-full"
-                    style={{ objectFit: 'contain', maxHeight: 260, background: 'white' }}
+                    style={{ objectFit: 'contain', maxHeight: 260, background: '#1e293b' }}
                   />
                 ) : (
-                  <div className="py-12 text-stone-300 text-sm">No image yet</div>
+                  <div className="py-12 text-slate-500 text-sm">No image yet</div>
                 )}
               </div>
 
               {/* Mnemonic explanation — always shown */}
-              <div className="px-5 py-2 bg-purple-50 border-t border-purple-100" style={{ minHeight: 36 }}>
+              <div className="px-5 py-2 bg-teal-500/10 border-t border-teal-500/20" style={{ minHeight: 36 }}>
                 {/* Always show the AI explanation if present */}
                 {currentMnemonic?.explanation && (
                   <div className="flex items-center gap-2">
-                    <p className="text-purple-600 text-xs italic flex-1 truncate">💡 {currentMnemonic.explanation}</p>
+                    <p className="text-teal-300 text-xs italic flex-1 truncate">💡 {currentMnemonic.explanation}</p>
                     {!customMnemonicInput && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setCustomMnemonicInput(currentKey); setCustomMnemonicText(currentMnemonic.customExplanation || ""); }}
-                        className="flex-shrink-0 w-7 h-7 rounded-full bg-purple-100 hover:bg-purple-200 flex items-center justify-center text-base transition-all"
+                        className="flex-shrink-0 w-7 h-7 rounded-full bg-teal-500/15 hover:bg-teal-500/25 flex items-center justify-center text-base transition-all"
                         title="Write your own mnemonic"
                       >✏️</button>
                     )}
@@ -361,11 +361,11 @@ Return JSON only:
                 {!currentMnemonic?.explanation && !currentMnemonic?.loading && !customMnemonicInput && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setCustomMnemonicInput(currentKey); setCustomMnemonicText(""); }}
-                    className="w-full text-xs text-purple-400 hover:text-purple-600 text-center"
+                    className="w-full text-xs text-teal-400 hover:text-teal-300 text-center"
                   >✏️ Write your own mnemonic</button>
                 )}
                 {currentMnemonic?.loading && !currentMnemonic?.explanation && (
-                  <p className="text-purple-300 text-xs text-center italic">Crafting mnemonic...</p>
+                  <p className="text-teal-400 text-xs text-center italic">Crafting mnemonic...</p>
                 )}
 
                 {/* Custom mnemonic inline input */}
@@ -377,7 +377,7 @@ Return JSON only:
                         value={customMnemonicText}
                         onChange={e => setCustomMnemonicText(e.target.value)}
                         placeholder="Your own memory trick..."
-                        className="flex-1 text-xs px-2 py-1 rounded-lg border border-purple-200 bg-white text-stone-700 outline-none focus:border-purple-400"
+                        className="flex-1 text-xs px-2 py-1 rounded-lg border border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 outline-none focus:border-teal-500"
                         onKeyDown={async e => {
                           if (e.key === 'Escape') { setCustomMnemonicInput(null); return; }
                           if (e.key === 'Enter' && customMnemonicText.trim()) {
@@ -406,9 +406,9 @@ Return JSON only:
                           }
                           setCustomMnemonicInput(null);
                         }}
-                        className="text-xs px-2 py-1 rounded-lg bg-purple-500 text-white font-semibold hover:bg-purple-600"
+                        className="text-xs px-2 py-1 rounded-lg bg-teal-500 text-white font-semibold hover:bg-teal-400"
                       >Save</button>
-                      <button onClick={() => setCustomMnemonicInput(null)} className="text-xs text-stone-400 hover:text-stone-600 px-1">✕</button>
+                      <button onClick={() => setCustomMnemonicInput(null)} className="text-xs text-slate-400 hover:text-slate-200 px-1">✕</button>
                     </div>
                     {/* Generate new image from custom text */}
                     <button
@@ -430,7 +430,7 @@ Return JSON only:
                         }
                       }}
                       disabled={!customMnemonicText.trim()}
-                      className="w-full text-xs py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-700 font-semibold transition-all disabled:opacity-40"
+                      className="w-full text-xs py-1 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 font-semibold transition-all disabled:opacity-40"
                     >
                       🎨 Save & Generate New Image
                     </button>
@@ -440,7 +440,7 @@ Return JSON only:
                 {/* Show custom override if set */}
                 {!customMnemonicInput && currentMnemonic?.customExplanation && (
                   <div className="flex items-center gap-1 justify-center mt-1">
-                    <p className="text-emerald-600 text-xs text-center italic flex-1 truncate">🌟 {currentMnemonic.customExplanation}</p>
+                    <p className="text-teal-300 text-xs text-center italic flex-1 truncate">🌟 {currentMnemonic.customExplanation}</p>
                     <button onClick={e => { e.stopPropagation(); setCustomMnemonicInput(currentKey); setCustomMnemonicText(currentMnemonic.customExplanation); }} className="text-sm hover:scale-110 transition-transform flex-shrink-0">✏️</button>
                   </div>
                 )}
@@ -449,14 +449,14 @@ Return JSON only:
               {/* Word info */}
               <div className="flex flex-col items-center px-6 pt-4 pb-2 gap-1" onClick={() => !flipped && setFlipped(true)}>
                 {/* English always shown */}
-                <p className="text-stone-700 font-bold text-2xl">{currentWord.translation}</p>
+                <p className="text-white font-bold text-2xl">{currentWord.translation}</p>
 
                 {/* Phonetic + Hebrew: revealed on flip, hidden if Hebrew toggle OFF */}
                 {flipped && !showHebrew && (
                   <>
-                    <p className="text-cyan-500 font-bold text-xl">{currentWord.phonetic}</p>
+                    <p className="text-teal-400 font-bold text-xl">{currentWord.phonetic}</p>
                     {currentWord.word && (
-                      <p className="text-cyan-700 font-bold text-lg" dir={isRTLText(currentWord.word) ? "rtl" : "ltr"} style={{ fontFamily: 'serif' }}>
+                      <p className="text-teal-300 font-bold text-lg" dir={isRTLText(currentWord.word) ? "rtl" : "ltr"} style={{ fontFamily: 'serif' }}>
                         {currentWord.word}
                       </p>
                     )}
@@ -465,7 +465,7 @@ Return JSON only:
 
                 {/* Tap hint */}
                 {!flipped && (
-                  <p className="text-stone-300 text-xs mt-2">tap to reveal the word</p>
+                  <p className="text-slate-500 text-xs mt-2">tap to reveal the word</p>
                 )}
 
                 <AnimatePresence>
@@ -492,7 +492,7 @@ Return JSON only:
               </div>
 
               {/* Bottom action row inside card */}
-              <div className="flex items-center justify-between px-4 py-3 border-t border-stone-100">
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800">
                 <div className="flex gap-1.5 items-center">
                   {/* Regenerate mnemonic */}
                   <button
@@ -503,7 +503,7 @@ Return JSON only:
                       generateMnemonic(currentWord);
                     }}
                     disabled={currentMnemonic?.loading}
-                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-stone-400 hover:text-purple-500 hover:bg-purple-50 transition-all"
+                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-teal-300 hover:bg-slate-800 transition-all"
                     title="New mnemonic"
                   >
                     {currentMnemonic?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : '🎨'}
@@ -513,7 +513,7 @@ Return JSON only:
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowEnglish(v => !v); }}
                     className={`px-2 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
-                      showEnglish ? 'bg-green-50 border-green-200 text-green-600' : 'bg-white border-stone-200 text-stone-300'
+                      showEnglish ? 'bg-teal-500/15 border-teal-500/30 text-teal-300' : 'bg-slate-800 border-slate-700 text-slate-400'
                     }`}
                     title="Toggle English"
                   >
@@ -526,8 +526,8 @@ Return JSON only:
                       onClick={(e) => { e.stopPropagation(); handleApprove(currentWord); }}
                       className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all border ${
                         (approvedState[currentWord.id] !== undefined ? approvedState[currentWord.id] : currentWord.approved)
-                          ? 'bg-green-100 border-green-200 text-green-600'
-                          : 'bg-white border-stone-200 text-stone-300 hover:text-green-500 hover:bg-green-50'
+                          ? 'bg-green-500/15 border-green-500/30 text-green-400'
+                          : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-green-400 hover:bg-green-500/10'
                       }`}
                       title={(approvedState[currentWord.id] !== undefined ? approvedState[currentWord.id] : currentWord.approved) ? "Click to disapprove" : "Approve card"}
                     >
@@ -538,7 +538,7 @@ Return JSON only:
 
                 <button
                   onClick={(e) => { e.stopPropagation(); handleSkip(); }}
-                  className="text-stone-300 text-xs hover:text-stone-500 transition-colors"
+                  className="text-slate-500 text-xs hover:text-slate-300 transition-colors"
                 >
                   Skip →
                 </button>
@@ -555,14 +555,14 @@ Return JSON only:
             className="max-w-md w-full text-center space-y-5"
           >
             <div className="text-6xl">🎒</div>
-            <h2 className="text-stone-800 text-2xl font-bold">Session Complete!</h2>
-            <p className="text-stone-500">
-              You reviewed <span className="text-cyan-500 font-bold">{words.length} words</span>.
+            <h2 className="text-white text-2xl font-bold">Session Complete!</h2>
+            <p className="text-slate-400">
+              You reviewed <span className="text-teal-400 font-bold">{words.length} words</span>.
             </p>
             <div className="grid grid-cols-2 gap-3 text-sm">
               {results.map((r, i) => (
-                <div key={i} className="bg-white rounded-xl p-3 flex justify-between items-center border border-stone-200 shadow-sm">
-                  <span className="text-stone-600">{r.word.phonetic}</span>
+                <div key={i} className="bg-slate-900 rounded-xl p-3 flex justify-between items-center border border-slate-800 shadow-sm">
+                  <span className="text-slate-300">{r.word.phonetic}</span>
                   <span className="font-bold" style={{ color: RATINGS.find(rt => rt.value === r.rating)?.color }}>
                     {r.rating === 5 ? "⭐ M" : `Lvl ${r.rating}`}
                   </span>
@@ -574,14 +574,14 @@ Return JSON only:
                 <button
                   onClick={onJournal}
                   className="w-full py-4 rounded-2xl text-white font-bold text-lg"
-                  style={{ background: 'linear-gradient(135deg, #5a6b5a, #3d4a2e)' }}
+                  style={{ background: 'linear-gradient(135deg, #14b8a6, #0d9488)' }}
                 >
                   📓 Write in Journal →
                 </button>
               )}
               <button
                 onClick={onClose}
-                className="w-full py-3 rounded-2xl font-semibold text-sm bg-white border border-stone-200 text-stone-500 hover:bg-stone-50"
+                className="w-full py-3 rounded-2xl font-semibold text-sm bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800"
               >
                 Done
               </button>

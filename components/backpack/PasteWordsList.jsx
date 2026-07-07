@@ -119,10 +119,10 @@ export default function PasteWordsList({ userProfile, onWordsAdded }) {
   };
 
   return (
-    <div className="mt-3 border-t border-stone-200 pt-3">
+    <div className="mt-3 border-t border-slate-800 pt-3">
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700 transition-colors"
+        className="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
       >
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         Paste a list of words
@@ -130,20 +130,20 @@ export default function PasteWordsList({ userProfile, onWordsAdded }) {
 
       {open && (
         <div className="mt-2 space-y-2">
-          <p className="text-[11px] text-stone-400">
+          <p className="text-[11px] text-slate-400">
             One word per line. Optionally add meaning: <em>shalom - hello</em>. Missing meanings are auto-filled.
           </p>
           <Textarea
             value={text}
             onChange={e => setText(e.target.value)}
             placeholder={"shalom\ntodah - thank you\nma nishma\nkelev - dog"}
-            className="bg-white/80 border-stone-300 text-stone-800 text-sm resize-none h-28"
+            className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 text-sm resize-none h-28 focus:border-teal-500 focus:outline-none"
           />
           <Button
             onClick={handleImport}
             disabled={loading || !text.trim()}
             size="sm"
-            style={{ background: '#5a6b5a', color: 'white' }}
+            style={{ background: '#14b8a6', color: 'white' }}
           >
             {loading ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> Importing...</> : "Add to New Cards"}
           </Button>
