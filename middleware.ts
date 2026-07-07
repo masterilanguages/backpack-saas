@@ -80,9 +80,13 @@ const ADMIN_PORTAL_PREFIXES = [
   "/leads",
   "/transactions",
   "/calendar",
-  "/settings",
   "/analytics",
 ];
+// NOTE: "/settings" is intentionally NOT gated to admins. The bare /settings page
+// is the STUDENT/personal settings (app/(student)/settings); the school-admin
+// settings live under /companies/[id]/settings (covered by "/companies"). Keeping
+// /settings admin-only bounced students to /media (LEARNING_HOME) when they opened
+// Settings, so it is left "shared" — reachable by any authenticated member.
 const LEARNING_PORTAL_PREFIXES = [
   "/u",
   "/learn",
