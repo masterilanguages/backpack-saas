@@ -702,8 +702,8 @@ export default function Home() {
             <div className="text-center">
               <h1 className="text-3xl font-bold tracking-tight text-white">
                 {(userProfile?.full_name || currentUser?.full_name)
-                  ? `¡Hola, ${String(userProfile?.full_name || currentUser?.full_name).split(' ')[0]}!`
-                  : '¡Hola!'}
+                  ? `Hi, ${String(userProfile?.full_name || currentUser?.full_name).split(' ')[0]}!`
+                  : 'Hi there!'}
               </h1>
               <p className="mt-1.5 text-sm text-slate-400">
                 Day {userProfile?.current_day || 1} of 100
