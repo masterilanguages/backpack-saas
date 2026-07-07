@@ -1533,55 +1533,56 @@ Return a JSON with a "videos" array. Each video must have:
 
   return (
     <>
-    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)' }}>
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white" style={{ fontFamily: 'Cormorant Garamond, Georgia, serif' }}>📚 Content Library</h1>
+    <div className="min-h-screen">
+      <div className="mx-auto w-full max-w-6xl pb-16">
+        <div className="mb-8 pt-1">
+          <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight text-white">
+            <span>📚</span> Content Library
+          </h1>
+          <p className="mt-1.5 text-sm text-slate-400">Browse and manage videos, songs and audio for language practice.</p>
         </div>
 
         {/* Unified filter bar */}
-        <div className="bg-white/10 rounded-2xl border border-white/20 p-4 mb-6">
+        <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
           <div className="flex flex-wrap items-center gap-3">
 
             {/* + Add New Content */}
             {canEdit && (
               <button
                 onClick={() => { resetForm(); setEditingVideo(null); setMediaType("video"); setShowAddDialog(true); }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all flex-shrink-0"
-                style={{ background: '#5a6b5a' }}
+                className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-400"
               >
-                <Plus className="w-4 h-4" /> Add New Content
+                <Plus className="h-4 w-4" /> Add New Content
               </button>
             )}
 
             {/* Language */}
-            <Select value={filterLanguage} onValueChange={setFilterLanguage}>
-              <SelectTrigger className="bg-white/10 border-white/20 text-white w-36">
-                <SelectValue placeholder="Language" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Languages</SelectItem>
-                <SelectItem value="hebrew">Hebrew</SelectItem>
-                <SelectItem value="english">English</SelectItem>
-                <SelectItem value="spanish">Spanish</SelectItem>
-                <SelectItem value="french">French</SelectItem>
-                <SelectItem value="portuguese">Portuguese</SelectItem>
-                <SelectItem value="italian">Italian</SelectItem>
-              </SelectContent>
-            </Select>
+            <select
+              value={filterLanguage}
+              onChange={(e) => setFilterLanguage(e.target.value)}
+              className="w-40 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+            >
+              <option value="all" className="bg-slate-800">All Languages</option>
+              <option value="hebrew" className="bg-slate-800">Hebrew</option>
+              <option value="english" className="bg-slate-800">English</option>
+              <option value="spanish" className="bg-slate-800">Spanish</option>
+              <option value="french" className="bg-slate-800">French</option>
+              <option value="portuguese" className="bg-slate-800">Portuguese</option>
+              <option value="italian" className="bg-slate-800">Italian</option>
+            </select>
 
             {/* Difficulty - multiselect */}
             <div className="relative group">
               <button
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-white/10 border border-white/20 text-white hover:border-white/40 transition-all"
+                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600"
               >
                 {filterDifficulty.length === 0 ? 'All Levels' : `${filterDifficulty.length} Level${filterDifficulty.length > 1 ? 's' : ''}`}
-                <ChevronDown className="w-3 h-3" />
+                <ChevronDown className="h-3 w-3 text-slate-400" />
               </button>
-              <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-lg border border-stone-200 z-20 min-w-[160px] py-1 hidden group-focus-within:block group-hover:block">
+              <div className="absolute top-full left-0 z-20 mt-1 hidden min-w-[160px] rounded-lg border border-slate-700 bg-slate-800 py-1 shadow-xl group-focus-within:block group-hover:block">
                 <button
                   onClick={() => setFilterDifficulty([])}
-                  className={`w-full text-left px-4 py-2 text-sm transition-all ${filterDifficulty.length === 0 ? 'font-semibold text-stone-800 bg-stone-100' : 'text-stone-600 hover:text-stone-800 hover:bg-stone-50'}`}
+                  className={`w-full px-4 py-2 text-left text-sm transition ${filterDifficulty.length === 0 ? 'bg-white/5 font-semibold text-teal-300' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}
                 >
                   All Levels
                 </button>
@@ -1591,9 +1592,9 @@ Return a JSON with a "videos" array. Each video must have:
                     onClick={() => setFilterDifficulty(prev =>
                       prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level]
                     )}
-                    className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-all hover:bg-stone-50 ${filterDifficulty.includes(level) ? 'bg-stone-100 font-semibold text-stone-800' : 'text-stone-600'}`}
+                    className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-white/5 ${filterDifficulty.includes(level) ? 'font-semibold text-teal-300' : 'text-slate-300'}`}
                   >
-                    <span className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center text-[9px] ${filterDifficulty.includes(level) ? 'bg-stone-700 border-stone-700 text-white' : 'border-stone-300'}`}>
+                    <span className={`flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded border text-[9px] ${filterDifficulty.includes(level) ? 'border-teal-500 bg-teal-500 text-white' : 'border-slate-600'}`}>
                       {filterDifficulty.includes(level) ? '✓' : ''}
                     </span>
                     {level}
@@ -1605,26 +1606,26 @@ Return a JSON with a "videos" array. Each video must have:
             {/* Topics multi-select */}
             <div className="relative group">
               <button
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-white/10 border border-white/20 text-white hover:border-white/40 transition-all"
+                className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600"
               >
                 {filterTopics.length === 0 ? 'All Topics' : `${filterTopics.length} Topic${filterTopics.length > 1 ? 's' : ''}`}
-                <ChevronDown className="w-3 h-3" />
+                <ChevronDown className="h-3 w-3 text-slate-400" />
               </button>
-              <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-lg border border-stone-200 z-20 min-w-[240px] py-1 hidden group-focus-within:block group-hover:block">
+              <div className="absolute top-full left-0 z-20 mt-1 hidden max-h-80 min-w-[240px] overflow-y-auto rounded-lg border border-slate-700 bg-slate-800 py-1 shadow-xl group-focus-within:block group-hover:block">
                 {/* Header row */}
-                <div className="flex items-center justify-between px-4 py-1.5 border-b border-stone-100">
+                <div className="flex items-center justify-between border-b border-slate-700 px-4 py-1.5">
                   <button
                     onClick={() => setFilterTopics([])}
-                    className={`text-sm transition-all ${filterTopics.length === 0 ? 'font-semibold text-stone-800' : 'text-stone-500 hover:text-stone-700'}`}
+                    className={`text-sm transition ${filterTopics.length === 0 ? 'font-semibold text-teal-300' : 'text-slate-400 hover:text-white'}`}
                   >
                     All Topics
                   </button>
                   {canEdit && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setEditingTopics(t => !t); setNewTopicInput(""); }}
-                      className="text-xs text-stone-400 hover:text-stone-700 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-stone-100 transition-all"
+                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-400 transition hover:bg-white/5 hover:text-white"
                     >
-                      <Pencil className="w-3 h-3" /> {editingTopics ? 'Done' : 'Edit'}
+                      <Pencil className="h-3 w-3" /> {editingTopics ? 'Done' : 'Edit'}
                     </button>
                   )}
                 </div>
@@ -1636,9 +1637,9 @@ Return a JSON with a "videos" array. Each video must have:
                       onClick={() => setFilterTopics(prev =>
                         prev.includes(topic) ? prev.filter(t => t !== topic) : [...prev, topic]
                       )}
-                      className={`flex-1 text-left px-4 py-2 text-sm flex items-center gap-2 transition-all hover:bg-stone-50 ${filterTopics.includes(topic) ? 'bg-stone-100 font-semibold text-stone-800' : 'text-stone-600'}`}
+                      className={`flex flex-1 items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-white/5 ${filterTopics.includes(topic) ? 'font-semibold text-teal-300' : 'text-slate-300'}`}
                     >
-                      <span className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center text-[9px] ${filterTopics.includes(topic) ? 'bg-stone-700 border-stone-700 text-white' : 'border-stone-300'}`}>
+                      <span className={`flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded border text-[9px] ${filterTopics.includes(topic) ? 'border-teal-500 bg-teal-500 text-white' : 'border-slate-600'}`}>
                         {filterTopics.includes(topic) ? '✓' : ''}
                       </span>
                       {topic}
@@ -1652,9 +1653,9 @@ Return a JSON with a "videos" array. Each video must have:
                           if (typeof window !== "undefined") localStorage.setItem("mediaLibraryTopics", JSON.stringify(updated));
                           setFilterTopics(prev => prev.filter(t => t !== topic));
                         }}
-                        className="pr-3 text-red-400 hover:text-red-600 transition-all opacity-0 group-hover/item:opacity-100"
+                        className="pr-3 text-red-400 opacity-0 transition hover:text-red-300 group-hover/item:opacity-100"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>
@@ -1662,7 +1663,7 @@ Return a JSON with a "videos" array. Each video must have:
 
                 {/* Add new topic */}
                 {editingTopics && (
-                  <div className="px-3 pt-2 pb-2 border-t border-stone-100 flex gap-1.5">
+                  <div className="flex gap-1.5 border-t border-slate-700 px-3 pb-2 pt-2">
                     <input
                       value={newTopicInput}
                       onChange={e => setNewTopicInput(e.target.value)}
@@ -1675,7 +1676,7 @@ Return a JSON with a "videos" array. Each video must have:
                         }
                       }}
                       placeholder="Add topic..."
-                      className="flex-1 text-xs px-2 py-1.5 rounded-lg border border-stone-300 outline-none focus:border-stone-500 text-stone-800"
+                      className="flex-1 rounded-lg border border-slate-600 bg-slate-700 px-2 py-1.5 text-xs text-white placeholder:text-slate-500 focus:border-teal-500 focus:outline-none"
                     />
                     <button
                       onClick={() => {
@@ -1685,9 +1686,9 @@ Return a JSON with a "videos" array. Each video must have:
                         if (typeof window !== "undefined") localStorage.setItem("mediaLibraryTopics", JSON.stringify(updated));
                         setNewTopicInput("");
                       }}
-                      className="px-2 py-1.5 rounded-lg bg-stone-700 text-white text-xs font-semibold hover:bg-stone-800 transition-all"
+                      className="rounded-lg bg-teal-500 px-2 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-400"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 )}
@@ -1782,61 +1783,63 @@ Return a JSON with a "videos" array. Each video must have:
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   onClick={() => handleVideoClick(video)}
-                  className="bg-white/10 rounded-2xl border border-white/20 overflow-hidden hover:border-white/40 transition-all cursor-pointer"
+                  className="group cursor-pointer overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 transition-all hover:border-teal-500/50 hover:shadow-lg hover:shadow-teal-500/5"
                 >
-                  <div className="w-full aspect-video bg-black">
+                  <div className="aspect-video w-full bg-black">
                     <img
                       src={getThumbnailUrl(video) || `https://i.ytimg.com/vi/${extractYouTubeId(video.video_url) || 'default'}/hqdefault.jpg`}
                       alt={video.title}
-                      className="w-full h-full object-contain"
+                      className="h-full w-full object-cover"
                       onError={(e: any) => { e.target.style.display = 'none'; }}
                     />
                   </div>
-                  <div className="p-3">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <h3 className="font-bold text-base flex-1 text-white">{video.title}</h3>
-                      <div className="flex gap-1 flex-shrink-0">
+                  <div className="p-3.5">
+                    <div className="mb-2.5 flex items-start justify-between gap-2">
+                      <h3 className="flex-1 text-sm font-semibold leading-snug text-white line-clamp-2">{video.title}</h3>
+                      <div className="flex flex-shrink-0 gap-0.5">
                         {canEdit && (
-                          <button onClick={(e) => { e.stopPropagation(); handleEdit(video); }} className="text-stone-400 hover:text-stone-700 transition-colors p-1">
-                            <Pencil className="w-4 h-4" />
+                          <button onClick={(e) => { e.stopPropagation(); handleEdit(video); }} className="rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white" aria-label="Edit">
+                            <Pencil className="h-4 w-4" />
                           </button>
                         )}
                         {canDelete && (
-                          <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this video from library?")) { deleteVideoMutation.mutate(video.id); } }} className="text-stone-400 hover:text-red-500 transition-colors p-1">
-                            <Trash2 className="w-4 h-4" />
+                          <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this video from library?")) { deleteVideoMutation.mutate(video.id); } }} className="rounded-md p-1.5 text-slate-400 transition hover:bg-red-500/15 hover:text-red-400" aria-label="Delete">
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         )}
                       </div>
                     </div>
-                    <div className="flex gap-2 mb-2 flex-wrap items-center">
-                      <span className="text-xs bg-cyan-500/15 text-cyan-700 px-2 py-0.5 rounded">{video.language}</span>
-                      <span className="text-xs bg-purple-500/15 text-purple-700 px-2 py-0.5 rounded">{video.difficulty_level}</span>
-                      {video.duration_minutes && <span className="text-xs bg-stone-200 text-stone-600 px-2 py-0.5 rounded">{video.duration_minutes} min</span>}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-md bg-teal-500/15 px-2 py-0.5 text-xs font-medium capitalize text-teal-300">{video.language}</span>
+                      {video.difficulty_level && <span className="rounded-md bg-slate-700 px-2 py-0.5 text-xs font-medium text-slate-300">{video.difficulty_level}</span>}
+                      {video.duration_minutes && <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-400">{video.duration_minutes} min</span>}
                     </div>
                     {canAssign && (
-                      <Select onValueChange={(userEmail) => {
-                        if (userEmail) {
-                          assignVideoMutation.mutate({ user_email: userEmail, media_library_id: video.id, assigned_by: currentUser.email, assigned_at: new Date().toISOString(), order: 0 });
-                        }
-                      }}>
-                        <SelectTrigger className="w-full bg-green-500/10 border-green-500/40 text-green-700 hover:bg-green-500/20 text-xs h-8">
-                          <Users className="w-3 h-3 mr-1" />
-                          <SelectValue placeholder="Assign to session..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {allUsers.map((user: any) => (
-                            <SelectItem key={user.id} value={user.email}>{user.full_name || user.email}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <select
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const userEmail = e.target.value;
+                          if (userEmail) {
+                            assignVideoMutation.mutate({ user_email: userEmail, media_library_id: video.id, assigned_by: currentUser.email, assigned_at: new Date().toISOString(), order: 0 });
+                            e.target.value = "";
+                          }
+                        }}
+                        defaultValue=""
+                        className="mt-3 h-8 w-full rounded-lg border border-teal-500/40 bg-teal-500/10 px-2 text-xs text-teal-300 focus:border-teal-500 focus:outline-none"
+                      >
+                        <option value="" disabled className="bg-slate-800 text-slate-300">Assign to session...</option>
+                        {allUsers.map((user: any) => (
+                          <option key={user.id} value={user.email} className="bg-slate-800 text-white">{user.full_name || user.email}</option>
+                        ))}
+                      </select>
                     )}
                   </div>
                 </motion.div>
               ))}
             </div>
             {filteredVideos.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-stone-400">No videos found. Try adjusting your filters or add media above.</p>
+              <div className="rounded-2xl border border-dashed border-slate-800 py-12 text-center">
+                <p className="text-slate-400">No videos found. Try adjusting your filters or add media above.</p>
               </div>
             )}
           </div>
@@ -1847,12 +1850,12 @@ Return a JSON with a "videos" array. Each video must have:
           <div className="mt-8">
             <button
               onClick={() => { setShowRecommended(!showRecommended); if (!showRecommended) fetchRecommendations(); }}
-              className="w-full bg-purple-600/40 hover:bg-purple-600/50 backdrop-blur-xl rounded-2xl border border-white/10 p-4 flex items-center justify-between transition-all mb-4"
+              className="mb-4 flex w-full items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 p-4 transition hover:border-slate-700 hover:bg-slate-800"
             >
-              <h2 className="text-xl font-bold text-white">
-                Recommended Videos {recommendations.length > 0 ? `(${recommendations.length})` : ''}
+              <h2 className="text-lg font-semibold text-white">
+                Recommended Videos {recommendations.length > 0 ? <span className="text-teal-400">({recommendations.length})</span> : ''}
               </h2>
-              <ChevronDown className={`w-6 h-6 text-white transition-transform ${showRecommended ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform ${showRecommended ? 'rotate-180' : ''}`} />
             </button>
             {showRecommended && (
               <motion.div
@@ -1862,9 +1865,9 @@ Return a JSON with a "videos" array. Each video must have:
                 className="space-y-4"
               >
                 {loadingRecommendations && (
-                  <div className="flex items-center justify-center py-8 gap-3">
-                    <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
-                    <p className="text-white/60">Finding recommendations from similar channels...</p>
+                  <div className="flex items-center justify-center gap-3 py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-teal-400" />
+                    <p className="text-slate-400">Finding recommendations from similar channels...</p>
                   </div>
                 )}
                 {recommendations.map((video: any, idx: number) => (
@@ -1872,33 +1875,32 @@ Return a JSON with a "videos" array. Each video must have:
                   key={idx}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden hover:border-purple-500/50 transition-all flex"
+                  className="flex overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 transition hover:border-teal-500/50"
                 >
                   <img
                     src={`https://img.youtube.com/vi/${video.youtube_id}/hqdefault.jpg`}
                     alt={video.title}
-                    className="w-48 h-32 object-cover flex-shrink-0 cursor-pointer"
+                    className="h-32 w-48 flex-shrink-0 cursor-pointer object-cover"
                     onClick={() => handleVideoClick({ video_id: video.youtube_id, video_url: `https://youtube.com/watch?v=${video.youtube_id}`, title: video.title })}
                   />
-                  <div className="p-4 flex-1">
-                    <h3 className="text-white font-bold text-base mb-0.5 cursor-pointer hover:text-purple-300" onClick={() => handleVideoClick({ video_id: video.youtube_id, video_url: `https://youtube.com/watch?v=${video.youtube_id}`, title: video.title })}>{video.title}</h3>
-                    <p className="text-purple-400 text-xs mb-1">{video.channel}</p>
-                    {video.description && <p className="text-white/50 text-sm mb-3">{video.description}</p>}
+                  <div className="flex-1 p-4">
+                    <h3 className="mb-0.5 cursor-pointer text-base font-semibold text-white transition hover:text-teal-300" onClick={() => handleVideoClick({ video_id: video.youtube_id, video_url: `https://youtube.com/watch?v=${video.youtube_id}`, title: video.title })}>{video.title}</h3>
+                    <p className="mb-1 text-xs text-teal-400">{video.channel}</p>
+                    {video.description && <p className="mb-3 text-sm text-slate-400">{video.description}</p>}
                     {canEdit && (
-                      <Button
+                      <button
                         onClick={() => addToLibraryMutation.mutate({ title: video.title, video_url: `https://youtube.com/watch?v=${video.youtube_id}`, youtube_video_id: video.youtube_id, tags: video.channel })}
-                        size="sm"
-                        className="bg-cyan-500/20 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/30"
+                        className="inline-flex items-center gap-1 rounded-lg border border-teal-500/40 bg-teal-500/15 px-3 py-1.5 text-xs font-medium text-teal-300 transition hover:bg-teal-500/25"
                       >
-                        <Plus className="w-4 h-4 mr-1" />
+                        <Plus className="h-4 w-4" />
                         Add to My Schedule
-                      </Button>
+                      </button>
                     )}
                   </div>
                 </motion.div>
                 ))}
                 {!loadingRecommendations && recommendations.length === 0 && (
-                  <p className="text-white/40 text-center py-4">No recommendations found. Try again.</p>
+                  <p className="py-4 text-center text-slate-500">No recommendations found. Try again.</p>
                 )}
               </motion.div>
             )}

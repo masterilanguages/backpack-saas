@@ -1,13 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Loader2, X, ChevronDown, Wand2 } from "lucide-react";
+import { Loader2, X, ChevronDown, Wand2, Plus } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 
@@ -17,7 +11,13 @@ const topics = [
   "Education / Learning", "Business / Career", "Personal Growth", "Relationships", "News / Current Events"
 ];
 
-const tagOptions = ['Learning', 'Hebrew', 'Beginner', 'Intermediate', 'Advanced', 'Grammar', 'Vocabulary', 'Conversation', 'Music', 'Stories', 'Culture', 'Daily Routine', 'Business', 'Travel', 'Food', 'Health'];
+const LANGUAGES = ["hebrew", "english", "spanish", "french", "portuguese", "italian"];
+const LEVELS = ["Beginner", "Intermediate", "Advanced", "All"];
+
+// Shared field styles — dark slate + teal focus, matching the student sidebar.
+const inputCls =
+  "w-full rounded-lg bg-slate-800 border border-slate-700 text-white text-sm px-3 py-2 placeholder:text-slate-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500/40 transition";
+const labelCls = "block text-sm font-medium text-slate-300 mb-1.5";
 
 export default function AddVideoDialog({ open, onOpenChange, editingVideo, formData, setFormData, mediaType, setMediaType, uploadingAudio, onSubmit, onCancel, onAudioUpload, onLoadYoutube, isPending, allUsers = [] }) {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -61,11 +61,25 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
     }));
   };
 
+  // Close the user multiselect when clicking outside it.
   useEffect(() => {
     const handler = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setUserDropdownOpen(false); };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  // Close the whole modal on Escape, and lock body scroll while open.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onCancel?.(); };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onCancel]);
 
   const toggleTopic = (topic) => {
     setFormData(prev => ({
@@ -74,73 +88,119 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
     }));
   };
 
-  const toggleTag = (tag, checked) => {
-    let tagsList = formData.tags.split(',').map(t => t.trim()).filter(Boolean);
-    if (checked) { tagsList.push(tag); } else { tagsList = tagsList.filter(t => t !== tag); }
-    setFormData(prev => ({ ...prev, tags: tagsList.join(', ') }));
-  };
+  if (!open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-900 border-white/20 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{editingVideo ? "Edit Media" : "Add Media to Library"}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="flex gap-2 mb-4">
-              {["video", "audio", "song"].map(type => (
-                <Button key={type} type="button" onClick={() => setMediaType(type)} className={mediaType === type ? "bg-cyan-500" : "bg-white/10"}>
-                  {type === "video" ? "📹 Video" : type === "audio" ? "🎵 Audio" : "🎶 Song"}
-                </Button>
-              ))}
+    // Plain fixed overlay (no Radix portal) — same pattern as the transcript
+    // overlay in the media page, which renders reliably in production.
+    <div
+      className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/70 backdrop-blur-sm p-4 sm:p-6"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel?.(); }}
+    >
+      <div className="my-4 w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
+          <h2 className="text-lg font-semibold text-white">
+            {editingVideo ? "Edit Media" : "Add Media to Library"}
+          </h2>
+          <button
+            type="button"
+            onClick={() => onCancel?.()}
+            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="max-h-[calc(90vh-9rem)] space-y-4 overflow-y-auto px-6 py-5">
+          {/* Media type toggle */}
+          <div className="flex gap-2">
+            {["video", "audio", "song"].map(type => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setMediaType(type)}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  mediaType === type
+                    ? "bg-teal-500 text-white"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                }`}
+              >
+                {type === "video" ? "📹 Video" : type === "audio" ? "🎵 Audio" : "🎶 Song"}
+              </button>
+            ))}
           </div>
 
           {mediaType === "video" ? (
             <div>
-              <Label>Video URL *</Label>
+              <label className={labelCls}>Video URL <span className="text-teal-400">*</span></label>
               <div className="flex gap-2">
-                <Input value={formData.video_url} onChange={(e) => setFormData(p => ({ ...p, video_url: e.target.value }))} placeholder="https://youtube.com/watch?v=..." className="bg-white/5 border-white/20 text-white flex-1" />
-                <Button type="button" onClick={() => onLoadYoutube(formData.video_url)} disabled={!formData.video_url} className="bg-cyan-500 hover:bg-cyan-600">Load</Button>
+                <input
+                  value={formData.video_url}
+                  onChange={(e) => setFormData(p => ({ ...p, video_url: e.target.value }))}
+                  placeholder="https://youtube.com/watch?v=..."
+                  className={inputCls}
+                />
+                <button
+                  type="button"
+                  onClick={() => onLoadYoutube(formData.video_url)}
+                  disabled={!formData.video_url}
+                  className="shrink-0 rounded-lg bg-teal-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-400 disabled:opacity-40"
+                >
+                  Load
+                </button>
               </div>
             </div>
           ) : (
             <div>
-              <Label>Upload {mediaType === "audio" ? "MP3 Audio" : "Song (MP3)"} *</Label>
+              <label className={labelCls}>Upload {mediaType === "audio" ? "MP3 Audio" : "Song (MP3)"} <span className="text-teal-400">*</span></label>
               <div className="flex items-center gap-2">
-                <Input type="file" accept="audio/mp3,audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg" onChange={onAudioUpload} className="bg-white/5 border-white/20 text-white flex-1" disabled={uploadingAudio} />
-                {uploadingAudio && <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />}
+                <input
+                  type="file"
+                  accept="audio/mp3,audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg"
+                  onChange={onAudioUpload}
+                  disabled={uploadingAudio}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 text-sm text-slate-300 file:mr-3 file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-slate-600"
+                />
+                {uploadingAudio && <Loader2 className="h-5 w-5 shrink-0 animate-spin text-teal-400" />}
               </div>
-              {formData.video_url && <p className="text-xs text-green-400 mt-1">✓ Uploaded</p>}
+              {formData.video_url && <p className="mt-1 text-xs text-teal-400">✓ Uploaded</p>}
             </div>
           )}
 
           <div>
-            <Label>Video ID * (auto-populated)</Label>
-            <Input value={formData.video_id} readOnly placeholder="Auto-populated from URL" className="bg-white/5 border-white/20 text-white/60" />
+            <label className={labelCls}>Video ID <span className="text-slate-500">(auto-populated)</span></label>
+            <input value={formData.video_id} readOnly placeholder="Auto-populated from URL" className={`${inputCls} text-slate-400`} />
           </div>
 
           <div>
-            <Label>Title * (editable)</Label>
-            <Input value={formData.title} onChange={(e) => setFormData(p => ({ ...p, title: e.target.value }))} placeholder="Auto-populated from YouTube" className="bg-white/5 border-white/20 text-white" />
+            <label className={labelCls}>Title <span className="text-teal-400">*</span></label>
+            <input
+              value={formData.title}
+              onChange={(e) => setFormData(p => ({ ...p, title: e.target.value }))}
+              placeholder="Auto-populated from YouTube"
+              className={inputCls}
+            />
           </div>
 
           {allUsers.length > 0 && (
             <div>
-              <Label>Assign to Users (optional)</Label>
-              {/* Multi-select dropdown */}
-              <div className="relative mt-1" ref={dropdownRef}>
+              <label className={labelCls}>Assign to Users <span className="text-slate-500">(optional)</span></label>
+              <div className="relative" ref={dropdownRef}>
                 <button
                   type="button"
                   onClick={() => setUserDropdownOpen(o => !o)}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-md border border-white/20 bg-white/5 text-white text-sm"
+                  className="flex w-full items-center justify-between rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
                 >
-                  <span className="text-white/70">
+                  <span className="text-slate-400">
                     {assignedUsers.length === 0 ? "Select users..." : `${assignedUsers.length} user${assignedUsers.length > 1 ? "s" : ""} selected`}
                   </span>
-                  <ChevronDown className="w-4 h-4 text-white/50" />
+                  <ChevronDown className="h-4 w-4 text-slate-500" />
                 </button>
                 {userDropdownOpen && (
-                  <div className="absolute z-50 mt-1 w-full bg-slate-800 border border-white/20 rounded-md shadow-xl max-h-48 overflow-y-auto">
+                  <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-700 bg-slate-800 shadow-xl">
                     {allUsers.map(u => {
                       const checked = assignedUsers.some(a => a.email === u.email);
                       return (
@@ -148,9 +208,9 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
                           key={u.id}
                           type="button"
                           onClick={() => toggleUserAssign(u.email)}
-                          className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-all hover:bg-white/10 ${checked ? "text-cyan-300" : "text-white/80"}`}
+                          className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition hover:bg-white/5 ${checked ? "text-teal-300" : "text-slate-200"}`}
                         >
-                          <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] flex-shrink-0 ${checked ? "bg-cyan-500 border-cyan-500 text-white" : "border-white/30"}`}>
+                          <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${checked ? "border-teal-500 bg-teal-500 text-white" : "border-slate-600"}`}>
                             {checked ? "✓" : ""}
                           </span>
                           {u.full_name || u.email}
@@ -161,23 +221,22 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
                 )}
               </div>
 
-              {/* Per-user session number inputs */}
               {assignedUsers.length > 0 && (
                 <div className="mt-2 space-y-2">
                   {assignedUsers.map(au => (
-                    <div key={au.email} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
-                      <span className="text-xs text-white/70 flex-1 truncate">{au.email}</span>
-                      <Input
+                    <div key={au.email} className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
+                      <span className="flex-1 truncate text-xs text-slate-300">{au.email}</span>
+                      <input
                         type="number"
                         min="1"
                         max="100"
                         value={au.session}
                         onChange={e => setUserSession(au.email, e.target.value)}
                         placeholder="Session #"
-                        className="bg-white/10 border-white/20 text-white w-28 h-7 text-xs"
+                        className="h-7 w-28 rounded-md border border-slate-600 bg-slate-700 px-2 text-xs text-white placeholder:text-slate-500 focus:border-teal-500 focus:outline-none"
                       />
-                      <button type="button" onClick={() => toggleUserAssign(au.email)} className="text-white/40 hover:text-red-400 transition-colors">
-                        <X className="w-3.5 h-3.5" />
+                      <button type="button" onClick={() => toggleUserAssign(au.email)} className="text-slate-500 transition hover:text-red-400">
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   ))}
@@ -187,68 +246,121 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
           )}
 
           <div>
-            <Label>Designate to Session (Day) — for all users</Label>
-            <Input type="number" min="1" max="100" value={formData.default_day} onChange={(e) => setFormData(p => ({ ...p, default_day: e.target.value }))} placeholder="Which session? (1-100)" className="bg-white/5 border-white/20 text-white" />
-            <p className="text-xs text-white/50 mt-1">Video will auto-populate in this session's schedule</p>
+            <label className={labelCls}>Designate to Session (Day) <span className="text-slate-500">— for all users</span></label>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={formData.default_day}
+              onChange={(e) => setFormData(p => ({ ...p, default_day: e.target.value }))}
+              placeholder="Which session? (1-100)"
+              className={inputCls}
+            />
+            <p className="mt-1 text-xs text-slate-500">Video will auto-populate in this session's schedule</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Language *</Label>
-              <Select value={formData.language} onValueChange={(val) => setFormData(p => ({ ...p, language: val }))}>
-                <SelectTrigger className="bg-white/5 border-white/20 text-white"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {["hebrew","english","spanish","french","portuguese","italian"].map(l => <SelectItem key={l} value={l}>{l.charAt(0).toUpperCase()+l.slice(1)}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <label className={labelCls}>Language <span className="text-teal-400">*</span></label>
+              <select
+                value={formData.language}
+                onChange={(e) => setFormData(p => ({ ...p, language: e.target.value }))}
+                className={inputCls}
+              >
+                {LANGUAGES.map(l => <option key={l} value={l} className="bg-slate-800">{l.charAt(0).toUpperCase() + l.slice(1)}</option>)}
+              </select>
             </div>
             <div>
-              <Label>Difficulty</Label>
-              <Select value={formData.difficulty_level} onValueChange={(val) => setFormData(p => ({ ...p, difficulty_level: val }))}>
-                <SelectTrigger className="bg-white/5 border-white/20 text-white"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {["Beginner","Intermediate","Advanced","All"].map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <label className={labelCls}>Difficulty</label>
+              <select
+                value={formData.difficulty_level}
+                onChange={(e) => setFormData(p => ({ ...p, difficulty_level: e.target.value }))}
+                className={inputCls}
+              >
+                {LEVELS.map(d => <option key={d} value={d} className="bg-slate-800">{d}</option>)}
+              </select>
             </div>
           </div>
 
           <div>
-            <Label>Topics</Label>
-            <div className="grid grid-cols-2 gap-2 mt-2">
+            <label className={labelCls}>Topics</label>
+            <div className="grid grid-cols-2 gap-2">
               {topics.map(topic => (
-                <button key={topic} type="button" onClick={() => toggleTopic(topic)} className={`text-sm px-3 py-2 rounded border transition-all ${formData.topics.includes(topic) ? 'bg-cyan-500/30 border-cyan-500 text-cyan-400' : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10'}`}>{topic}</button>
+                <button
+                  key={topic}
+                  type="button"
+                  onClick={() => toggleTopic(topic)}
+                  className={`rounded-lg border px-3 py-2 text-sm transition ${
+                    formData.topics.includes(topic)
+                      ? "border-teal-500 bg-teal-500/15 text-teal-300"
+                      : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
+                  {topic}
+                </button>
               ))}
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-white/80 cursor-pointer">
-            <input type="checkbox" checked={formData.is_active} onChange={(e) => setFormData(p => ({ ...p, is_active: e.target.checked }))} className="w-4 h-4" />
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={formData.is_active}
+              onChange={(e) => setFormData(p => ({ ...p, is_active: e.target.checked }))}
+              className="h-4 w-4 accent-teal-500"
+            />
             Active
           </label>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <Label>Transcript</Label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className={`${labelCls} mb-0`}>Transcript</label>
               {mediaType === "video" && (
-                <Button type="button" size="sm" onClick={handleGenerateTranscript} disabled={generatingTranscript || !formData.video_id} className="bg-purple-500/30 hover:bg-purple-500/50 text-purple-300 border border-purple-500/40 text-xs h-7 px-2">
-                  {generatingTranscript ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Wand2 className="w-3 h-3 mr-1" />}
+                <button
+                  type="button"
+                  onClick={handleGenerateTranscript}
+                  disabled={generatingTranscript || !formData.video_id}
+                  className="flex items-center gap-1 rounded-lg border border-teal-500/40 bg-teal-500/15 px-2 py-1 text-xs font-medium text-teal-300 transition hover:bg-teal-500/25 disabled:opacity-40"
+                >
+                  {generatingTranscript ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
                   Auto-fetch from YouTube
-                </Button>
+                </button>
               )}
             </div>
-            <p className="text-xs text-white/60 mb-2">Paste transcript in any language (target language, English, or phonetics). System will generate the target language text + English translation for each sentence.</p>
-            <Textarea value={formData.transcript_phonetics} onChange={(e) => setFormData(p => ({ ...p, transcript_phonetics: e.target.value }))} placeholder="Paste transcript here (Spanish, English, Hebrew, etc.)..." className="bg-white/5 border-white/20 text-white" rows={6} />
-          </div>
-
-          <div className="flex gap-2">
-            <Button onClick={onSubmit} disabled={isPending} className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500">
-              {isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{editingVideo ? "Updating..." : "Adding..."}</> : editingVideo ? "Update Video" : "Add to Library"}
-            </Button>
-            <Button onClick={onCancel} variant="outline" className="border-white/20">Cancel</Button>
+            <p className="mb-2 text-xs text-slate-500">Paste transcript in any language (target language, English, or phonetics). System will generate the target language text + English translation for each sentence.</p>
+            <textarea
+              value={formData.transcript_phonetics}
+              onChange={(e) => setFormData(p => ({ ...p, transcript_phonetics: e.target.value }))}
+              placeholder="Paste transcript here (Spanish, English, Hebrew, etc.)..."
+              rows={6}
+              className={`${inputCls} resize-y`}
+            />
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        {/* Footer */}
+        <div className="flex gap-2 border-t border-slate-800 px-6 py-4">
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={isPending}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-400 disabled:opacity-50"
+          >
+            {isPending ? (
+              <><Loader2 className="h-4 w-4 animate-spin" />{editingVideo ? "Updating..." : "Adding..."}</>
+            ) : (
+              <>{editingVideo ? null : <Plus className="h-4 w-4" />}{editingVideo ? "Update Video" : "Add to Library"}</>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => onCancel?.()}
+            className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
