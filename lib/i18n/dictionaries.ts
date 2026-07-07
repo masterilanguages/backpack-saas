@@ -39,6 +39,13 @@ export const DICT = {
     ui: {
       interface: "Interface language",
     },
+    settings: {
+      title: "Settings",
+      subtitle: "Manage your account and preferences.",
+      interfaceLanguage: "Interface language",
+      interfaceLanguageHint:
+        "The language of the menus and buttons — separate from the language you're learning.",
+    },
   },
   es: {
     nav: {
@@ -63,6 +70,13 @@ export const DICT = {
     },
     ui: {
       interface: "Idioma de la interfaz",
+    },
+    settings: {
+      title: "Ajustes",
+      subtitle: "Administra tu cuenta y preferencias.",
+      interfaceLanguage: "Idioma de la interfaz",
+      interfaceLanguageHint:
+        "El idioma de los menús y botones — distinto del idioma que estás aprendiendo.",
     },
   },
 } as const;

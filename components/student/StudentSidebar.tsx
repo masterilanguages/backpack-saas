@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import LanguageSwitcher from "./LanguageSwitcher";
-import InterfaceLanguageSwitcher from "./InterfaceLanguageSwitcher";
 import { useUI } from "@/lib/i18n/UILanguage";
 
 const NAV = [
@@ -78,9 +77,8 @@ export default function StudentSidebar({
           })}
         </nav>
 
-        {/* Interface + learning language, settings, sign out footer */}
+        {/* Learning language, settings, sign out footer */}
         <div className="shrink-0 space-y-0.5 border-t border-slate-800 px-3 py-3">
-          <InterfaceLanguageSwitcher />
           <LanguageSwitcher />
           <Link
             href="/settings"
