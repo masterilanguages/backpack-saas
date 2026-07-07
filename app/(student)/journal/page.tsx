@@ -686,7 +686,7 @@ Return JSON with an array "exercises" where each item has: word (the vocab word 
                 </button>
               </div>
               {wordTranslation.showHebrew && wordTranslation.language === 'hebrew' && (
-                <p className="text-white text-xs" dir="rtl">{wordTranslation.word}</p>
+                <p className="text-white text-base" dir="rtl">{wordTranslation.translation}</p>
               )}
             </div>
           )}
