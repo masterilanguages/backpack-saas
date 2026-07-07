@@ -7,10 +7,11 @@ import { browserClient } from "@/lib/supabase-browser";
 type Mode = "signin" | "forgot" | "signup";
 
 const inputCls =
-  "w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-teal-500 focus:outline-none";
+  "w-full rounded-2xl border border-slate-200 px-5 py-4 text-base text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none";
 const labelCls = "mb-1 block text-xs font-medium text-slate-600";
 const primaryBtn =
-  "w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:opacity-60";
+  "w-full rounded-2xl bg-[#1B2B4B] py-4 text-base font-bold text-white transition hover:bg-[#162240] disabled:opacity-60";
+const footerLink = "text-sm text-slate-500 transition hover:text-slate-700";
 
 function Inner({ canSignup }: { canSignup: boolean }) {
   const [mode, setMode] = useState<Mode>("signin");
@@ -141,9 +142,9 @@ function Inner({ canSignup }: { canSignup: boolean }) {
                   setMode("signin");
                   setForgotSent(false);
                 }}
-                className="mt-4 text-sm font-medium text-teal-600 hover:text-teal-700"
+                className="mt-4 text-sm font-medium text-slate-500 hover:text-slate-700"
               >
-                Back to sign in
+                ← Back to Sign In
               </button>
             </div>
           ) : (
@@ -171,7 +172,7 @@ function Inner({ canSignup }: { canSignup: boolean }) {
                 onClick={() => setMode("signin")}
                 className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-700"
               >
-                Back to sign in
+                ← Back to Sign In
               </button>
             </form>
           )}
@@ -232,7 +233,7 @@ function Inner({ canSignup }: { canSignup: boolean }) {
             }}
             className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-700"
           >
-            Already have an account? Sign in
+            ← Back to Sign In
           </button>
         </form>
       </div>
@@ -242,60 +243,49 @@ function Inner({ canSignup }: { canSignup: boolean }) {
   // ── Sign in ────────────────────────────────────────────────────────────────
   return (
     <div>
-      <p className="mb-1 text-sm font-medium text-slate-500">Your language learning system.</p>
-      <h2 className="text-xl font-bold text-slate-900">Sign in to continue</h2>
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-        <div>
-          <label className={labelCls}>Email</label>
-          <input
-            type="email"
-            required
-            autoFocus
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className={inputCls}
-            placeholder="you@example.com"
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Password</label>
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className={inputCls}
-            placeholder="••••••••"
-          />
-        </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <input
+          type="email"
+          required
+          autoFocus
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className={inputCls}
+          placeholder="Email"
+        />
+        <input
+          type="password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className={inputCls}
+          placeholder="Password"
+        />
         {error && <p className="text-xs text-red-500">{error}</p>}
         <button type="submit" disabled={loading} className={primaryBtn}>
-          {loading ? "Checking…" : "Enter"}
+          {loading ? "Signing in…" : "Sign In"}
         </button>
-        <button
-          type="button"
-          onClick={() => setMode("forgot")}
-          className="w-full text-center text-xs font-medium text-slate-500 transition hover:text-slate-700"
-        >
-          Forgot password?
-        </button>
-      </form>
-
-      {canSignup && (
-        <p className="mt-4 text-center text-sm text-slate-500">
-          Don&apos;t have an account?{" "}
-          <button
-            type="button"
-            onClick={() => {
-              setMode("signup");
-              setError("");
-            }}
-            className="font-semibold text-teal-600 hover:text-teal-700"
-          >
-            Create one
+        <div className="flex items-center justify-center gap-4 pt-1">
+          <button type="button" onClick={() => setMode("forgot")} className={footerLink}>
+            Forgot Password?
           </button>
-        </p>
-      )}
+          {canSignup && (
+            <>
+              <span className="text-slate-300">·</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("signup");
+                  setError("");
+                }}
+                className={footerLink}
+              >
+                Create Account
+              </button>
+            </>
+          )}
+        </div>
+      </form>
     </div>
   );
 }

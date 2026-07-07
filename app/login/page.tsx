@@ -13,9 +13,7 @@ export default async function LoginPage() {
 
   return (
     <AuthShell brand={brand}>
-      <div className="rounded-2xl bg-white p-8 shadow-xl">
-        <LoginForm canSignup={canSignup} />
-      </div>
+      <LoginForm canSignup={canSignup} />
     </AuthShell>
   );
 }
