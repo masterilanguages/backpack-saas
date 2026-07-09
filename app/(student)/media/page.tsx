@@ -655,8 +655,14 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
     // If a default_day is set, inject/update a video task into that Day's subsections for ALL users
     if (formData.default_day) {
       const dayNum = parseInt(formData.default_day);
+      const dayLang = data.language || formData.language;
+      // Count the writes that actually landed. Day.update() resolves to null when
+      // RLS blocks the write (zero rows updated, no error thrown) — e.g. an org
+      // member who isn't an admin. Without this we'd report a schedule change
+      // that never happened.
+      let scheduledDays = 0;
       try {
-        const matchingDays = await base44.entities.Day.filter({ day_number: dayNum, language: data.language || formData.language });
+        const matchingDays = await base44.entities.Day.filter({ day_number: dayNum, language: dayLang });
         for (const day of matchingDays) {
           const subsections = day.subsections || [];
           const videoTaskId = `video_${data.video_id || formData.video_id}`;
@@ -676,12 +682,22 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
             const withoutGeneric = subsections.filter((s: any) => s.id !== 'video');
             updatedSubsections = [videoTask, ...withoutGeneric];
           }
-          await base44.entities.Day.update(day.id, { subsections: updatedSubsections });
+          const updated = await base44.entities.Day.update(day.id, { subsections: updatedSubsections });
+          if (updated) scheduledDays++;
         }
-        toast.success(`Video added to Session ${dayNum} schedule!`);
 
-        // Auto-extract vocab from transcript and tag it with this session
-        if (processedTranscript?.length || data.processed_transcript?.length) {
+        if (matchingDays.length === 0) {
+          toast.error(`Session ${dayNum} doesn't exist for ${languageLabel(dayLang)}. The video was saved to the library, but not added to any schedule.`);
+        } else if (scheduledDays === 0) {
+          toast.error(`Couldn't add the video to Session ${dayNum} — you don't have permission to edit the schedule. The video was saved to the library.`);
+        } else {
+          toast.success(`Video added to Session ${dayNum} schedule!`);
+        }
+
+        // Auto-extract vocab from transcript and tag it with this session.
+        // Only when the video really landed on the session — otherwise we'd
+        // tag words with a "Session N" that has no video attached.
+        if (scheduledDays > 0 && (processedTranscript?.length || data.processed_transcript?.length)) {
           const transcriptToUse = processedTranscript || data.processed_transcript;
           const sessionLabel = `Session ${dayNum}`;
           const fullText = transcriptToUse.map((s: any) => s.transliteration || s.text).join(' ');
@@ -716,6 +732,7 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
         }
       } catch (e) {
         console.error("Failed to update day schedule:", e);
+        toast.error(`Couldn't add the video to Session ${dayNum}'s schedule. The video was saved to the library.`);
       }
     }
 
@@ -745,6 +762,10 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
       toast.success("Added to library!");
       // Assign to multiple users with their individual session numbers
       const assignedUsers = formData.assigned_users || [];
+      // Sessions we were asked to put the video on but couldn't (missing day row,
+      // or a Day.update() that RLS silently turned into a no-op). Reported below
+      // so an assignment never looks more complete than it is.
+      const unscheduled: string[] = [];
       for (const au of assignedUsers) {
         if (!au.email) continue;
         await base44.entities.UserProgram.create({
@@ -758,18 +779,25 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
         if (au.session) {
           const sessionNum = parseInt(au.session);
           const matchingDays = await base44.entities.Day.filter({ day_number: sessionNum, language: data.language || formData.language });
+          if (matchingDays.length === 0) {
+            unscheduled.push(`Session ${sessionNum} (doesn't exist)`);
+          }
           for (const day of matchingDays) {
             const subsections = day.subsections || [];
             const videoTaskId = `video_${data.video_id}`;
-            if (!subsections.find((s: any) => s.id === videoTaskId)) {
-              await base44.entities.Day.update(day.id, {
-                subsections: [...subsections, { id: videoTaskId, name: `▶ ${data.title}`, video_id: data.video_id, page: "MediaLibrary" }]
-              });
-            }
+            if (subsections.find((s: any) => s.id === videoTaskId)) continue;
+            const updated = await base44.entities.Day.update(day.id, {
+              subsections: [...subsections, { id: videoTaskId, name: `▶ ${data.title}`, video_id: data.video_id, page: "MediaLibrary" }]
+            });
+            if (!updated) unscheduled.push(`Session ${sessionNum} (no permission)`);
           }
         }
       }
       if (assignedUsers.length > 0) toast.success(`Assigned to ${assignedUsers.length} user(s)!`);
+      if (unscheduled.length > 0) {
+        const detail = unscheduled.filter((s, i) => unscheduled.indexOf(s) === i).join(", ");
+        toast.error(`Assigned, but not added to the schedule: ${detail}.`);
+      }
     }
   };
 
