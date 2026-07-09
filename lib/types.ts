@@ -272,7 +272,8 @@ export type IconName =
   | "finances"
   | "settings"
   | "module"
-  | "email";
+  | "email"
+  | "student";
 
 export interface ColumnDef<T> {
   key: string;

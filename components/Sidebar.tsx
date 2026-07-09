@@ -194,7 +194,22 @@ export default function Sidebar({
           )}
         </nav>
 
-        <div className="shrink-0 border-t border-white/10 px-3 py-3">
+        <div className="shrink-0 space-y-0.5 border-t border-white/10 px-3 py-3">
+          {/* The curriculum is authored from inside the student portal (sessions live
+              at /learn/lessons/days, videos are designated from /media), so staff need
+              a way in. Every membership role may browse it — see LEARNING_PORTAL_ROLES
+              in middleware.ts. Root route, not under /companies/[id]. */}
+          {companyId && (
+            <Link
+              href="/home"
+              onClick={onClose}
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition hover:bg-white/5 hover:text-slate-100"
+            >
+              <Icon name="student" className="h-[18px] w-[18px]" />
+              Student portal
+            </Link>
+          )}
+
           {companyId && !isCoach ? (
             <Link
               href={`/companies/${companyId}/settings`}
