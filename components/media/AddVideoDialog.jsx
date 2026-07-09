@@ -252,10 +252,10 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
           )}
 
           <div>
-            <label className={labelCls}>Designate to Session (Day) <span className="text-slate-500">— for all users</span></label>
+            <label className={labelCls}>Designate to Day <span className="text-slate-500">— for all users</span></label>
             {sessionOptions.length === 0 && !formData.default_day ? (
               <select disabled className={`${inputCls} cursor-not-allowed opacity-60`}>
-                <option>No sessions exist for {sessionLanguageLabel}</option>
+                <option>No days exist for {sessionLanguageLabel}</option>
               </select>
             ) : (
               <select
@@ -266,7 +266,7 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
                 <option value="" className="bg-slate-800">— None —</option>
                 {sessionOptions.map(s => (
                   <option key={s.day_number} value={s.day_number} className="bg-slate-800">
-                    Session {s.day_number} {s.count === 0 ? "— empty" : `— ${s.count} item${s.count > 1 ? "s" : ""}`}
+                    Day {s.day_number} {s.count === 0 ? "— empty" : `— ${s.count} item${s.count > 1 ? "s" : ""}`}
                   </option>
                 ))}
                 {/* A session stored on the video that no longer exists for this language —
@@ -274,17 +274,17 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
                     the video neither hides it nor silently drops it; "— None —" clears it. */}
                 {staleSession && (
                   <option value={formData.default_day} className="bg-slate-800">
-                    Session {formData.default_day} — doesn't exist for {sessionLanguageLabel}
+                    Day {formData.default_day} — doesn't exist for {sessionLanguageLabel}
                   </option>
                 )}
               </select>
             )}
             {sessionOptions.length === 0 ? (
               <p className="mt-1 text-xs text-amber-400/80">
-                Create sessions in Lessons → Days with your learning language set to {sessionLanguageLabel}.
+                Create days in Lessons → Days with your learning language set to {sessionLanguageLabel}.
               </p>
             ) : (
-              <p className="mt-1 text-xs text-slate-500">Video will auto-populate in this session's schedule</p>
+              <p className="mt-1 text-xs text-slate-500">Video will auto-populate in this day's schedule</p>
             )}
           </div>
 

@@ -75,6 +75,27 @@ export default function Days() {
     onError: (e: any) => toast.error(`Couldn't create the session: ${e?.message || "unknown error"}`),
   });
 
+  const deleteDayMutation = useMutation({
+    mutationFn: (id: any) => base44.entities.Day.delete(id),
+    onSuccess: (deleted: any) => {
+      queryClient.invalidateQueries({ queryKey: ['days'] });
+      queryClient.invalidateQueries({ queryKey: ['dayProgress'] });
+      // A delete forbidden by RLS removes zero rows and raises nothing.
+      if (deleted?.length) toast.success("Day deleted.");
+      else toast.error("You don't have permission to delete a day.");
+    },
+    onError: (e: any) => toast.error(`Couldn't delete the day: ${e?.message || "unknown error"}`),
+  });
+
+  // Deleting a day drops its tasks and, via the day_progress FK (ON DELETE CASCADE),
+  // every student's progress on it. Irreversible, so it asks first and names the cost.
+  const handleDeleteDay = (day: any) => {
+    const taskCount = (day.subsections || []).length;
+    const detail = taskCount > 0 ? ` and its ${taskCount} task${taskCount > 1 ? "s" : ""}` : "";
+    if (!confirm(`Delete Day ${day.day_number}${detail}? Every student's progress on this day is deleted too. This cannot be undone.`)) return;
+    deleteDayMutation.mutate(day.id);
+  };
+
   const toggleSubsectionMutation = useMutation({
     mutationFn: async ({ dayId, subsectionId }: any) => {
       const progress = dayProgress.find((p: any) => p.day_id === dayId) || { day_id: dayId, day_number: 0, subsections_completed: [] };
@@ -133,7 +154,8 @@ export default function Days() {
                 day_number: nextDayNum,
                 language: userProfile?.language || 'hebrew',
                 title: `Day ${nextDayNum}`,
-                subsections: []
+                subsections: [],
+                order: nextDayNum,
               });
             }} className="bg-teal-500 hover:bg-teal-400 text-white">
               + Add Day
@@ -174,12 +196,30 @@ export default function Days() {
                       )}
                     </div>
                     <div>
-                      <h3 className="text-white font-bold text-xl">{day.title || `Day ${day.day_number}`}</h3>
+                      {/* Label is derived, never the stored `title`: rows created by the
+                          two different buttons carry "Day N" or "Session N" and would
+                          render inconsistently. `description` remains the free-text field. */}
+                      <h3 className="text-white font-bold text-xl">Day {day.day_number}</h3>
                       {day.description && <p className="text-slate-400 text-sm">{day.description}</p>}
                     </div>
                   </div>
                   {unlocked && <ChevronRight className={`w-6 h-6 text-slate-400 transition-transform ${isEditing ? 'rotate-90' : ''}`} />}
                 </button>
+
+                {/* Sits outside the header <button> — a nested button is invalid HTML
+                    and would swallow the expand/collapse click. */}
+                {isAdmin && (
+                  <div className="flex justify-end px-6 pb-3 -mt-3">
+                    <button
+                      onClick={() => handleDeleteDay(day)}
+                      disabled={deleteDayMutation.isPending}
+                      className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete day
+                    </button>
+                  </div>
+                )}
 
                 <AnimatePresence>
                   {isEditing && (
