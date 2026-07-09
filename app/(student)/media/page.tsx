@@ -322,6 +322,21 @@ export default function MediaLibrary() {
     refetchOnWindowFocus: false,
   });
 
+  // Sessions that actually exist for the language picked INSIDE the modal (not the
+  // profile's) — that's the language the schedule lookup uses on save. Shares the
+  // ['days', lang] cache with the Days page.
+  const { data: sessionDays = [] } = useQuery({
+    queryKey: ['days', formData.language],
+    queryFn: () => base44.entities.Day.filter({ language: formData.language }),
+    enabled: showAddDialog && !!formData.language,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const sessionOptions = [...sessionDays]
+    .sort((a: any, b: any) => a.day_number - b.day_number)
+    .map((d: any) => ({ day_number: d.day_number, count: (d.subsections || []).length }));
+
   const createVideoMutation = useMutation({
     mutationFn: (data: any) => base44.entities.MediaLibrary.create(data),
     onSuccess: () => {
@@ -1956,6 +1971,8 @@ Return a JSON with a "videos" array. Each video must have:
         onLoadYoutube={fetchYouTubeMetadata}
         isPending={false}
         allUsers={allUsers}
+        sessionOptions={sessionOptions}
+        sessionLanguageLabel={languageLabel(formData.language)}
       />
 
 
