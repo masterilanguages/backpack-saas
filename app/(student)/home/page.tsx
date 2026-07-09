@@ -508,11 +508,11 @@ export default function Home() {
       await createDayMutation.mutateAsync({
         day_number: nextNum,
         language: currentLang,
-        title: `Session ${nextNum}`,
+        title: `Day ${nextNum}`,
         subsections: [],
         order: nextNum,
       });
-      toast.success(`Session ${nextNum} created!`);
+      toast.success(`Day ${nextNum} created!`);
       setExpandedDay(nextNum);
     } catch (e) {
       console.error('Create session failed', e);
@@ -827,7 +827,7 @@ export default function Home() {
                             setSessionModal(day);
                           }}
                         >
-                          <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>Session {day.day_number}</h3>
+                          <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>Day {day.day_number}</h3>
                           <ChevronDown className={`w-4 h-4 transition-transform ml-auto ${isExpanded ? 'rotate-180' : ''}`} style={{ color: '#94a3b8' }} />
                         </div>
                         <AnimatePresence>
@@ -1059,8 +1059,8 @@ export default function Home() {
           >
             <div className="text-center">
               <div className="text-4xl mb-2">🎬</div>
-              <h2 className="text-2xl font-bold" style={{ color: '#ffffff', fontFamily: 'Cormorant Garamond, serif' }}>Session {sessionModal.day_number}</h2>
-              <p className="text-slate-400 text-sm mt-1">Follow the steps below to complete this session</p>
+              <h2 className="text-2xl font-bold" style={{ color: '#ffffff', fontFamily: 'Cormorant Garamond, serif' }}>Day {sessionModal.day_number}</h2>
+              <p className="text-slate-400 text-sm mt-1">Follow the steps below to complete this day</p>
             </div>
             <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-3">
               <p className="font-semibold text-slate-200 text-sm">📋 Instructions</p>

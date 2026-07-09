@@ -704,11 +704,11 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
         }
 
         if (matchingDays.length === 0) {
-          toast.error(`Session ${dayNum} doesn't exist for ${languageLabel(dayLang)}. The video was saved to the library, but not added to any schedule.`);
+          toast.error(`Day ${dayNum} doesn't exist for ${languageLabel(dayLang)}. The video was saved to the library, but not added to any schedule.`);
         } else if (scheduledDays === 0) {
-          toast.error(`Couldn't add the video to Session ${dayNum} — you don't have permission to edit the schedule. The video was saved to the library.`);
+          toast.error(`Couldn't add the video to Day ${dayNum} — you don't have permission to edit the schedule. The video was saved to the library.`);
         } else {
-          toast.success(`Video added to Session ${dayNum} schedule!`);
+          toast.success(`Video added to Day ${dayNum} schedule!`);
         }
 
         // Auto-extract vocab from transcript and tag it with this session.
@@ -749,7 +749,7 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
         }
       } catch (e) {
         console.error("Failed to update day schedule:", e);
-        toast.error(`Couldn't add the video to Session ${dayNum}'s schedule. The video was saved to the library.`);
+        toast.error(`Couldn't add the video to Day ${dayNum}'s schedule. The video was saved to the library.`);
       }
     }
 
@@ -797,7 +797,7 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
           const sessionNum = parseInt(au.session);
           const matchingDays = await base44.entities.Day.filter({ day_number: sessionNum, language: data.language || formData.language });
           if (matchingDays.length === 0) {
-            unscheduled.push(`Session ${sessionNum} (doesn't exist)`);
+            unscheduled.push(`Day ${sessionNum} (doesn't exist)`);
           }
           for (const day of matchingDays) {
             const subsections = day.subsections || [];
@@ -806,7 +806,7 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
             const updated = await base44.entities.Day.update(day.id, {
               subsections: [...subsections, { id: videoTaskId, name: `▶ ${data.title}`, video_id: data.video_id, page: "MediaLibrary" }]
             });
-            if (!updated) unscheduled.push(`Session ${sessionNum} (no permission)`);
+            if (!updated) unscheduled.push(`Day ${sessionNum} (no permission)`);
           }
         }
       }

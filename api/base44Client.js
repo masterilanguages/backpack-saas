@@ -198,9 +198,12 @@ function makeEntity(table) {
       );
     },
 
-    // delete(id)
+    // delete(id) -> array of deleted rows (empty when RLS silently blocked it).
+    // Without .select() PostgREST returns no body, so a delete forbidden by RLS is
+    // indistinguishable from a successful one — callers would report a phantom
+    // success. Check `result.length` to know it actually happened.
     async delete(id) {
-      return unwrap(await supabase.from(table).delete().eq('id', id));
+      return unwrap(await supabase.from(table).delete().eq('id', id).select());
     },
   };
 }
