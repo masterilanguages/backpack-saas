@@ -19,10 +19,16 @@ const inputCls =
   "w-full rounded-lg bg-slate-800 border border-slate-700 text-white text-sm px-3 py-2 placeholder:text-slate-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500/40 transition";
 const labelCls = "block text-sm font-medium text-slate-300 mb-1.5";
 
-export default function AddVideoDialog({ open, onOpenChange, editingVideo, formData, setFormData, mediaType, setMediaType, uploadingAudio, onSubmit, onCancel, onAudioUpload, onLoadYoutube, isPending, allUsers = [] }) {
+export default function AddVideoDialog({ open, onOpenChange, editingVideo, formData, setFormData, mediaType, setMediaType, uploadingAudio, onSubmit, onCancel, onAudioUpload, onLoadYoutube, isPending, allUsers = [], sessionOptions = [], sessionLanguageLabel = "" }) {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [generatingTranscript, setGeneratingTranscript] = useState(false);
   const dropdownRef = useRef(null);
+
+  // A default_day on the video that isn't among the sessions of the currently
+  // selected language.
+  const staleSession =
+    !!formData.default_day &&
+    !sessionOptions.some(s => String(s.day_number) === String(formData.default_day));
 
   const handleGenerateTranscript = async () => {
     const videoId = formData.video_id || (formData.video_url?.match(/(?:v=|youtu\.be\/)([^&\n?#]+)/)?.[1]);
@@ -247,16 +253,39 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
 
           <div>
             <label className={labelCls}>Designate to Session (Day) <span className="text-slate-500">— for all users</span></label>
-            <input
-              type="number"
-              min="1"
-              max="100"
-              value={formData.default_day}
-              onChange={(e) => setFormData(p => ({ ...p, default_day: e.target.value }))}
-              placeholder="Which session? (1-100)"
-              className={inputCls}
-            />
-            <p className="mt-1 text-xs text-slate-500">Video will auto-populate in this session's schedule</p>
+            {sessionOptions.length === 0 && !formData.default_day ? (
+              <select disabled className={`${inputCls} cursor-not-allowed opacity-60`}>
+                <option>No sessions exist for {sessionLanguageLabel}</option>
+              </select>
+            ) : (
+              <select
+                value={formData.default_day ?? ""}
+                onChange={(e) => setFormData(p => ({ ...p, default_day: e.target.value }))}
+                className={inputCls}
+              >
+                <option value="" className="bg-slate-800">— None —</option>
+                {sessionOptions.map(s => (
+                  <option key={s.day_number} value={s.day_number} className="bg-slate-800">
+                    Session {s.day_number} {s.count === 0 ? "— empty" : `— ${s.count} item${s.count > 1 ? "s" : ""}`}
+                  </option>
+                ))}
+                {/* A session stored on the video that no longer exists for this language —
+                    e.g. the language was changed after saving. Keep it listed so editing
+                    the video neither hides it nor silently drops it; "— None —" clears it. */}
+                {staleSession && (
+                  <option value={formData.default_day} className="bg-slate-800">
+                    Session {formData.default_day} — doesn't exist for {sessionLanguageLabel}
+                  </option>
+                )}
+              </select>
+            )}
+            {sessionOptions.length === 0 ? (
+              <p className="mt-1 text-xs text-amber-400/80">
+                Create sessions in Lessons → Days with your learning language set to {sessionLanguageLabel}.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">Video will auto-populate in this session's schedule</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

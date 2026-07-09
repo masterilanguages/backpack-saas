@@ -54,10 +54,14 @@ export default function Days() {
 
   const updateDayMutation = useMutation({
     mutationFn: ({ id, data }: any) => base44.entities.Day.update(id, data),
-    onSuccess: () => {
+    onSuccess: (updated: any) => {
       queryClient.invalidateQueries({ queryKey: ['days'] });
-      toast.success("Day updated!");
+      // A zero-row update under RLS resolves to null instead of throwing, so a
+      // blanket success toast would lie to anyone who can't edit the schedule.
+      if (updated) toast.success("Day updated!");
+      else toast.error("You don't have permission to edit this session.");
     },
+    onError: (e: any) => toast.error(`Couldn't update the session: ${e?.message || "unknown error"}`),
   });
 
   const createDayMutation = useMutation({
@@ -66,6 +70,9 @@ export default function Days() {
       queryClient.invalidateQueries({ queryKey: ['days'] });
       toast.success("Day created!");
     },
+    // Without this the button is silently mute: RLS rejects the insert for anyone
+    // who isn't an org admin, and nothing at all appears on screen.
+    onError: (e: any) => toast.error(`Couldn't create the session: ${e?.message || "unknown error"}`),
   });
 
   const toggleSubsectionMutation = useMutation({
