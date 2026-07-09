@@ -2,9 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/AuthContext";
+import { supabase } from "@/api/supabaseClient";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { useUI } from "@/lib/i18n/UILanguage";
+
+/** Roles that have an admin portal to go back to. Mirrors ADMIN_ROLES in middleware.ts. */
+const STAFF_ROLES = new Set(["owner", "admin", "coach"]);
 
 const NAV = [
   { href: "/home",               key: "dashboard", emoji: "🏠" },
@@ -25,8 +30,22 @@ export default function StudentSidebar({
   onClose: () => void;
 }) {
   const pathname = usePathname();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const { t } = useUI();
+
+  // Staff reach this portal to author the curriculum, so they need a way back.
+  // Read the role from `memberships` — the same source middleware.ts gates on —
+  // not from app_metadata.user_role, which can disagree with it.
+  const { data: isStaff = false } = useQuery({
+    queryKey: ["isStaff", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from("memberships").select("role").eq("user_id", user.id);
+      return (data || []).some((m: any) => STAFF_ROLES.has(m.role));
+    },
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   return (
     <>
@@ -79,6 +98,16 @@ export default function StudentSidebar({
 
         {/* Learning language, settings, sign out footer */}
         <div className="shrink-0 space-y-0.5 border-t border-slate-800 px-3 py-3">
+          {isStaff && (
+            <Link
+              href="/dashboard"
+              onClick={onClose}
+              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/5 hover:text-slate-100"
+            >
+              <span className="text-base">🏫</span>
+              Back to admin
+            </Link>
+          )}
           <LanguageSwitcher />
           <Link
             href="/settings"

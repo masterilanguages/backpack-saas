@@ -29,6 +29,9 @@ const PATHS: Record<IconName, string> = {
     "M12 2l9 5-9 5-9-5 9-5zm-9 10l9 5 9-5M3 17l9 5 9-5",
   email:
     "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
+  // Graduation cap — the student portal.
+  student:
+    "M12 3L2 8l10 5 10-5-10-5zM6 11v5c0 1.1 2.7 2.5 6 2.5s6-1.4 6-2.5v-5M21 9v5",
 };
 
 export function Icon({
