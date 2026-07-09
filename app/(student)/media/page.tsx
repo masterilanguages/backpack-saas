@@ -240,9 +240,11 @@ export default function MediaLibrary() {
     refetchOnWindowFocus: false,
   });
 
-  // Set language filter once profile loads
+  // Follow the learning language picked in the sidebar. This effect only re-runs
+  // when userProfile.language actually changes, so a filter the user picked by
+  // hand survives — it's only overridden when they switch learning language.
   useEffect(() => {
-    if (userProfile?.language && !filterLanguage) {
+    if (userProfile?.language) {
       setFilterLanguage(userProfile.language);
     }
   }, [userProfile?.language]);
@@ -864,7 +866,9 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
     const matchesSearch = video.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (video.tags || "").toLowerCase().includes(searchTerm.toLowerCase());
     const userLang = userProfile?.language;
-    const effectiveLangFilter = filterLanguage && filterLanguage !== "all" ? filterLanguage : userLang;
+    // "all" means all — don't quietly fall back to the profile language.
+    // An empty filter (profile still loading) falls back to it.
+    const effectiveLangFilter = filterLanguage === "all" ? "" : (filterLanguage || userLang);
     const matchesLanguage = !effectiveLangFilter || video.language === effectiveLangFilter;
     const matchesDifficulty = filterDifficulty.length === 0 || filterDifficulty.includes(video.difficulty_level);
     const matchesTopic = filterTopics.length === 0 || filterTopics.some((t: string) => (video.topics || []).includes(t));
