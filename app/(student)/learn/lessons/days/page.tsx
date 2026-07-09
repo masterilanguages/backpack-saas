@@ -95,7 +95,10 @@ export default function Days() {
   const currentDay = userProfile?.current_day || 1;
   const sortedDays = [...days].sort((a: any, b: any) => a.day_number - b.day_number);
 
-  const isDayUnlocked = (dayNum: number) => dayNum <= currentDay;
+  // Admins bypass the progress gate — otherwise the person who authors the
+  // curriculum can't open any session past their own current_day, and the
+  // add/remove-task controls live inside an expanded session. Matches /home.
+  const isDayUnlocked = (dayNum: number) => isAdmin || dayNum <= currentDay;
   const getDayProgress = (dayId: any) => dayProgress.find((p: any) => p.day_id === dayId);
 
   const handleAddSubsection = (dayId: any) => {
