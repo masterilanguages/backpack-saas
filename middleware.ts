@@ -58,8 +58,22 @@ const RESERVED_SUBDOMAINS = new Set([
 
 /** Roles allowed into the Admin portal group. */
 const ADMIN_ROLES = new Set(["owner", "admin", "coach"]);
-/** Roles allowed into the Learning portal group. */
-const LEARNING_ROLES = new Set(["student"]);
+/**
+ * Roles allowed to BROWSE the Learning portal group.
+ *
+ * Staff are included on purpose: the curriculum is authored from inside the
+ * student portal (the "+ Add Day" button lives at /learn/lessons/days, and
+ * /media designates videos to a session). Gating this to students alone locked
+ * the only people RLS lets create a session — org owners/admins — out of the
+ * page that creates them.
+ */
+const LEARNING_PORTAL_ROLES = new Set(["student", "coach", "admin", "owner"]);
+/**
+ * Roles that LAND on the Learning portal after auth. Deliberately narrower than
+ * LEARNING_PORTAL_ROLES: staff may browse the student portal, but signing in
+ * still drops them on the admin dashboard, not on /media.
+ */
+const LEARNING_HOME_ROLES = new Set(["student"]);
 
 /**
  * Path prefixes for each portal group. A request whose pathname starts with
@@ -336,7 +350,7 @@ export async function middleware(request: NextRequest) {
   // the user can re-enter or switch accounts instead of being bounced straight
   // into the app. Their existing session is only replaced when they sign in.
   if (pathname === "/") {
-    const home = LEARNING_ROLES.has(role) ? LEARNING_HOME : ADMIN_HOME;
+    const home = LEARNING_HOME_ROLES.has(role) ? LEARNING_HOME : ADMIN_HOME;
     return withCookies(supabaseResponse, redirectTo(request, home));
   }
 
@@ -352,8 +366,9 @@ export async function middleware(request: NextRequest) {
     // e.g. a student trying to reach /dashboard -> bounce to learning home.
     return withCookies(supabaseResponse, redirectTo(request, LEARNING_HOME));
   }
-  if (wantsLearning && !LEARNING_ROLES.has(role)) {
-    // e.g. an admin/coach trying to reach /learn -> bounce to admin home.
+  if (wantsLearning && !LEARNING_PORTAL_ROLES.has(role)) {
+    // Nobody is left out today (every membership role may browse the learning
+    // portal), but the gate stays so an unknown/future role can't slip in.
     return withCookies(supabaseResponse, redirectTo(request, ADMIN_HOME));
   }
 
