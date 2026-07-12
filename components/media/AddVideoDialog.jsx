@@ -23,6 +23,9 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [generatingTranscript, setGeneratingTranscript] = useState(false);
   const dropdownRef = useRef(null);
+  // Tracks the last video_id we auto-transcribed, so loading a new URL retriggers
+  // but re-renders of the same loaded video don't.
+  const lastAutoIdRef = useRef(null);
 
   // A default_day on the video that isn't among the sessions of the currently
   // selected language.
@@ -95,6 +98,21 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
       document.body.style.overflow = prevOverflow;
     };
   }, [open, onCancel]);
+
+  // Auto-transcribe once a fresh YouTube video is loaded. Only for new videos
+  // (not when editing an existing item) and only when no transcript is present,
+  // so pasting a link + Load kicks off transcription without a second click.
+  useEffect(() => {
+    if (editingVideo || mediaType !== "video") return;
+    const vid = formData.video_id;
+    if (!vid || lastAutoIdRef.current === vid) return;
+    if (formData.transcript_phonetics?.trim()) return;
+    lastAutoIdRef.current = vid;
+    handleGenerateTranscript();
+    // handleGenerateTranscript reads the latest formData via closure; keying on
+    // video_id is enough to fire once per newly-loaded video.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.video_id, editingVideo, mediaType]);
 
   const toggleTopic = (topic) => {
     setFormData(prev => ({
