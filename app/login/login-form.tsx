@@ -127,12 +127,12 @@ function Inner({ canSignup }: { canSignup: boolean }) {
   // ── Forgot password ────────────────────────────────────────────────────────
   if (mode === "forgot") {
     return (
-      <div>
-        <h2 className="text-xl font-bold text-slate-900">Reset your password</h2>
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-slate-900">Reset your password</h2>
         <div className="mt-6">
           {forgotSent ? (
-            <div className="text-center">
-              <p className="text-sm font-medium text-emerald-600">✓ Check your email</p>
+            <div className="rounded-2xl bg-slate-50 px-5 py-6">
+              <p className="text-sm font-semibold text-emerald-600">✓ Check your email</p>
               <p className="mt-2 text-sm text-slate-500">
                 If an account exists for that email, we sent a reset link.
               </p>
@@ -152,18 +152,15 @@ function Inner({ canSignup }: { canSignup: boolean }) {
               <p className="text-sm text-slate-500">
                 Enter your email and we&apos;ll send you a reset link.
               </p>
-              <div>
-                <label className={labelCls}>Email</label>
-                <input
-                  type="email"
-                  required
-                  autoFocus
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  className={inputCls}
-                  placeholder="you@example.com"
-                />
-              </div>
+              <input
+                type="email"
+                required
+                autoFocus
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                className={inputCls}
+                placeholder="Your email address"
+              />
               <button type="submit" disabled={forgotLoading} className={primaryBtn}>
                 {forgotLoading ? "Sending…" : "Send reset link"}
               </button>
