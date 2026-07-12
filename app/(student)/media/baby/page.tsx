@@ -24,6 +24,7 @@ import VideoTranscript from "@/components/video/VideoTranscript";
 import EditableWord from "@/components/learning/EditableWord";
 import VideoAdminControls from "@/components/admin/VideoAdminControls";
 import GrammarTab from "@/components/grammar/GrammarTab";
+import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 import CoreVocabTab from "@/components/grammar/CoreVocabTab";
 
 // Videos with transcripts - Piece of Hebrew channel
@@ -875,14 +876,13 @@ export default function BabyVideos() {
 
     setLoadingTranscript(video.id);
     try {
-      const result = await base44.functions.invoke('youtubeTranscript', {
-        videoId: video.youtubeId,
+      const data = await transcribeMediaSource(youtubeSource(video.youtubeId), {
         language: video.language || userProfile?.language || 'hebrew',
       });
-      const rawTranscript = result?.data?.transcript;
+      const rawTranscript = data?.transcript;
 
       if (!rawTranscript || rawTranscript.length === 0) {
-        toast.error(result?.data?.error || "No captions available for this video");
+        toast.error(data?.error || "No captions available for this video");
         // Set empty array so we show the "no transcript" message instead of re-loading
         setFullTranscripts((prev: any) => ({ ...prev, [video.id]: [] }));
         setLoadingTranscript(null);

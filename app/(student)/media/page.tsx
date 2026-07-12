@@ -27,6 +27,7 @@ import ContinuousTranscript from "@/components/video/ContinuousTranscript";
 import AddVideoDialog from "@/components/media/AddVideoDialog";
 import PostVideoFlashcards from "@/components/video/PostVideoFlashcards";
 import { languageLabel, isRTLText } from "@/lib/language";
+import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 
 // Shared, memoized loader for the YouTube IFrame API. The YT API calls the single
 // global window.onYouTubeIframeAPIReady ONCE at script load — a single
@@ -1066,13 +1067,14 @@ For each segment:
           setTimeout(() => reject(new Error('Timeout after 180 seconds')), 180000)
         );
 
-        // Pass the target language so the function can pick the right caption
-        // track and reject wrong-language ones (Hebrew videos often carry an
-        // Arabic auto-caption track on YouTube).
-        const resultPromise = base44.functions.invoke('youtubeTranscript', {
-          videoId,
-          language: video.language || userProfile?.language || '',
-        });
+        // Provider-agnostic transcription (lib/transcription). YouTube ids are
+        // transcribed from the actual audio in the target language, sidestepping
+        // the wrong-language (Arabic) auto-caption tracks. Wrap the result as
+        // { data } so the downstream `result.data.*` reads are unchanged.
+        const resultPromise = transcribeMediaSource(
+          youtubeSource(videoId),
+          { language: video.language || userProfile?.language || '' },
+        ).then((data: any) => ({ data }));
         const result: any = await Promise.race([resultPromise, timeoutPromise]);
 
         console.log('Function response:', result);

@@ -2,8 +2,8 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Loader2, X, ChevronDown, Wand2, Plus } from "lucide-react";
-import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
+import { transcribeMediaSource, youtubeSource, audioSource } from "@/lib/transcription";
 
 const topics = [
   "Religion / Spirituality", "Sports / Fitness", "Cooking / Food", "Nutrition",
@@ -31,16 +31,25 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
     !sessionOptions.some(s => String(s.day_number) === String(formData.default_day));
 
   const handleGenerateTranscript = async () => {
-    const videoId = formData.video_id || (formData.video_url?.match(/(?:v=|youtu\.be\/)([^&\n?#]+)/)?.[1]);
-    if (!videoId) { toast.error("Please load a video URL first"); return; }
+    // Describe the media source; the transcription interface picks the engine
+    // (video → Supadata audio ASR; uploaded audio/song → OpenAI gpt-4o-transcribe).
+    let source;
+    if (mediaType === "video") {
+      const videoId = formData.video_id || (formData.video_url?.match(/(?:v=|youtu\.be\/)([^&\n?#]+)/)?.[1]);
+      if (!videoId) { toast.error("Please load a video URL first"); return; }
+      source = youtubeSource(videoId);
+    } else {
+      if (!formData.video_url) { toast.error("Please upload an audio file first"); return; }
+      source = audioSource(formData.video_url);
+    }
     setGeneratingTranscript(true);
-    toast.info("Fetching transcript from YouTube...");
+    toast.info("Transcribing the audio… this can take a minute for long media.");
     try {
-      const result = await base44.functions.invoke('youtubeTranscript', { videoId, language: formData.language || '' });
-      if (!result?.data?.transcript?.length) { toast.error(result?.data?.error || "No transcript found"); return; }
-      const rawText = result.data.transcript.map(s => s.text).join('\n');
+      const data = await transcribeMediaSource(source, { language: formData.language || '' });
+      if (!data?.transcript?.length) { toast.error(data?.error || "No transcript found"); return; }
+      const rawText = data.transcript.map(s => s.text).join('\n');
       setFormData(p => ({ ...p, transcript_phonetics: rawText }));
-      toast.success(`Transcript loaded (${result.data.transcript.length} segments)!`);
+      toast.success(`Transcript loaded (${data.transcript.length} segments)!`);
     } catch (e) {
       toast.error("Failed to fetch transcript");
     } finally {
@@ -344,17 +353,16 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
           <div>
             <div className="mb-1 flex items-center justify-between">
               <label className={`${labelCls} mb-0`}>Transcript</label>
-              {mediaType === "video" && (
-                <button
-                  type="button"
-                  onClick={handleGenerateTranscript}
-                  disabled={generatingTranscript || !formData.video_id}
-                  className="flex items-center gap-1 rounded-lg border border-teal-500/40 bg-teal-500/15 px-2 py-1 text-xs font-medium text-teal-300 transition hover:bg-teal-500/25 disabled:opacity-40"
-                >
-                  {generatingTranscript ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
-                  Auto-fetch from YouTube
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleGenerateTranscript}
+                disabled={generatingTranscript || !formData.video_url}
+                className="flex items-center gap-1 rounded-lg border border-teal-500/40 bg-teal-500/15 px-2 py-1 text-xs font-medium text-teal-300 transition hover:bg-teal-500/25 disabled:opacity-40"
+                title={mediaType === "video" ? "Transcribe the video's audio" : "Transcribe the uploaded audio with AI"}
+              >
+                {generatingTranscript ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                Auto-transcribe
+              </button>
             </div>
             <p className="mb-2 text-xs text-slate-500">Paste transcript in any language (target language, English, or phonetics). System will generate the target language text + English translation for each sentence.</p>
             <textarea
