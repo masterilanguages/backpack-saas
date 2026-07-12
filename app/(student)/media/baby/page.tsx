@@ -875,7 +875,10 @@ export default function BabyVideos() {
 
     setLoadingTranscript(video.id);
     try {
-      const result = await base44.functions.invoke('youtubeTranscript', { videoId: video.youtubeId });
+      const result = await base44.functions.invoke('youtubeTranscript', {
+        videoId: video.youtubeId,
+        language: video.language || userProfile?.language || 'hebrew',
+      });
       const rawTranscript = result?.data?.transcript;
 
       if (!rawTranscript || rawTranscript.length === 0) {

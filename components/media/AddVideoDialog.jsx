@@ -36,7 +36,7 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
     setGeneratingTranscript(true);
     toast.info("Fetching transcript from YouTube...");
     try {
-      const result = await base44.functions.invoke('youtubeTranscript', { videoId });
+      const result = await base44.functions.invoke('youtubeTranscript', { videoId, language: formData.language || '' });
       if (!result?.data?.transcript?.length) { toast.error(result?.data?.error || "No transcript found"); return; }
       const rawText = result.data.transcript.map(s => s.text).join('\n');
       setFormData(p => ({ ...p, transcript_phonetics: rawText }));

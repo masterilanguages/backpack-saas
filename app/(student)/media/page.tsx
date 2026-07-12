@@ -1059,12 +1059,20 @@ For each segment:
       statusToast = toast.loading("Step 1/5: Fetching YouTube data...", { duration: Infinity });
 
       try {
-        // Fetch YouTube captions with timeout
+        // Fetch YouTube captions with timeout. 3 min: when the video has no
+        // usable captions in the target language the function AI-transcribes
+        // the audio, which takes longer than a caption fetch.
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout after 60 seconds')), 60000)
+          setTimeout(() => reject(new Error('Timeout after 180 seconds')), 180000)
         );
 
-        const resultPromise = base44.functions.invoke('youtubeTranscript', { videoId });
+        // Pass the target language so the function can pick the right caption
+        // track and reject wrong-language ones (Hebrew videos often carry an
+        // Arabic auto-caption track on YouTube).
+        const resultPromise = base44.functions.invoke('youtubeTranscript', {
+          videoId,
+          language: video.language || userProfile?.language || '',
+        });
         const result: any = await Promise.race([resultPromise, timeoutPromise]);
 
         console.log('Function response:', result);
@@ -2014,6 +2022,17 @@ Return a JSON with a "videos" array. Each video must have:
             <div className="flex items-center justify-between p-4 border-b border-white/10">
               <h2 className="text-white font-bold text-xl">{selectedVideo?.title}</h2>
               <div className="flex items-center gap-2">
+                {/* Re-fetch the transcript from the source audio — for fixing
+                    old saved transcripts that came from a wrong-language
+                    caption track (e.g. Arabic auto-captions on Hebrew videos). */}
+                {transcript.length > 0 && !loadingTranscript && canEdit && (
+                  <button
+                    onClick={() => { if (confirm("Replace this transcript with a freshly generated one?")) generateTranscriptFromYouTube(selectedVideo); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-sm font-medium border border-purple-500/40 transition-all"
+                  >
+                    ♻️ Regenerate transcript
+                  </button>
+                )}
                 {transcript.length > 0 && (
                   <button
                     onClick={() => extractVocabFromTranscript(selectedVideo, transcript)}

@@ -201,7 +201,10 @@ export default function VideoTranscript({ videoId, videoUrl, iframeId, onPauseVi
       // OAuth-free transcript path (bug #23). The old youtubeCaptionsList/Download
       // flow required a YouTube OAuth token that the UI never obtains, so it always
       // 401'd. youtubeTranscript needs no auth and is what MediaLibrary already uses.
-      const result = await base44.functions.invoke('youtubeTranscript', { videoId: ytId });
+      const result = await base44.functions.invoke('youtubeTranscript', {
+        videoId: ytId,
+        language: normalizeVideoLang(video?.language),
+      });
       const segments = result?.data?.transcript;
 
       if (!segments || segments.length === 0) {
