@@ -228,6 +228,17 @@ export default function MediaLibrary() {
     refetchOnWindowFocus: false,
   });
 
+  // Personal per-user videos (user_saved_video). RLS scopes the list: a
+  // student gets only their own rows; an org admin gets every student's
+  // rows (that is the admin's approval queue).
+  const { data: savedVideos = [] } = useQuery({
+    queryKey: ['userSavedVideos', currentUser?.email],
+    queryFn: () => base44.entities.UserSavedVideo.list(),
+    enabled: !!currentUser?.email,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   const { data: userProfile } = useQuery({
     queryKey: ['userProfile', currentUser?.email],
     queryFn: async () => {
@@ -349,6 +360,11 @@ export default function MediaLibrary() {
 
   // Helper to determine which entity the selected video belongs to
   const getVideoEntity = (video: any) => {
+    // Personal videos a user added to their own account (tagged client-side
+    // when merging savedVideos into the library list below).
+    if (video?._source === 'personal') {
+      return base44.entities.UserSavedVideo;
+    }
     // Videos from userVideos (Video entity) have youtube_video_id but no topics/difficulty_level
     if (video?.youtube_video_id !== undefined && video?.topics === undefined) {
       return base44.entities.Video;
@@ -356,10 +372,71 @@ export default function MediaLibrary() {
     return base44.entities.MediaLibrary;
   };
 
+  const createSavedVideoMutation = useMutation({
+    mutationFn: (data: any) => base44.entities.UserSavedVideo.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['userSavedVideos'] });
+      toast.success("Video added to your library!");
+    },
+    onError: (e: any) => {
+      console.error("createSavedVideoMutation failed", e);
+      toast.error("Could not add video");
+    },
+  });
+
+  const deleteSavedVideoMutation = useMutation({
+    mutationFn: async (id: any) => {
+      const deleted = await base44.entities.UserSavedVideo.delete(id);
+      if (!deleted || deleted.length === 0) throw new Error("Not allowed to delete this video");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['userSavedVideos'] });
+      toast.success("Video removed");
+    },
+    onError: (e: any) => {
+      console.error("deleteSavedVideoMutation failed", e);
+      toast.error("Could not remove video");
+    },
+  });
+
+  // Admin approves a student's video: copy it into the master library
+  // (media_library is admin-write-only, which is exactly why this runs from
+  // the admin's session) and remove the personal row.
+  const approveSavedVideoMutation = useMutation({
+    mutationFn: async (video: any) => {
+      await base44.entities.MediaLibrary.create({
+        title: video.title,
+        language: video.language || userProfile?.language || 'hebrew',
+        video_url: video.video_url,
+        video_id: video.video_id,
+        topics: video.topics || [],
+        difficulty_level: video.difficulty_level || 'All',
+        duration_minutes: video.duration_minutes ?? null,
+        tags: video.tags || '',
+        thumbnail_url: video.thumbnail_url || '',
+        notes: video.notes || '',
+        processed_transcript: video.processed_transcript || [],
+        session_vocab_words: video.session_vocab_words || [],
+        is_active: true,
+      });
+      await base44.entities.UserSavedVideo.delete(video.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mediaLibrary'] });
+      queryClient.invalidateQueries({ queryKey: ['userSavedVideos'] });
+      toast.success("Approved — video is now in the master library!");
+    },
+    onError: (e: any) => {
+      console.error("approveSavedVideoMutation failed", e);
+      toast.error("Could not approve video");
+    },
+  });
+
   const updateVideoMutation = useMutation({
     mutationFn: ({ id, data, entity }: any) => (entity || base44.entities.MediaLibrary).update(id, data),
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['mediaLibrary'] });
+      queryClient.invalidateQueries({ queryKey: ['userSavedVideos'] });
       setEditingVideo(null);
       setShowAddDialog(false);
       resetForm();
@@ -582,6 +659,39 @@ export default function MediaLibrary() {
     });
   };
 
+  // Create/update a video in the user's own personal collection. Students
+  // route here (the master library is admin-write-only); the row lands in
+  // the admin's approval queue automatically because org admins can read
+  // every student's user_saved_video rows.
+  const handleSubmitPersonalAsync = async (formData: any, editingVideo: any) => {
+    let videoId = formData.video_id;
+    if (!videoId && formData.video_url) {
+      videoId = extractYouTubeId(formData.video_url) || undefined;
+    }
+    const data = {
+      title: formData.title,
+      language: formData.language || userProfile?.language || 'hebrew',
+      video_url: formData.video_url,
+      video_id: videoId,
+      topics: formData.topics || [],
+      difficulty_level: formData.difficulty_level || 'All',
+      duration_minutes: formData.duration_minutes ? parseFloat(formData.duration_minutes) : null,
+      tags: formData.tags || '',
+      thumbnail_url: formData.thumbnail_url || '',
+      notes: formData.notes || '',
+    };
+    try {
+      if (editingVideo) {
+        await updateVideoMutation.mutateAsync({ id: editingVideo.id, data, entity: base44.entities.UserSavedVideo });
+        queryClient.invalidateQueries({ queryKey: ['userSavedVideos'] });
+      } else {
+        await createSavedVideoMutation.mutateAsync(data);
+      }
+    } catch (e) {
+      // onError already toasted.
+    }
+  };
+
   const handleSubmit = () => {
     if (!formData.title) {
       toast.error("Title is required");
@@ -594,6 +704,16 @@ export default function MediaLibrary() {
 
     // Close dialog immediately before any async work
     setShowAddDialog(false);
+
+    // Personal rows: creation by non-admins, and edits of rows that came
+    // from the personal collection (regardless of who edits — admins fix a
+    // student's submission in place).
+    if ((!editingVideo && !canEdit) || editingVideo?._source === 'personal') {
+      handleSubmitPersonalAsync(formData, editingVideo);
+      setEditingVideo(null);
+      resetForm();
+      return;
+    }
 
     handleSubmitAsync(formData, editingVideo);
     setEditingVideo(null);
@@ -877,7 +997,21 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
     }));
   };
 
-  const filteredVideos = videos.filter((video: any) => {
+  // Master library + the current user's OWN personal videos, tagged with
+  // _source so the card/detail code knows the write target (entity routing,
+  // delete permission). Other students' rows an admin can read belong in the
+  // approval queue below, not in their main grid.
+  const combinedVideos = [
+    ...videos.map((v: any) => ({ ...v, _source: 'catalog' })),
+    ...savedVideos
+      .filter((v: any) => v.created_by === currentUser?.email)
+      .map((v: any) => ({ ...v, _source: 'personal' })),
+  ];
+
+  // A student's videos awaiting admin review (admin RLS returns all rows).
+  const pendingStudentVideos = savedVideos.filter((v: any) => v.created_by !== currentUser?.email);
+
+  const filteredVideos = combinedVideos.filter((video: any) => {
     const matchesSearch = video.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (video.tags || "").toLowerCase().includes(searchTerm.toLowerCase());
     const userLang = userProfile?.language;
@@ -903,9 +1037,15 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
     return a.title.localeCompare(b.title);
   });
 
-  const canEdit = true;
-  const canDelete = true;
+  // Master-library writes are admin-only (matches media_library RLS — a
+  // non-admin's edit/delete would silently affect 0 rows). Students manage
+  // their own personal videos instead; see canModifyVideo.
+  const canEdit = currentUser?.role === 'admin';
+  const canDelete = currentUser?.role === 'admin';
   const canAssign = currentUser?.role === 'admin' || currentUser?.role === 'coach';
+  // Per-card permission: admins everything; owners their personal videos.
+  const canModifyVideo = (video: any) =>
+    canEdit || (video?._source === 'personal' && video?.created_by === currentUser?.email);
 
   const myVideos = myProgram.map((prog: any) => {
     const video = videos.find((v: any) => v.id === prog.media_library_id);
@@ -1278,18 +1418,30 @@ For each segment:
     // each other's onYouTubeIframeAPIReady (bug #33).
     loadYouTubeApi().then(() => initPlayer());
 
-    // Always fetch fresh from DB (to get latest transcript after updates)
+    // Always fetch fresh from DB (to get latest transcript after updates).
+    // Personal videos re-read their OWN row — swapping in a catalog row here
+    // would lose _source and route later transcript saves to the wrong table.
     try {
-      const saved = await base44.entities.MediaLibrary.filter({ video_id: videoId });
-      // Pick the one with most recent update or most segments
-      const savedVideo = saved.sort((a: any, b: any) =>
-        (b.processed_transcript?.length || 0) - (a.processed_transcript?.length || 0)
-      )[0];
-      if (savedVideo?.processed_transcript?.length > 0) {
-        setTranscript(savedVideo.processed_transcript);
-        setSelectedVideo(savedVideo);
-        setLoadingTranscript(false);
-        return;
+      if (video._source === 'personal') {
+        const fresh = await base44.entities.UserSavedVideo.get(video.id);
+        if (fresh?.processed_transcript?.length > 0) {
+          setTranscript(fresh.processed_transcript);
+          setSelectedVideo({ ...fresh, _source: 'personal' });
+          setLoadingTranscript(false);
+          return;
+        }
+      } else {
+        const saved = await base44.entities.MediaLibrary.filter({ video_id: videoId });
+        // Pick the one with most recent update or most segments
+        const savedVideo = saved.sort((a: any, b: any) =>
+          (b.processed_transcript?.length || 0) - (a.processed_transcript?.length || 0)
+        )[0];
+        if (savedVideo?.processed_transcript?.length > 0) {
+          setTranscript(savedVideo.processed_transcript);
+          setSelectedVideo({ ...savedVideo, _source: 'catalog' });
+          setLoadingTranscript(false);
+          return;
+        }
       }
     } catch (e) {}
 
@@ -1601,13 +1753,15 @@ Return a JSON with a "videos" array. Each video must have:
         <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
           <div className="flex flex-wrap items-center gap-3">
 
-            {/* + Add New Content */}
-            {canEdit && (
+            {/* + Add New Content — admins add to the master library; every
+                other user adds to their own personal collection (which also
+                lands in the admin's approval queue). */}
+            {currentUser && (
               <button
                 onClick={() => { resetForm(); setEditingVideo(null); setMediaType("video"); setShowAddDialog(true); }}
                 className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-400"
               >
-                <Plus className="h-4 w-4" /> Add New Content
+                <Plus className="h-4 w-4" /> {canEdit ? "Add New Content" : "Add Video"}
               </button>
             )}
 
@@ -1828,6 +1982,58 @@ Return a JSON with a "videos" array. Each video must have:
         {/* Core Vocab Tab */}
         {activeMediaTab === 'corevocab' && <CoreVocabTab />}
 
+        {/* Student submissions — admin approval queue. Personal videos added
+            by students; Approve copies one into the master library. */}
+        {canEdit && pendingStudentVideos.length > 0 && (
+          <div className="mb-8 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+            <h2 className="mb-3 text-lg font-semibold text-amber-300">
+              Student submissions ({pendingStudentVideos.length})
+            </h2>
+            <div className="space-y-3">
+              {pendingStudentVideos.map((video: any) => (
+                <div key={video.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3">
+                  <img
+                    src={getThumbnailUrl(video) || `https://i.ytimg.com/vi/${video.video_id || extractYouTubeId(video.video_url) || 'default'}/hqdefault.jpg`}
+                    alt={video.title}
+                    className="h-16 w-28 flex-shrink-0 cursor-pointer rounded-lg object-cover"
+                    onClick={() => handleVideoClick({ ...video, _source: 'personal' })}
+                    onError={(e: any) => { e.target.style.display = 'none'; }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="cursor-pointer truncate text-sm font-semibold text-white hover:text-teal-300" onClick={() => handleVideoClick({ ...video, _source: 'personal' })}>{video.title}</p>
+                    <p className="truncate text-xs text-slate-400">Added by {video.created_by}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {video.language && <span className="rounded-md bg-teal-500/15 px-2 py-0.5 text-xs font-medium capitalize text-teal-300">{video.language}</span>}
+                      {video.difficulty_level && <span className="rounded-md bg-slate-700 px-2 py-0.5 text-xs font-medium text-slate-300">{video.difficulty_level}</span>}
+                    </div>
+                  </div>
+                  <div className="flex flex-shrink-0 items-center gap-1.5">
+                    <button
+                      onClick={() => approveSavedVideoMutation.mutate(video)}
+                      disabled={approveSavedVideoMutation.isPending}
+                      className="rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-50"
+                    >
+                      ✓ Approve
+                    </button>
+                    <button
+                      onClick={() => handleEdit({ ...video, _source: 'personal' })}
+                      className="rounded-lg bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => { if (confirm(`Delete "${video.title}" (added by ${video.created_by})?`)) deleteSavedVideoMutation.mutate(video.id); }}
+                      className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 transition hover:bg-red-500/20"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Library Videos Grid */}
         {(filterContentTypes.includes('videos') || filterContentTypes.includes('audio') || filterContentTypes.includes('songs')) && (
           <div className="mb-8">
@@ -1852,13 +2058,25 @@ Return a JSON with a "videos" array. Each video must have:
                     <div className="mb-2.5 flex items-start justify-between gap-2">
                       <h3 className="flex-1 text-sm font-semibold leading-snug text-white line-clamp-2">{video.title}</h3>
                       <div className="flex flex-shrink-0 gap-0.5">
-                        {canEdit && (
+                        {canModifyVideo(video) && (
                           <button onClick={(e) => { e.stopPropagation(); handleEdit(video); }} className="rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white" aria-label="Edit">
                             <Pencil className="h-4 w-4" />
                           </button>
                         )}
-                        {canDelete && (
-                          <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this video from library?")) { deleteVideoMutation.mutate(video.id); } }} className="rounded-md p-1.5 text-slate-400 transition hover:bg-red-500/15 hover:text-red-400" aria-label="Delete">
+                        {(video._source === 'personal' ? canModifyVideo(video) : canDelete) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!confirm("Delete this video from library?")) return;
+                              if (video._source === 'personal') {
+                                deleteSavedVideoMutation.mutate(video.id);
+                              } else {
+                                deleteVideoMutation.mutate(video.id);
+                              }
+                            }}
+                            className="rounded-md p-1.5 text-slate-400 transition hover:bg-red-500/15 hover:text-red-400"
+                            aria-label="Delete"
+                          >
                             <Trash2 className="h-4 w-4" />
                           </button>
                         )}
@@ -1868,8 +2086,9 @@ Return a JSON with a "videos" array. Each video must have:
                       <span className="rounded-md bg-teal-500/15 px-2 py-0.5 text-xs font-medium capitalize text-teal-300">{video.language}</span>
                       {video.difficulty_level && <span className="rounded-md bg-slate-700 px-2 py-0.5 text-xs font-medium text-slate-300">{video.difficulty_level}</span>}
                       {video.duration_minutes && <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-400">{video.duration_minutes} min</span>}
+                      {video._source === 'personal' && <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-300">My Video</span>}
                     </div>
-                    {canAssign && (
+                    {canAssign && video._source !== 'personal' && (
                       <select
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => {
@@ -1981,6 +2200,7 @@ Return a JSON with a "videos" array. Each video must have:
         allUsers={allUsers}
         sessionOptions={sessionOptions}
         sessionLanguageLabel={languageLabel(formData.language)}
+        canManageCatalog={canEdit && editingVideo?._source !== 'personal'}
       />
 
 
@@ -2025,7 +2245,7 @@ Return a JSON with a "videos" array. Each video must have:
                 {/* Re-fetch the transcript from the source audio — for fixing
                     old saved transcripts that came from a wrong-language
                     caption track (e.g. Arabic auto-captions on Hebrew videos). */}
-                {transcript.length > 0 && !loadingTranscript && canEdit && (
+                {transcript.length > 0 && !loadingTranscript && canModifyVideo(selectedVideo) && (
                   <button
                     onClick={() => { if (confirm("Replace this transcript with a freshly generated one?")) generateTranscriptFromYouTube(selectedVideo); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-sm font-medium border border-purple-500/40 transition-all"
@@ -2125,7 +2345,7 @@ Return a JSON with a "videos" array. Each video must have:
                     >
                       Paste Transcript
                     </Button>
-                    {canEdit && (
+                    {canModifyVideo(selectedVideo) && (
                       <Button
                         onClick={() => generateTranscriptFromYouTube(selectedVideo)}
                         variant="outline"

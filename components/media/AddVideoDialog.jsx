@@ -19,7 +19,11 @@ const inputCls =
   "w-full rounded-lg bg-slate-800 border border-slate-700 text-white text-sm px-3 py-2 placeholder:text-slate-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500/40 transition";
 const labelCls = "block text-sm font-medium text-slate-300 mb-1.5";
 
-export default function AddVideoDialog({ open, onOpenChange, editingVideo, formData, setFormData, mediaType, setMediaType, uploadingAudio, onSubmit, onCancel, onAudioUpload, onLoadYoutube, isPending, allUsers = [], sessionOptions = [], sessionLanguageLabel = "" }) {
+// canManageCatalog: admins get the full catalog-management form; everyone
+// else gets a trimmed "add to my library" form (no user assignment, day
+// designation, active toggle, or transcript paste — those are master-library
+// concerns handled after an admin approves the submission).
+export default function AddVideoDialog({ open, onOpenChange, editingVideo, formData, setFormData, mediaType, setMediaType, uploadingAudio, onSubmit, onCancel, onAudioUpload, onLoadYoutube, isPending, allUsers = [], sessionOptions = [], sessionLanguageLabel = "", canManageCatalog = true }) {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [generatingTranscript, setGeneratingTranscript] = useState(false);
   const dropdownRef = useRef(null);
@@ -107,7 +111,7 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
           <h2 className="text-lg font-semibold text-white">
-            {editingVideo ? "Edit Media" : "Add Media to Library"}
+            {editingVideo ? "Edit Media" : canManageCatalog ? "Add Media to Library" : "Add Video to My Library"}
           </h2>
           <button
             type="button"
@@ -121,7 +125,8 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
 
         {/* Body */}
         <div className="max-h-[calc(90vh-9rem)] space-y-4 overflow-y-auto px-6 py-5">
-          {/* Media type toggle */}
+          {/* Media type toggle (audio/song uploads are catalog-only) */}
+          {canManageCatalog && (
           <div className="flex gap-2">
             {["video", "audio", "song"].map(type => (
               <button
@@ -138,6 +143,7 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
               </button>
             ))}
           </div>
+          )}
 
           {mediaType === "video" ? (
             <div>
@@ -191,7 +197,7 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
             />
           </div>
 
-          {allUsers.length > 0 && (
+          {canManageCatalog && allUsers.length > 0 && (
             <div>
               <label className={labelCls}>Assign to Users <span className="text-slate-500">(optional)</span></label>
               <div className="relative" ref={dropdownRef}>
@@ -251,6 +257,7 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
             </div>
           )}
 
+          {canManageCatalog && (
           <div>
             <label className={labelCls}>Designate to Day <span className="text-slate-500">— for all users</span></label>
             {sessionOptions.length === 0 && !formData.default_day ? (
@@ -287,6 +294,7 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
               <p className="mt-1 text-xs text-slate-500">Video will auto-populate in this day's schedule</p>
             )}
           </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -331,6 +339,7 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
             </div>
           </div>
 
+          {canManageCatalog && (
           <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-300">
             <input
               type="checkbox"
@@ -340,7 +349,9 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
             />
             Active
           </label>
+          )}
 
+          {canManageCatalog && (
           <div>
             <div className="mb-1 flex items-center justify-between">
               <label className={`${labelCls} mb-0`}>Transcript</label>
@@ -365,6 +376,7 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
               className={`${inputCls} resize-y`}
             />
           </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -378,7 +390,7 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
             {isPending ? (
               <><Loader2 className="h-4 w-4 animate-spin" />{editingVideo ? "Updating..." : "Adding..."}</>
             ) : (
-              <>{editingVideo ? null : <Plus className="h-4 w-4" />}{editingVideo ? "Update Video" : "Add to Library"}</>
+              <>{editingVideo ? null : <Plus className="h-4 w-4" />}{editingVideo ? "Update Video" : canManageCatalog ? "Add to Library" : "Add to My Library"}</>
             )}
           </button>
           <button
