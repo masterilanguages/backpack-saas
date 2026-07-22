@@ -5,6 +5,7 @@ import { base44 } from "@/api/base44Client";
 import { Play, Pause, Loader2, Check, X, Plus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLLanguage } from "@/lib/language";
+import { stripCaptionNoise } from "@/lib/transcription";
 
 export default function ContinuousTranscript({
   transcript: transcriptProp,
@@ -269,7 +270,9 @@ ${missing.map((s, i) => `${i + 1}. Transliteration: "${s.transliteration}" | Eng
   };
 
   const renderWords = (segIdx, field, text, textClassName) => {
-    const words = getWordsArray(text);
+    // Strip caption noise ("[موسيقى]", "[Music]", ♪) at display time so legacy
+    // transcripts render clean without regenerating each one.
+    const words = getWordsArray(stripCaptionNoise(text));
     return (
       <span>
         {words.map((word, wordIdx) => {
@@ -394,7 +397,11 @@ ${missing.map((s, i) => `${i + 1}. Transliteration: "${s.transliteration}" | Eng
       </div>
       <div className="space-y-1 flex flex-col items-center" onClick={() => setActiveWordKey(null)}>
         {transcript.map((segment, segIdx) => {
-          if (!segment.transliteration && !segment.hebrew) return null;
+          // Skip segments that are empty or nothing but caption noise, so a
+          // stray "[موسيقى]"/"[Music]" line doesn't render as a blank row.
+          if (!stripCaptionNoise(segment.transliteration) &&
+              !stripCaptionNoise(segment.hebrew) &&
+              !stripCaptionNoise(segment.english)) return null;
           const isActive = getIsActive(segIdx);
 
           return (
