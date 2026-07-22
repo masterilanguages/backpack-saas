@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import NextLink from "next/link";
 import { useNavigate, createPageUrl } from "@/lib/router-compat";
 import { base44 as base44Client } from "@/api/base44Client";
 // base44Client is a JS shim whose `entities` are built dynamically, so TS can't
@@ -1747,6 +1748,30 @@ Return a JSON with a "videos" array. Each video must have:
             <span>📚</span> Content Library
           </h1>
           <p className="mt-1.5 text-sm text-slate-400">Browse and manage videos, songs and audio for language practice.</p>
+        </div>
+
+        {/* Quick lessons — vocab lessons and songs that live inside the Library */}
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[
+            { href: "/learn/lessons/days-lesson", emoji: "📅", title: "Days of the Week", description: "Learn the days of the week and rate them 1-5." },
+            { href: "/learn/lessons/months", emoji: "🗓️", title: "Months of the Year", description: "Learn the months and rate how well you know them." },
+            { href: "/learn/songs", emoji: "🎵", title: "Songs", description: "Learn through music with lyric-by-lyric songs." },
+          ].map((item) => (
+            <NextLink
+              key={item.href}
+              href={item.href}
+              className="group flex flex-col rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-teal-700 hover:bg-slate-800/60"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-white">
+                  <span className="mr-1.5">{item.emoji}</span>
+                  {item.title}
+                </h2>
+                <ChevronDown className="h-5 w-5 -rotate-90 text-slate-600 transition group-hover:text-teal-400" />
+              </div>
+              <p className="mt-1 text-sm text-slate-400">{item.description}</p>
+            </NextLink>
+          ))}
         </div>
 
         {/* Unified filter bar */}

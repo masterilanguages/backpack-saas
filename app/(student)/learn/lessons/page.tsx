@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { ChevronRight, Palette, User, Calendar, CalendarDays, Image as ImageIcon, MessageSquare, ClipboardCheck, Hash } from "lucide-react";
+import { ChevronRight, Palette, User, Image as ImageIcon, MessageSquare, ClipboardCheck, Hash } from "lucide-react";
 
 // Static catalog of the ported Slice C lessons. Each entry maps to a real
 // route under /learn/lessons/*. The lesson content itself is faithful to
@@ -30,25 +30,11 @@ const lessons = [
     description: "Click body parts to see the translation and rate how well you know them.",
   },
   {
-    href: "/learn/lessons/days-lesson",
-    emoji: "📅",
-    icon: Calendar,
-    title: "Days of the Week",
-    description: "Learn the days of the week and rate them 1-5.",
-  },
-  {
     href: "/learn/lessons/days",
     emoji: "🗂️",
     icon: Hash,
     title: "Days Program",
     description: "Your day-by-day program with subsections and progress.",
-  },
-  {
-    href: "/learn/lessons/months",
-    emoji: "🗓️",
-    icon: CalendarDays,
-    title: "Months of the Year",
-    description: "Learn the months and rate how well you know them.",
   },
   {
     href: "/learn/lessons/pictures",
