@@ -927,13 +927,20 @@ For each segment:
 - transliteration: the original English text
 - english: ${targetLangCap} translation of the sentence`;
     } else {
-      // Target language source → translate to English
-      return `These are ${targetLangCap} sentences. Return exactly ${batch.length} segments.
+      // Non-English source → keep the ORIGINAL text and add an English
+      // translation. Describe the source as the DETECTED language, not the
+      // user's profile language: a Hebrew transcript enriched while the
+      // profile said "french" used to tell the LLM "these are French
+      // sentences, keep the original French" — so it translated the Hebrew
+      // into French instead of keeping it.
+      const srcLang = detectedLang || targetLang;
+      const srcLangCap = srcLang.charAt(0).toUpperCase() + srcLang.slice(1);
+      return `These are ${srcLangCap} sentences. Return exactly ${batch.length} segments.
 
 ${batch.map((s, idx) => `[${idx + 1}] "${s.text}"`).join('\n')}
 
 For each segment:
-- transliteration: the original ${targetLangCap} text (keep as-is)
+- transliteration: the original ${srcLangCap} text EXACTLY as given (keep as-is, do NOT translate)
 - english: English translation of the sentence`;
     }
   };
