@@ -166,7 +166,7 @@ export default function Progress() {
 
   const graphs = [
     { title: "Daily Streak", description: "Consecutive days with any learning activity", dataKey: "streak", color: "#ef4444" },
-    { title: "Vocab Added Per Day", description: "New words added to backpack each day", dataKey: "vocabAdded", color: "#8b5cf6" },
+    { title: "Words Added to Backpack", description: "New words added to backpack each day", dataKey: "vocabAdded", color: "#8b5cf6" },
     { title: "Total Vocabulary", description: "Cumulative words in backpack over time", dataKey: "vocabTotal", color: "#06b6d4" },
     { title: "Sessions Completed", description: "Daily sessions/days marked as done", dataKey: "sessionsCompleted", color: "#10b981" },
     { title: "Time Studied (min)", description: "Minutes actively studying per day", dataKey: "minutesStudied", color: "#f59e0b" },
