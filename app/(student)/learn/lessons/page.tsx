@@ -13,28 +13,28 @@ const lessons = [
     emoji: "🎨",
     icon: Palette,
     title: "Learn Colors",
-    description: "Tap colors to reveal Hebrew, rate them, then play the color game.",
+    description: "Tap colors to reveal the translation, rate them, then play the color game.",
   },
   {
     href: "/learn/lessons/colors-test",
     emoji: "✅",
     icon: ClipboardCheck,
     title: "Colors Test",
-    description: "Quiz yourself on the Hebrew color words you've learned.",
+    description: "Quiz yourself on the color words you've learned.",
   },
   {
     href: "/learn/lessons/body-parts",
     emoji: "🦵",
     icon: User,
     title: "Body Parts",
-    description: "Click body parts to see Hebrew and rate how well you know them.",
+    description: "Click body parts to see the translation and rate how well you know them.",
   },
   {
     href: "/learn/lessons/days-lesson",
     emoji: "📅",
     icon: Calendar,
     title: "Days of the Week",
-    description: "Learn the Hebrew days of the week and rate them 1-5.",
+    description: "Learn the days of the week and rate them 1-5.",
   },
   {
     href: "/learn/lessons/days",
@@ -48,14 +48,14 @@ const lessons = [
     emoji: "🗓️",
     icon: CalendarDays,
     title: "Months of the Year",
-    description: "Learn the Hebrew months and rate how well you know them.",
+    description: "Learn the months and rate how well you know them.",
   },
   {
     href: "/learn/lessons/pictures",
     emoji: "🖼️",
     icon: ImageIcon,
     title: "Picture Mnemonics",
-    description: "Learn Hebrew words through visual associations and hints.",
+    description: "Learn vocabulary through visual associations and hints.",
   },
   {
     href: "/learn/lessons/pictures2",
@@ -83,8 +83,7 @@ export default function LessonsIndexPage() {
         </p>
         <h1 className="mt-1 text-3xl font-extrabold text-white">Lessons</h1>
         <p className="mt-2 text-slate-400">
-          Bite-sized lessons to build your Hebrew vocabulary. Tap a lesson to
-          start.
+          Bite-sized lessons to build your vocabulary. Tap a lesson to start.
         </p>
       </div>
 
