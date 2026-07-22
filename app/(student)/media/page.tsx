@@ -118,6 +118,9 @@ export default function MediaLibrary() {
   const [selectedVerb, setSelectedVerb] = useState<any>(null);
   const [extractingVocab, setExtractingVocab] = useState(false);
   const [recommendations, setRecommendations] = useState<any[]>([]);
+  // Language the current recommendations were fetched for — stale recs are
+  // refetched when the user switches learning language.
+  const [recommendationsLanguage, setRecommendationsLanguage] = useState("");
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const [showPostVideoFlashcards, setShowPostVideoFlashcards] = useState(false);
   const [sessionVocabWords, setSessionVocabWords] = useState<any[]>([]);
@@ -1643,12 +1646,24 @@ For each segment:
   };
 
   const fetchRecommendations = async () => {
-    if (loadingRecommendations || recommendations.length > 0) return;
+    if (loadingRecommendations) return;
+    // Recommend in the language the page is actually showing: the explicit
+    // filter first, then the profile's learning language. Never guess — a
+    // fallback here used to default to Spanish and recommend Spanish
+    // channels to Hebrew learners while the profile was still loading.
+    const lang = (filterLanguage && filterLanguage !== 'all' ? filterLanguage : userProfile?.language) || '';
+    if (!lang) {
+      toast.info("Still loading your language — try again in a second.");
+      return;
+    }
+    // Cached recs are only valid for the language they were fetched for.
+    if (recommendations.length > 0 && recommendationsLanguage === lang) return;
+    setRecommendations([]);
+    setRecommendationsLanguage(lang);
     setLoadingRecommendations(true);
     try {
       const existingVideoIds = new Set(filteredVideos.map((v: any) => v.video_id).filter(Boolean));
 
-      const lang = userProfile?.language || 'spanish';
       const langCap = lang.charAt(0).toUpperCase() + lang.slice(1);
 
       const channelNames = [];
@@ -1666,9 +1681,9 @@ For each segment:
         : '';
 
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Find 8 popular YouTube videos for learning ${langCap} as a beginner/intermediate student. ONLY recommend ${langCap} learning videos. ${channelContext}
+        prompt: `Find 8 popular YouTube videos for learning ${langCap} as a beginner/intermediate student. ONLY recommend videos that teach the ${langCap} language — no other languages, even if the user's watched channels teach something else. ${channelContext}
 
-Prioritize videos from the same channels if mentioned, or similar educational ${langCap} learning channels.
+Prioritize videos from the same channels if mentioned ONLY when they teach ${langCap}; otherwise use similar educational ${langCap} learning channels.
 Focus on videos with high view counts and good educational value.
 
 Return a JSON with a "videos" array. Each video must have:
