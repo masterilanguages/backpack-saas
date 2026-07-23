@@ -313,7 +313,11 @@ ${missing.map((s, i) => `${i + 1}. Transliteration: "${s.transliteration}" | Eng
           const isWordActive = activeWordKey === wordKey;
           return (
             <React.Fragment key={wordIdx}>
-            <span className="inline-block relative">
+            {/* Plain inline (NOT inline-block): atomic inlines are direction-
+                neutral to the bidi algorithm, so an embedded English phrase in
+                an RTL line rendered its words in reverse order. Inline spans
+                let the letters themselves set each run's direction. */}
+            <span className="relative">
               <span
                 onClick={(e) => {
                   e.stopPropagation();
