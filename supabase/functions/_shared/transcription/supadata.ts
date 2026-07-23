@@ -1,17 +1,16 @@
 // Supadata provider — handles `kind: "youtube"`.
 //
-// MVP engine (per product decision): transcribe the ACTUAL AUDIO, not YouTube's
-// captions. YouTube's own auto-captions for Hebrew are frequently an ARABIC ASR
-// track (Hebrew is poorly supported by their captioner), which produced Arabic
-// text and "[موسيقى]" noise. Supadata's `mode=generate` runs Whisper-class ASR
-// on the audio and detects/transcribes the real language correctly.
+// AUDIO-ONLY (per product decision): transcribe the ACTUAL AUDIO via Supadata's
+// `mode=generate` (Whisper-class ASR) and NEVER use YouTube captions — even
+// when captions exist. Captions are auto-generated/edited/inconsistent with the
+// spoken words (Hebrew videos frequently carry an ARABIC caption track, which
+// produced Arabic text and "[موسيقى]" noise). The audio transcript is the
+// single source of truth for all downstream features.
 //
-// Order of attempts:
-//   1. mode=generate (audio ASR) in the requested language — the source of truth.
-//   2. If generation fails/times out, fall back to native captions (validated
-//      against the requested language) so a link still yields *something*.
-//   3. Caption noise cues ("[Music]", "[موسيقى]", ♪) are stripped; noise-only
-//      segments are dropped.
+// The ASR auto-detects the spoken language and returns punctuated, timestamped
+// segments. Noise cues ("[Music]", ♪) are stripped; noise-only segments are
+// dropped. If generation fails, we FAIL honestly — the UI surfaces the error
+// and the user can retry — rather than silently serving caption text.
 //
 // Server-side YouTube audio download is blocked from datacenter IPs, which is
 // why we go through Supadata rather than fetching the stream ourselves.
@@ -32,16 +31,6 @@ function normLang(tag: unknown): string {
   return t === "iw" ? "he" : t;
 }
 
-function scriptCounts(text: string) {
-  let hebrew = 0, arabic = 0;
-  for (const ch of text) {
-    const c = ch.codePointAt(0)!;
-    if (c >= 0x0590 && c <= 0x05ff) hebrew++;
-    else if ((c >= 0x0600 && c <= 0x06ff) || (c >= 0x0750 && c <= 0x077f)) arabic++;
-  }
-  return { hebrew, arabic };
-}
-
 // Strip caption noise cues: bracketed markers in any language ("[Music]",
 // "[موسيقى]", "[מוזיקה]", "[Applause]") and musical-note glyphs. Returns ""
 // for segments that were nothing but noise so they get dropped.
@@ -51,20 +40,6 @@ function cleanCaptionText(text: string): string {
     .replace(/[♪♫🎵🎶]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-// Does the fetched transcript plausibly match the requested language?
-function matchesRequestedLanguage(sample: string, returnedLang: string, reqCode: string): boolean {
-  if (!reqCode) return true;
-  if (reqCode === "he") {
-    const { hebrew, arabic } = scriptCounts(sample);
-    // Arabic-script content is the known failure mode; also reject tracks that
-    // claim another language and contain (nearly) no Hebrew at all.
-    if (arabic > hebrew) return false;
-    if (returnedLang && returnedLang !== "he" && hebrew < 20) return false;
-    return true;
-  }
-  return !returnedLang || returnedLang === reqCode;
 }
 
 // Supadata offsets/durations are in MILLISECONDS; the app expects seconds.
@@ -134,49 +109,26 @@ export const supadataProvider: TranscriptionProvider = {
     const videoId = source.videoId;
     const reqCode = normLang(opts.language);
     const steps: string[] = [];
-    // Split the budget: most goes to audio generation (the primary path), a
-    // slice reserved for the caption fallback. Keeps the worst case under
-    // Supabase's ~150s edge wall-clock.
-    const totalBudget = opts.budgetMs ?? 135_000;
-    const genBudget = Math.round(totalBudget * 0.75);
-    const capBudget = totalBudget - genBudget;
+    // Whole budget goes to audio generation — there is deliberately no caption
+    // fallback. Keeps the worst case under Supabase's ~150s edge wall-clock.
+    const genBudget = opts.budgetMs ?? 135_000;
 
-    // 1) Audio ASR (the product default) — correct language, no caption noise.
+    // Audio ASR only — captions are never used, even when they exist.
     const generated = await fetchSupadata(apiKey, videoId, { mode: "generate" }, genBudget);
     steps.push("audio_generate");
-    let content: any[] = Array.isArray(generated?.content) ? generated.content : [];
-    let returnedLang = normLang(generated?.lang);
-    let source_id = "supadata_ai";
-    let payload = generated;
-
-    // 2) Fallback: native captions (validated) if audio ASR yielded nothing.
-    if (content.length === 0) {
-      steps.push(`audio_generate_failed:${generated?.error || "empty"}`);
-      const captions = await fetchSupadata(apiKey, videoId, { lang: reqCode || undefined }, capBudget);
-      steps.push("captions_fetched");
-      const capContent: any[] = Array.isArray(captions?.content) ? captions.content : [];
-      const capLang = normLang(captions?.lang);
-      const sample = capContent.slice(0, 60).map((s: any) => s?.text || "").join(" ");
-      // Only accept captions that plausibly match the requested language — a
-      // wrong-language track is worse than an honest failure.
-      if (capContent.length > 0 && matchesRequestedLanguage(sample, capLang, reqCode)) {
-        content = capContent;
-        returnedLang = capLang;
-        source_id = "youtube_captions";
-        payload = captions;
-      } else if (capContent.length > 0) {
-        steps.push(`captions_wrong_language:${capLang || "unknown"}`);
-      }
-    }
+    const content: any[] = Array.isArray(generated?.content) ? generated.content : [];
+    const returnedLang = normLang(generated?.lang);
 
     const transcript = toSegments(content);
     if (transcript.length === 0) {
+      steps.push(`audio_generate_failed:${generated?.error || "empty"}`);
       return {
         transcript: [],
         language: reqCode || "unknown",
         source: "none",
         steps,
-        error: generated?.error || payload?.error || "No transcript available for this video.",
+        error: generated?.error ||
+          "Could not transcribe this video's audio — try again in a minute.",
       };
     }
 
@@ -184,8 +136,8 @@ export const supadataProvider: TranscriptionProvider = {
     return {
       transcript,
       language: returnedLang || reqCode || "unknown",
-      availableLanguages: payload?.availableLangs || [],
-      source: source_id,
+      availableLanguages: generated?.availableLangs || [],
+      source: "supadata_ai",
       steps,
     };
   },
