@@ -28,6 +28,7 @@ import ContinuousTranscript from "@/components/video/ContinuousTranscript";
 import AddVideoDialog from "@/components/media/AddVideoDialog";
 import PostVideoFlashcards from "@/components/video/PostVideoFlashcards";
 import { languageLabel, isRTLText } from "@/lib/language";
+import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 
 // Shared, memoized loader for the YouTube IFrame API. The YT API calls the single
 // global window.onYouTubeIframeAPIReady ONCE at script load — a single
@@ -1070,13 +1071,20 @@ For each segment:
 - transliteration: the original English text
 - english: ${targetLangCap} translation of the sentence`;
     } else {
-      // Target language source → translate to English
-      return `These are ${targetLangCap} sentences. Return exactly ${batch.length} segments.
+      // Non-English source → keep the ORIGINAL text and add an English
+      // translation. Describe the source as the DETECTED language, not the
+      // user's profile language: a Hebrew transcript enriched while the
+      // profile said "french" used to tell the LLM "these are French
+      // sentences, keep the original French" — so it translated the Hebrew
+      // into French instead of keeping it.
+      const srcLang = detectedLang || targetLang;
+      const srcLangCap = srcLang.charAt(0).toUpperCase() + srcLang.slice(1);
+      return `These are ${srcLangCap} sentences. Return exactly ${batch.length} segments.
 
 ${batch.map((s, idx) => `[${idx + 1}] "${s.text}"`).join('\n')}
 
 For each segment:
-- transliteration: the original ${targetLangCap} text (keep as-is)
+- transliteration: the original ${srcLangCap} text EXACTLY as given (keep as-is, do NOT translate)
 - english: English translation of the sentence`;
     }
   };
@@ -1210,13 +1218,14 @@ For each segment:
           setTimeout(() => reject(new Error('Timeout after 180 seconds')), 180000)
         );
 
-        // Pass the target language so the function can pick the right caption
-        // track and reject wrong-language ones (Hebrew videos often carry an
-        // Arabic auto-caption track on YouTube).
-        const resultPromise = base44.functions.invoke('youtubeTranscript', {
-          videoId,
-          language: video.language || userProfile?.language || '',
-        });
+        // Provider-agnostic transcription (lib/transcription). YouTube ids are
+        // transcribed from the actual audio in the target language, sidestepping
+        // the wrong-language (Arabic) auto-caption tracks. Wrap the result as
+        // { data } so the downstream `result.data.*` reads are unchanged.
+        const resultPromise = transcribeMediaSource(
+          youtubeSource(videoId),
+          { language: video.language || userProfile?.language || '' },
+        ).then((data: any) => ({ data }));
         const result: any = await Promise.race([resultPromise, timeoutPromise]);
 
         console.log('Function response:', result);

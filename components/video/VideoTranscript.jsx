@@ -14,6 +14,7 @@ import UniversalEditableWord from "../learning/UniversalEditableWord";
 import EditableSentence from "../learning/EditableSentence";
 import VideoTranscriptWord from "./VideoTranscriptWord";
 import { languageLabel, isRTLLanguage, usesNikud } from "@/lib/language";
+import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 
 // Normalize the various language codes this Video entity stores ("he"/"iw" for
 // Hebrew) into the full language names the @/lib/language helpers expect.
@@ -198,14 +199,12 @@ export default function VideoTranscript({ videoId, videoUrl, iframeId, onPauseVi
         throw new Error("Invalid YouTube URL");
       }
 
-      // OAuth-free transcript path (bug #23). The old youtubeCaptionsList/Download
-      // flow required a YouTube OAuth token that the UI never obtains, so it always
-      // 401'd. youtubeTranscript needs no auth and is what MediaLibrary already uses.
-      const result = await base44.functions.invoke('youtubeTranscript', {
-        videoId: ytId,
+      // Provider-agnostic transcription (lib/transcription). Routes YouTube ids
+      // to audio ASR — no YouTube OAuth token needed (bug #23).
+      const data = await transcribeMediaSource(youtubeSource(ytId), {
         language: normalizeVideoLang(video?.language),
       });
-      const segments = result?.data?.transcript;
+      const segments = data?.transcript;
 
       if (!segments || segments.length === 0) {
         // No transcript available - update status and allow manual input
