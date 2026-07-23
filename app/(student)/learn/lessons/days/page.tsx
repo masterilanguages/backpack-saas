@@ -1,294 +1,367 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useNavigate, useParams, createPageUrl } from "@/lib/router-compat";
+import { useNavigate, createPageUrl } from "@/lib/router-compat";
 import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronRight, Check, Lock, Plus, Trash2, GripVertical } from "lucide-react";
+import { ChevronRight, Check, Lock, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
-export default function Days() {
+// ---------------------------------------------------------------------------
+// The standard flow every session follows. Tasks are code-defined (stable ids
+// so DayProgress persists) and merged with whatever custom tasks an admin has
+// stored on the Day row. The first three steps deep-link to the session's
+// video when one is assigned.
+// ---------------------------------------------------------------------------
+const TEMPLATE_TASKS = [
+  { id: "tpl_watch_story", icon: "🎬", name: "Watch story (no translations)", video: true },
+  { id: "tpl_watch_subtitles", icon: "💬", name: "Watch with subtitles", video: true },
+  { id: "tpl_click_words", icon: "👆", name: "Click words", video: true },
+  { id: "tpl_ai_vocab", icon: "🤖", name: "AI explains vocabulary", video: true },
+  { id: "tpl_mnemonics", icon: "🧠", name: "Set mnemonics inside backpack", page: "Backpack" },
+  { id: "tpl_shadow", icon: "🗣️", name: "Shadow speaker", page: "Practice" },
+  { id: "tpl_roleplay", icon: "🎭", name: "Role-play scene", page: "Practice" },
+  { id: "tpl_retell", icon: "📖", name: "Retell story", page: "Journal" },
+];
+
+// Lessons folded into the schedule (the standalone Lessons page is gone).
+// Colors + Colors Test deliberately share one session.
+const SESSION_LESSONS: Record<number, { id: string; icon: string; name: string; href: string }[]> = {
+  1: [
+    { id: "lesson_colors", icon: "🎨", name: "Learn Colors", href: "/learn/lessons/colors" },
+    { id: "lesson_colors_test", icon: "✅", name: "Colors Test", href: "/learn/lessons/colors-test" },
+  ],
+  2: [
+    { id: "lesson_body_parts", icon: "🦵", name: "Body Parts", href: "/learn/lessons/body-parts" },
+  ],
+  3: [
+    { id: "lesson_pictures", icon: "🖼️", name: "Picture Mnemonics", href: "/learn/lessons/pictures" },
+    { id: "lesson_pictures2", icon: "🧠", name: "Pictures Lesson 2", href: "/learn/lessons/pictures2" },
+  ],
+  4: [
+    { id: "lesson_sentences", icon: "💬", name: "Sentences", href: "/learn/lessons/sentences" },
+  ],
+};
+
+const TOTAL_SESSIONS = 100;
+const VISIBLE_SESSIONS = 5;
+
+export default function Schedule() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [editingDay, setEditingDay] = useState<any>(null);
-  const [newSubsection, setNewSubsection] = useState({ name: "", duration: "", icon: "", page: "" });
+  const [addingTaskFor, setAddingTaskFor] = useState<any>(null);
+  const [newTask, setNewTask] = useState({ name: "", icon: "", page: "" });
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const user = await base44.auth.me();
-        setCurrentUser(user);
-      } catch (e) {}
-    };
-    fetchUser();
+    base44.auth.me().then(setCurrentUser).catch(() => {});
   }, []);
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === "admin";
 
   const { data: userProfile } = useQuery({
-    queryKey: ['userProfile', currentUser?.email],
+    queryKey: ["userProfile", currentUser?.email],
     queryFn: async () => {
-      if (!currentUser?.email) return null;
       const profiles = await base44.entities.UserProfile.filter({ created_by: currentUser.email });
       return profiles[0] || null;
     },
     enabled: !!currentUser?.email,
   });
 
+  const language = userProfile?.language || "hebrew";
+
   const { data: days = [] } = useQuery({
-    queryKey: ['days', userProfile?.language],
-    queryFn: () => base44.entities.Day.filter({ language: userProfile?.language || 'hebrew' }),
+    queryKey: ["days", language],
+    queryFn: () => base44.entities.Day.filter({ language }),
     enabled: !!userProfile,
   });
 
   const { data: dayProgress = [] } = useQuery({
-    queryKey: ['dayProgress'],
+    queryKey: ["dayProgress"],
     queryFn: () => base44.entities.DayProgress.list(),
   });
 
   const updateDayMutation = useMutation({
     mutationFn: ({ id, data }: any) => base44.entities.Day.update(id, data),
     onSuccess: (updated: any) => {
-      queryClient.invalidateQueries({ queryKey: ['days'] });
-      // A zero-row update under RLS resolves to null instead of throwing, so a
-      // blanket success toast would lie to anyone who can't edit the schedule.
-      if (updated) toast.success("Day updated!");
+      queryClient.invalidateQueries({ queryKey: ["days"] });
+      if (updated) toast.success("Session updated!");
       else toast.error("You don't have permission to edit this session.");
     },
     onError: (e: any) => toast.error(`Couldn't update the session: ${e?.message || "unknown error"}`),
   });
 
-  const createDayMutation = useMutation({
-    mutationFn: (data: any) => base44.entities.Day.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['days'] });
-      toast.success("Day created!");
-    },
-    // Without this the button is silently mute: RLS rejects the insert for anyone
-    // who isn't an org admin, and nothing at all appears on screen.
-    onError: (e: any) => toast.error(`Couldn't create the session: ${e?.message || "unknown error"}`),
-  });
-
-  const deleteDayMutation = useMutation({
-    mutationFn: (id: any) => base44.entities.Day.delete(id),
-    onSuccess: (deleted: any) => {
-      queryClient.invalidateQueries({ queryKey: ['days'] });
-      queryClient.invalidateQueries({ queryKey: ['dayProgress'] });
-      // A delete forbidden by RLS removes zero rows and raises nothing.
-      if (deleted?.length) toast.success("Day deleted.");
-      else toast.error("You don't have permission to delete a day.");
-    },
-    onError: (e: any) => toast.error(`Couldn't delete the day: ${e?.message || "unknown error"}`),
-  });
-
-  // Deleting a day drops its tasks and, via the day_progress FK (ON DELETE CASCADE),
-  // every student's progress on it. Irreversible, so it asks first and names the cost.
-  const handleDeleteDay = (day: any) => {
-    const taskCount = (day.subsections || []).length;
-    const detail = taskCount > 0 ? ` and its ${taskCount} task${taskCount > 1 ? "s" : ""}` : "";
-    if (!confirm(`Delete Day ${day.day_number}${detail}? Every student's progress on this day is deleted too. This cannot be undone.`)) return;
-    deleteDayMutation.mutate(day.id);
+  // Find the Day row for a session, or create it on demand (admins only —
+  // RLS restricts day INSERT). Progress needs a real day_id to hang on.
+  const ensureDayRow = async (sessionNumber: number) => {
+    const existing = days.find((d: any) => d.day_number === sessionNumber);
+    if (existing) return existing;
+    try {
+      const created = await base44.entities.Day.create({
+        day_number: sessionNumber,
+        language,
+        title: `Day ${sessionNumber}`,
+        subsections: [],
+        order: sessionNumber,
+      });
+      queryClient.invalidateQueries({ queryKey: ["days"] });
+      return created;
+    } catch (e) {
+      toast.error("This session isn't initialized yet — ask your teacher to open it once.");
+      return null;
+    }
   };
 
-  const toggleSubsectionMutation = useMutation({
-    mutationFn: async ({ dayId, subsectionId }: any) => {
-      const progress = dayProgress.find((p: any) => p.day_id === dayId) || { day_id: dayId, day_number: 0, subsections_completed: [] };
-      const isCompleted = progress.subsections_completed?.includes(subsectionId);
-      const newCompleted = isCompleted
-        ? progress.subsections_completed.filter((id: any) => id !== subsectionId)
-        : [...(progress.subsections_completed || []), subsectionId];
-
-      if (progress.id) {
-        await base44.entities.DayProgress.update(progress.id, { subsections_completed: newCompleted });
+  const toggleTaskMutation = useMutation({
+    mutationFn: async ({ sessionNumber, taskId, allTaskIds }: any) => {
+      const day = await ensureDayRow(sessionNumber);
+      if (!day) return;
+      const progress = dayProgress.find((p: any) => p.day_id === day.id);
+      const done = progress?.subsections_completed || [];
+      const newCompleted = done.includes(taskId)
+        ? done.filter((id: any) => id !== taskId)
+        : [...done, taskId];
+      const completedAll = allTaskIds.every((id: string) => newCompleted.includes(id));
+      if (progress?.id) {
+        await base44.entities.DayProgress.update(progress.id, {
+          subsections_completed: newCompleted,
+          completed: completedAll,
+        });
       } else {
-        await base44.entities.DayProgress.create({ day_id: dayId, day_number: 0, subsections_completed: newCompleted });
+        await base44.entities.DayProgress.create({
+          day_id: day.id,
+          day_number: sessionNumber,
+          subsections_completed: newCompleted,
+          completed: completedAll,
+        });
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['dayProgress'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dayProgress"] }),
+    onError: (e: any) => toast.error(`Couldn't save progress: ${e?.message || "unknown error"}`),
   });
 
-  const currentDay = userProfile?.current_day || 1;
-  const sortedDays = [...days].sort((a: any, b: any) => a.day_number - b.day_number);
-
-  // Admins bypass the progress gate — otherwise the person who authors the
-  // curriculum can't open any session past their own current_day, and the
-  // add/remove-task controls live inside an expanded session. Matches /home.
-  const isDayUnlocked = (dayNum: number) => isAdmin || dayNum <= currentDay;
-  const getDayProgress = (dayId: any) => dayProgress.find((p: any) => p.day_id === dayId);
-
-  const handleAddSubsection = (dayId: any) => {
-    const day = days.find((d: any) => d.id === dayId);
-    const updatedSubsections = [...(day.subsections || []), {
-      id: Date.now().toString(),
-      ...newSubsection
-    }];
-    updateDayMutation.mutate({ id: dayId, data: { subsections: updatedSubsections } });
-    setNewSubsection({ name: "", duration: "", icon: "", page: "" });
-    setEditingDay(null);
+  const handleAddCustomTask = async (sessionNumber: number) => {
+    if (!newTask.name.trim()) return;
+    const day = await ensureDayRow(sessionNumber);
+    if (!day) return;
+    const updated = [...(day.subsections || []), { id: Date.now().toString(), ...newTask }];
+    updateDayMutation.mutate({ id: day.id, data: { subsections: updated } });
+    setNewTask({ name: "", icon: "", page: "" });
+    setAddingTaskFor(null);
   };
 
-  const handleDeleteSubsection = (dayId: any, subsectionId: any) => {
-    const day = days.find((d: any) => d.id === dayId);
-    const updatedSubsections = day.subsections.filter((s: any) => s.id !== subsectionId);
-    updateDayMutation.mutate({ id: dayId, data: { subsections: updatedSubsections } });
+  const handleDeleteCustomTask = (day: any, taskId: string) => {
+    const updated = (day.subsections || []).filter((s: any) => s.id !== taskId);
+    updateDayMutation.mutate({ id: day.id, data: { subsections: updated } });
+  };
+
+  const currentDay = userProfile?.current_day || 1;
+
+  // Build the render model for one session: template steps (wired to the
+  // session's video when assigned) + its lessons + admin's custom tasks.
+  const buildSession = (sessionNumber: number) => {
+    const day = days.find((d: any) => d.day_number === sessionNumber) || null;
+    const stored = day?.subsections || [];
+    const videoTask = stored.find((s: any) => s.video_id);
+    const customTasks = stored.filter((s: any) => !s.video_id);
+
+    const tasks: any[] = [];
+    for (const t of TEMPLATE_TASKS) {
+      let target: string | null = null;
+      if (t.video) {
+        target = videoTask
+          ? `MediaLibrary?videoId=${videoTask.video_id}${day ? `&dayId=${day.id}&taskId=${t.id}` : ""}`
+          : "MediaLibrary";
+      } else if (t.page) {
+        target = t.page;
+      }
+      tasks.push({ id: t.id, icon: t.icon, name: t.name, target, custom: false });
+    }
+    for (const l of SESSION_LESSONS[sessionNumber] || []) {
+      tasks.push({ id: l.id, icon: l.icon, name: l.name, target: l.href, custom: false });
+    }
+    for (const c of customTasks) {
+      tasks.push({ id: c.id, icon: c.icon || "📌", name: c.name, target: c.page || null, custom: true });
+    }
+
+    const progress = day ? dayProgress.find((p: any) => p.day_id === day.id) : null;
+    const completedIds = new Set(progress?.subsections_completed || []);
+    const doneCount = tasks.filter((t) => completedIds.has(t.id)).length;
+
+    return { sessionNumber, day, videoTask, tasks, completedIds, doneCount };
+  };
+
+  const sessions = Array.from({ length: VISIBLE_SESSIONS }, (_, i) => buildSession(i + 1));
+
+  const openTask = (session: any, task: any) => {
+    if (!task.target) return;
+    navigate(createPageUrl(task.target));
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Days</h1>
-            <p className="text-slate-400">Day {currentDay} of 100</p>
-          </div>
-          {isAdmin && (
-            <Button onClick={() => {
-              const nextDayNum = Math.max(...days.map((d: any) => d.day_number), 0) + 1;
-              createDayMutation.mutate({
-                day_number: nextDayNum,
-                language: userProfile?.language || 'hebrew',
-                title: `Day ${nextDayNum}`,
-                subsections: [],
-                order: nextDayNum,
-              });
-            }} className="bg-teal-500 hover:bg-teal-400 text-white">
-              + Add Day
-            </Button>
-          )}
+    <div className="min-h-screen">
+      <div className="mx-auto w-full max-w-5xl pb-16">
+        {/* Header */}
+        <div className="mb-8 pt-1">
+          <p className="text-xs font-semibold uppercase tracking-widest text-teal-400">Learn</p>
+          <h1 className="mt-1 text-3xl font-extrabold text-white">Schedule</h1>
+          <p className="mt-2 text-slate-400">
+            Session {Math.min(currentDay, TOTAL_SESSIONS)} of {TOTAL_SESSIONS} · complete each step to move forward
+          </p>
         </div>
 
-        <div className="space-y-4">
-          {sortedDays.map((day: any) => {
-            const unlocked = isDayUnlocked(day.day_number);
-            const progress = getDayProgress(day.id);
-            const isEditing = editingDay === day.id;
+        <div className="space-y-6">
+          {sessions.map(({ sessionNumber, day, videoTask, tasks, completedIds, doneCount }, idx) => {
+            const unlocked = isAdmin || sessionNumber <= currentDay;
+            const allDone = tasks.length > 0 && doneCount === tasks.length;
+            const allTaskIds = tasks.map((t) => t.id);
+            const thumb = videoTask?.video_id
+              ? `https://i.ytimg.com/vi/${videoTask.video_id}/hqdefault.jpg`
+              : null;
 
             return (
               <motion.div
-                key={day.id}
+                key={sessionNumber}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden ${
-                  !unlocked ? 'opacity-50' : ''
-                }`}
+                transition={{ delay: idx * 0.06 }}
+                className={`overflow-hidden rounded-2xl border bg-slate-900 ${
+                  allDone ? "border-emerald-500/40" : "border-slate-800"
+                } ${!unlocked ? "opacity-60" : ""}`}
               >
-                <button
-                  onClick={() => unlocked && setEditingDay(isEditing ? null : day.id)}
-                  disabled={!unlocked}
-                  className="w-full p-6 text-left flex items-center justify-between hover:bg-slate-800 transition-all"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                      progress?.completed ? 'bg-green-500' : unlocked ? 'bg-teal-500/20 border-2 border-teal-500' : 'bg-slate-800'
-                    }`}>
-                      {progress?.completed ? (
-                        <Check className="w-6 h-6 text-white" />
-                      ) : !unlocked ? (
-                        <Lock className="w-6 h-6 text-slate-500" />
-                      ) : (
-                        <span className="text-teal-400 font-bold">{day.day_number}</span>
-                      )}
-                    </div>
-                    <div>
-                      {/* Label is derived, never the stored `title`: rows created by the
-                          two different buttons carry "Day N" or "Session N" and would
-                          render inconsistently. `description` remains the free-text field. */}
-                      <h3 className="text-white font-bold text-xl">Day {day.day_number}</h3>
-                      {day.description && <p className="text-slate-400 text-sm">{day.description}</p>}
+                {/* Session header */}
+                <div className="flex items-center gap-4 border-b border-slate-800 p-5">
+                  <div
+                    className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full text-lg font-bold ${
+                      allDone
+                        ? "bg-emerald-500 text-white"
+                        : unlocked
+                        ? "border-2 border-teal-500 bg-teal-500/15 text-teal-300"
+                        : "bg-slate-800 text-slate-500"
+                    }`}
+                  >
+                    {allDone ? <Check className="h-6 w-6" /> : !unlocked ? <Lock className="h-5 w-5" /> : sessionNumber}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-xl font-bold text-white">Session {sessionNumber}</h2>
+                    <p className="truncate text-sm text-slate-400">
+                      {videoTask ? videoTask.name.replace(/^[▶\s]+/, "") : day?.description || "Story, vocabulary and speaking practice"}
+                    </p>
+                    {/* Progress bar */}
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="h-1.5 w-40 overflow-hidden rounded-full bg-slate-800">
+                        <div
+                          className={`h-full rounded-full transition-all ${allDone ? "bg-emerald-500" : "bg-teal-500"}`}
+                          style={{ width: `${tasks.length ? (doneCount / tasks.length) * 100 : 0}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-slate-500">
+                        {doneCount}/{tasks.length}
+                      </span>
                     </div>
                   </div>
-                  {unlocked && <ChevronRight className={`w-6 h-6 text-slate-400 transition-transform ${isEditing ? 'rotate-90' : ''}`} />}
-                </button>
+                  {thumb && unlocked && (
+                    <img
+                      src={thumb}
+                      alt=""
+                      className="hidden h-20 w-36 flex-shrink-0 cursor-pointer rounded-xl object-cover sm:block"
+                      onClick={() => navigate(createPageUrl(`MediaLibrary?videoId=${videoTask.video_id}`))}
+                      onError={(e: any) => { e.target.style.display = "none"; }}
+                    />
+                  )}
+                </div>
 
-                {/* Sits outside the header <button> — a nested button is invalid HTML
-                    and would swallow the expand/collapse click. */}
-                {isAdmin && (
-                  <div className="flex justify-end px-6 pb-3 -mt-3">
-                    <button
-                      onClick={() => handleDeleteDay(day)}
-                      disabled={deleteDayMutation.isPending}
-                      className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Delete day
-                    </button>
-                  </div>
-                )}
-
-                <AnimatePresence>
-                  {isEditing && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="p-6 pt-0 space-y-3">
-                        {day.subsections?.map((subsection: any) => {
-                          const isCompleted = progress?.subsections_completed?.includes(subsection.id);
-                          return (
-                            <div
-                              key={subsection.id}
-                              className={`border rounded-2xl p-4 flex items-center gap-3 ${
-                                isCompleted ? 'bg-green-500/10 border-green-500/30' : 'bg-slate-800 border-slate-700'
-                              }`}
+                {/* Task tiles */}
+                {unlocked && (
+                  <div className="grid grid-cols-1 gap-2.5 p-5 sm:grid-cols-2">
+                    {tasks.map((task, tIdx) => {
+                      const done = completedIds.has(task.id);
+                      return (
+                        <div
+                          key={task.id}
+                          className={`flex items-center gap-3 rounded-xl border p-3 transition ${
+                            done
+                              ? "border-emerald-500/30 bg-emerald-500/10"
+                              : "border-slate-800 bg-slate-950/60 hover:border-teal-600/50"
+                          }`}
+                        >
+                          <button
+                            onClick={() => toggleTaskMutation.mutate({ sessionNumber, taskId: task.id, allTaskIds })}
+                            aria-label={done ? "Mark incomplete" : "Mark complete"}
+                            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border-2 transition ${
+                              done ? "border-emerald-500 bg-emerald-500" : "border-slate-600 hover:border-teal-400"
+                            }`}
+                          >
+                            {done && <Check className="h-4 w-4 text-white" />}
+                          </button>
+                          <button
+                            onClick={() => openTask({ sessionNumber, day }, task)}
+                            className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                            disabled={!task.target}
+                          >
+                            <span className="w-6 flex-shrink-0 text-right text-xs font-semibold text-slate-500">
+                              {tIdx + 1}.
+                            </span>
+                            <span className="text-lg">{task.icon}</span>
+                            <span className={`min-w-0 flex-1 truncate text-sm font-medium ${done ? "text-slate-400 line-through" : "text-white"}`}>
+                              {task.name}
+                            </span>
+                            {task.target && <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-600" />}
+                          </button>
+                          {isAdmin && task.custom && day && (
+                            <button
+                              onClick={() => handleDeleteCustomTask(day, task.id)}
+                              className="flex-shrink-0 text-slate-600 transition hover:text-red-400"
+                              aria-label="Delete task"
                             >
-                              <button
-                                onClick={() => toggleSubsectionMutation.mutate({ dayId: day.id, subsectionId: subsection.id })}
-                                className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center transition-all ${
-                                  isCompleted ? 'bg-green-500 border-green-500' : 'border-slate-600 hover:border-teal-400'
-                                }`}
-                              >
-                                {isCompleted && <Check className="w-5 h-5 text-white" />}
-                              </button>
-                              <button
-                                onClick={() => subsection.page && navigate(createPageUrl(subsection.page))}
-                                className="flex-1 flex items-center gap-3 text-left"
-                              >
-                                <span className="text-2xl">{subsection.icon}</span>
-                                <div className="flex-1">
-                                  <p className={`text-white font-medium ${isCompleted ? 'line-through opacity-60' : ''}`}>{subsection.name}</p>
-                                  <p className="text-slate-400 text-sm">{subsection.duration}</p>
-                                </div>
-                                {subsection.page && <ChevronRight className="w-5 h-5 text-slate-500" />}
-                              </button>
-                              {isAdmin && (
-                                <button
-                                  onClick={() => handleDeleteSubsection(day.id, subsection.id)}
-                                  className="text-red-400 hover:text-red-300"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
 
-                        {isAdmin && (
-                          <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
-                            <Input placeholder="Subsection name" value={newSubsection.name} onChange={(e) => setNewSubsection({...newSubsection, name: e.target.value})} className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500" />
-                            <Input placeholder="Duration (e.g., 10 minutes)" value={newSubsection.duration} onChange={(e) => setNewSubsection({...newSubsection, duration: e.target.value})} className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500" />
-                            <Input placeholder="Emoji icon" value={newSubsection.icon} onChange={(e) => setNewSubsection({...newSubsection, icon: e.target.value})} className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500" />
-                            <Input placeholder="Page name (e.g., BabyVideos)" value={newSubsection.page} onChange={(e) => setNewSubsection({...newSubsection, page: e.target.value})} className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-teal-500" />
-                            <Button onClick={() => handleAddSubsection(day.id)} className="w-full bg-teal-500 hover:bg-teal-400 text-white">
-                              <Plus className="w-4 h-4 mr-2" /> Add Subsection
+                    {/* Admin: add a custom task to this session */}
+                    {isAdmin && (
+                      addingTaskFor === sessionNumber ? (
+                        <div className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-950/60 p-3 sm:col-span-2">
+                          <div className="flex flex-wrap gap-2">
+                            <Input placeholder="Task name" value={newTask.name} onChange={(e) => setNewTask({ ...newTask, name: e.target.value })} className="flex-1 min-w-[160px] border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus:border-teal-500" />
+                            <Input placeholder="Emoji" value={newTask.icon} onChange={(e) => setNewTask({ ...newTask, icon: e.target.value })} className="w-20 border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus:border-teal-500" />
+                            <Input placeholder="Page (optional)" value={newTask.page} onChange={(e) => setNewTask({ ...newTask, page: e.target.value })} className="w-40 border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus:border-teal-500" />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button onClick={() => handleAddCustomTask(sessionNumber)} className="bg-teal-500 text-white hover:bg-teal-400">
+                              <Plus className="mr-1 h-4 w-4" /> Add
+                            </Button>
+                            <Button variant="outline" onClick={() => setAddingTaskFor(null)} className="border-slate-700 text-slate-300">
+                              Cancel
                             </Button>
                           </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setAddingTaskFor(sessionNumber); setNewTask({ name: "", icon: "", page: "" }); }}
+                          className="flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-700 p-3 text-sm text-slate-500 transition hover:border-teal-600 hover:text-teal-400"
+                        >
+                          <Plus className="h-4 w-4" /> Add task
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
               </motion.div>
             );
           })}
         </div>
+
+        <p className="mt-8 text-center text-sm text-slate-500">
+          Sessions {VISIBLE_SESSIONS + 1}–{TOTAL_SESSIONS} unlock as your program continues.
+        </p>
       </div>
     </div>
   );

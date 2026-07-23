@@ -13,8 +13,9 @@ const STAFF_ROLES = new Set(["owner", "admin", "coach"]);
 
 const NAV = [
   { href: "/home",               key: "dashboard", emoji: "🏠" },
+  // Lessons live inside the Schedule now (each lesson is a session task),
+  // so the standalone Lessons entry is gone and /learn/lessons redirects.
   { href: "/learn/lessons/days", key: "schedule",  emoji: "🗓️" },
-  { href: "/learn/lessons",      key: "lessons",   emoji: "📖" },
   { href: "/practice",           key: "practice",  emoji: "🗣️" },
   { href: "/library",            key: "backpack",  emoji: "🎒" },
   { href: "/journal",            key: "journal",   emoji: "📓" },
