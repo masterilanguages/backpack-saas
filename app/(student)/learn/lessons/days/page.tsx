@@ -312,7 +312,9 @@ export default function Schedule() {
                             </span>
                             {task.target && <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-600" />}
                           </button>
-                          {isAdmin && task.custom && day && (
+                          {/* Custom tasks are user-manageable for everyone —
+                              users get the same schedule controls as admins. */}
+                          {task.custom && day && (
                             <button
                               onClick={() => handleDeleteCustomTask(day, task.id)}
                               className="flex-shrink-0 text-slate-600 transition hover:text-red-400"
@@ -325,8 +327,9 @@ export default function Schedule() {
                       );
                     })}
 
-                    {/* Admin: add a custom task to this session */}
-                    {isAdmin && (
+                    {/* Add a custom task to this session — open to every user
+                        (same control as admins; day UPDATE is member-writable). */}
+                    {(
                       addingTaskFor === sessionNumber ? (
                         <div className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-950/60 p-3 sm:col-span-2">
                           <div className="flex flex-wrap gap-2">
