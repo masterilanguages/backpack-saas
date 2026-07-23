@@ -3,6 +3,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
+import { useStudyTime } from "@/hooks/useStudyTime";
 import StudentSidebar from "./StudentSidebar";
 import StudentTopbar from "./StudentTopbar";
 
@@ -11,6 +12,10 @@ export default function StudentLayout({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoadingAuth } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+
+  // Track active study time across the whole student portal. Only runs while
+  // signed in; banks stints to `study_session` (read by the Dashboard + Progress).
+  useStudyTime({ enabled: isAuthenticated });
 
   // Gate the whole student portal: once the initial Supabase auth check resolves,
   // an unauthenticated visitor is bounced to /login (carrying where they came

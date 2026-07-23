@@ -33,6 +33,11 @@ const ONBOARDING_FEATURES = [
     title: "Progress Tracking",
     body: "See attendance, completed work, vocabulary growth, and student activity.",
   },
+  {
+    icon: "📓",
+    title: "Backpack Journal",
+    body: "Students write about their day in their own language — AI translates it into the target language with audio, transliteration, and tap-to-save vocabulary.",
+  },
 ];
 
 const SCHOOL_FEATURES = [
@@ -184,7 +189,7 @@ export default function HomePage() {
               One Platform. Every Student Journey.
             </h2>
           </div>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {ONBOARDING_FEATURES.map(({ icon, title, body }) => (
               <div
                 key={title}
@@ -350,6 +355,101 @@ export default function HomePage() {
               >
                 Start Learning
               </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Backpack Journal (flagship) ── */}
+      <section id="journal" className="py-24">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="grid items-center gap-16 lg:grid-cols-2">
+            <div>
+              <div
+                className="mb-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-widest"
+                style={{ backgroundColor: "#1e3a5f", color: "white" }}
+              >
+                ✨ Flagship Feature
+              </div>
+              <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl" style={{ color: "#0f1f38" }}>
+                Backpack Journal
+              </h2>
+              <p className="mt-5 text-lg leading-relaxed text-slate-500">
+                Students write about their day in their own language. AI translates it into the
+                target language — so they learn to express their own thoughts, memories, and
+                emotions instead of memorizing someone else's script.
+              </p>
+              <ul className="mt-8 space-y-3">
+                {[
+                  "Native script, transliteration, and audio for every sentence",
+                  "Tap any word for definition, pronunciation, and examples",
+                  "Save words to flashcards — with the full sentence for context",
+                  "Replay sentences or the entire entry",
+                  "Toggle English or transliteration off as you improve",
+                  "Optional AI corrections with grammar explanations",
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-3 text-slate-700">
+                    <span
+                      className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                      style={{ backgroundColor: "#3b5ea6" }}
+                    >
+                      ✓
+                    </span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-8 rounded-xl border-l-4 px-5 py-4 text-sm italic leading-relaxed text-slate-600" style={{ borderColor: "#3b5ea6", backgroundColor: "#f0f4ff" }}>
+                Learning your own story creates stronger emotional associations — and dramatically
+                better retention — than any prewritten lesson.
+              </p>
+            </div>
+
+            {/* Journal mockup */}
+            <div className="rounded-3xl border bg-white p-8 shadow-md" style={{ borderColor: "#e2e8f0" }}>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: "#3b5ea6" }}>
+                Today's Journal
+              </p>
+              <h4 className="mb-5 text-lg font-bold" style={{ color: "#0f1f38" }}>
+                My entry — translated to Japanese
+              </h4>
+              <div className="mb-4 rounded-xl px-4 py-3 text-sm text-slate-500" style={{ backgroundColor: "#f8fafd" }}>
+                "Today I finally called my grandmother. We talked for an hour."
+              </div>
+              <div className="space-y-3">
+                <div className="rounded-xl border px-4 py-3" style={{ borderColor: "#c7d7f5" }}>
+                  <p className="text-base font-semibold" style={{ color: "#0f1f38" }}>
+                    今日、やっと祖母に電話しました。
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">Kyō, yatto sobo ni denwa shimashita.</p>
+                  <div className="mt-2 flex items-center gap-3 text-xs" style={{ color: "#3b5ea6" }}>
+                    <span>▶ Play</span>
+                    <span className="rounded-full px-2 py-0.5 font-semibold" style={{ backgroundColor: "#eef2ff" }}>
+                      祖母 saved to flashcards ✓
+                    </span>
+                  </div>
+                </div>
+                <div className="rounded-xl border px-4 py-3" style={{ borderColor: "#e2e8f0" }}>
+                  <p className="text-base font-semibold" style={{ color: "#0f1f38" }}>
+                    一時間も話しました。
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">Ichijikan mo hanashimashita.</p>
+                  <div className="mt-2 flex items-center gap-3 text-xs" style={{ color: "#3b5ea6" }}>
+                    <span>▶ Play</span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {["Hide English", "Hide transliteration", "AI corrections"].map((t) => (
+                  <span
+                    key={t}
+                    className="rounded-full border px-3 py-1.5 text-xs font-medium text-slate-500"
+                    style={{ borderColor: "#e2e8f0" }}
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>

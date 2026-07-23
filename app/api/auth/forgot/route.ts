@@ -1,16 +1,22 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 
 /**
  * "Olvidé mi contraseña" — self-service.
- * Genera el link de recuperación con Supabase admin y lo ENVÍA por Resend
- * (no depende del SMTP de Supabase). Siempre responde { ok: true } para no
- * revelar si el email existe o no (anti-enumeración).
+ * Siempre responde { ok: true } para no revelar si el email existe o no
+ * (anti-enumeración).
  *
- * Requiere env: RESEND_API_KEY (y opcional EMAIL_FROM, p.ej.
- * "Backpack <noreply@backpacksystems.com>"). Sin la key, no envía (pero no
- * rompe): el flujo de UI sigue funcionando para cuando se configure.
+ * Dos caminos de envío:
+ *  1. Si RESEND_API_KEY está configurada, generamos el link con Supabase admin
+ *     y lo enviamos por Resend (correo con marca Backpack).
+ *  2. Si NO hay Resend, hacemos fallback al correo de recuperación INTEGRADO de
+ *     Supabase (su propio SMTP) para que el reset funcione igual sin config
+ *     extra. Requiere que la plantilla "Reset Password" apunte a /auth/reset.
+ *
+ * Env opcional: EMAIL_FROM (p.ej. "Backpack <noreply@backpacksystems.com>").
+ * Ojo: el default "onboarding@resend.dev" solo entrega a tu propia cuenta de
+ * Resend — para usuarios reales verifica tu dominio y define EMAIL_FROM.
  */
 export async function POST(req: Request) {
   let email = "";
@@ -24,23 +30,30 @@ export async function POST(req: Request) {
   }
   if (!email || !origin) return NextResponse.json({ ok: true });
 
-  // Link de recuperación (NO envía email; solo lo genera).
+  const redirectTo = `${origin}/auth/reset`;
+  const apiKey = process.env.RESEND_API_KEY;
+
+  // ── Fallback: sin Resend, usa el correo integrado de Supabase ──────────────
+  if (!apiKey) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+      // No filtramos al cliente, pero sí lo dejamos en logs para diagnóstico.
+      console.error("[forgot] Supabase reset email error:", error.message);
+      return NextResponse.json({ ok: true, emailSent: false });
+    }
+    return NextResponse.json({ ok: true, emailSent: true });
+  }
+
+  // ── Camino Resend: genera el link (NO envía) y lo mandamos nosotros ─────────
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "recovery",
     email,
-    options: { redirectTo: `${origin}/auth/reset` },
+    options: { redirectTo },
   });
 
   const link = data?.properties?.action_link;
   // Si el email no existe o falla, devolvemos ok igual (no filtrar).
-  if (error || !link) return NextResponse.json({ ok: true });
-
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    // Sin Resend configurado todavía: no podemos enviar. No rompemos el flujo.
-    console.warn("[forgot] RESEND_API_KEY no configurada; no se envió el correo.");
-    return NextResponse.json({ ok: true, emailSent: false });
-  }
+  if (error || !link) return NextResponse.json({ ok: true, emailSent: false });
 
   try {
     const resend = new Resend(apiKey);
@@ -61,6 +74,7 @@ export async function POST(req: Request) {
   } catch (e: any) {
     console.error("[forgot] Resend error:", e?.message);
     // No filtramos el fallo al cliente.
+    return NextResponse.json({ ok: true, emailSent: false });
   }
 
   return NextResponse.json({ ok: true, emailSent: true });

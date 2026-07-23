@@ -31,11 +31,11 @@ export default function AuthShell({
         {/* Firma de la escuela (por organización) */}
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-extrabold tracking-tight text-[#1B2B4B]">{brand.name}</h1>
-          {/* Powered by Backpack */}
+          {/* Powered by Bayena */}
           <div className="mt-3 flex items-center justify-center gap-1.5">
             <span className="text-sm text-slate-400">Powered by</span>
             <BackpackLogo />
-            <span className="text-sm font-bold text-slate-500">Backpack</span>
+            <span className="text-sm font-bold text-slate-500">Bayena</span>
           </div>
         </div>
 

@@ -7,6 +7,7 @@ import { useNavigate, createPageUrl } from "@/lib/router-compat";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 as base44Client } from "@/api/base44Client";
 const base44 = base44Client;
+import { isStudyTimeTracked } from "@/hooks/useStudyTime";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -67,6 +68,9 @@ const GameHeader = React.memo(function GameHeader({ profile, coins, onBuyCoins }
   // Save session to DB
   // Only saves if >= 60 seconds; only marks completed if >= 30 min
   const saveSession = async (seconds, reason) => {
+    // The global study-time tracker (mounted in StudentLayout) owns persistence
+    // whenever it's active — stand down so we don't double-count this stint.
+    if (isStudyTimeTracked()) return;
     if (seconds < 60) return; // ignore tiny blips under 1 min
     const exactMinutes = seconds / 60;
     const minutes = Math.round(exactMinutes); // duration_minutes is an INTEGER column — must be whole

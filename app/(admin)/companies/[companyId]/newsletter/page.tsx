@@ -11,7 +11,47 @@ export default function NewsletterPage() {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sent: number; failed: number } | null>(null);
-  const [tab, setTab] = useState<"subscribers" | "compose">("subscribers");
+  const [tab, setTab] = useState<"subscribers" | "compose" | "digest">("subscribers");
+
+  // Personalized digest state
+  const [digestEmail, setDigestEmail] = useState("");
+  const [digestSending, setDigestSending] = useState<null | "test" | "all">(null);
+  const [digestResult, setDigestResult] = useState<string | null>(null);
+
+  const previewDigest = () => {
+    const qs = digestEmail.trim() ? `?email=${encodeURIComponent(digestEmail.trim())}` : "";
+    window.open(`/api/newsletter/digest${qs}`, "_blank", "noopener");
+  };
+
+  const sendDigest = async (mode: "test" | "all") => {
+    if (mode === "all") {
+      const ok = window.confirm(
+        "Send a personalized digest to EVERY active learner? This sends real emails and cannot be undone."
+      );
+      if (!ok) return;
+    }
+    setDigestSending(mode);
+    setDigestResult(null);
+    try {
+      const res = await fetch("/api/newsletter/digest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(mode === "test" ? { mode: "test", email: digestEmail.trim() } : { mode: "all" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDigestResult(`❌ ${data.error || "Send failed."}`);
+      } else if (mode === "test") {
+        setDigestResult(`✓ Test digest sent to ${data.to}.`);
+      } else {
+        setDigestResult(`✓ Sent ${data.sent}/${data.total} digests${data.failed ? ` · ${data.failed} failed` : ""}.`);
+      }
+    } catch {
+      setDigestResult("❌ Network error.");
+    } finally {
+      setDigestSending(null);
+    }
+  };
 
   const addEmail = () => {
     const email = newEmail.trim().toLowerCase();
@@ -50,7 +90,7 @@ export default function NewsletterPage() {
 
       {/* Tabs */}
       <div className="mb-6 flex gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 w-fit">
-        {(["subscribers", "compose"] as const).map((t) => (
+        {(["subscribers", "compose", "digest"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -58,7 +98,11 @@ export default function NewsletterPage() {
               tab === t ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            {t === "subscribers" ? `Subscribers (${subscribers.length})` : "Compose & Send"}
+            {t === "subscribers"
+              ? `Subscribers (${subscribers.length})`
+              : t === "compose"
+                ? "Compose & Send"
+                : "Personalized digest"}
           </button>
         ))}
       </div>
@@ -147,6 +191,72 @@ export default function NewsletterPage() {
               </p>
             )}
           </div>
+        </div>
+      )}
+
+      {tab === "digest" && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Personalized daily digest</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Each learner gets their own email — the words they&apos;re building, lessons to
+                continue, and new lessons in their language. Nothing is composed here; it&apos;s
+                generated per learner.
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                Preview / test recipient
+              </label>
+              <input
+                type="email"
+                value={digestEmail}
+                onChange={(e) => setDigestEmail(e.target.value)}
+                placeholder="learner@example.com (defaults to you)"
+                className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                Leave blank to preview/test with your own account.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={previewDigest}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Preview in new tab
+              </button>
+              <button
+                onClick={() => sendDigest("test")}
+                disabled={digestSending !== null}
+                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-40"
+              >
+                {digestSending === "test" ? "Sending…" : "Send test to me"}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-red-200 bg-red-50 p-6 shadow-sm space-y-3">
+            <h3 className="text-base font-bold text-red-800">Send to all active learners</h3>
+            <p className="text-sm text-red-700">
+              Sends a real, personalized email to every learner with a profile and a language.
+              Preview and test first.
+            </p>
+            <button
+              onClick={() => sendDigest("all")}
+              disabled={digestSending !== null}
+              className="rounded-xl bg-red-600 px-6 py-3 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-40"
+            >
+              {digestSending === "all" ? "Sending…" : "Send digest to all learners"}
+            </button>
+          </div>
+
+          {digestResult && (
+            <p className="text-sm font-medium text-slate-700">{digestResult}</p>
+          )}
         </div>
       )}
     </div>

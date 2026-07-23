@@ -37,6 +37,7 @@ const ENTITY_TABLE = {
   MediaLibrary: 'media_library',
   PictureWord: 'picture_word',
   PracticeResult: 'practice_result',
+  ScheduleSession: 'schedule_session',
   SingingProgress: 'singing_progress',
   SingingRecording: 'singing_recording',
   SingingSegment: 'singing_segment',

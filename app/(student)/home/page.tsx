@@ -189,6 +189,15 @@ export default function Home() {
     refetchOnMount: false,
   });
 
+  const { data: studySessions = [] } = useQuery({
+    queryKey: ['studySessions'],
+    queryFn: () => base44.entities.StudySession.list(),
+    enabled: profileLoaded,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  });
+
   const { data: activityProgress = [] } = useQuery({
     queryKey: ['activityProgress'],
     queryFn: () => base44.entities.ActivityProgress.list(),
@@ -622,6 +631,47 @@ export default function Home() {
   const fluentWords = (wordRatings || []).filter((w: any) => w.times_practiced >= 5);
   const learningWords = (wordRatings || []).filter((w: any) => w.times_practiced > 0 && w.times_practiced < 5);
 
+  // ── Dashboard overview values ───────────────────────────────────────────────
+  const firstName = String(userProfile?.full_name || currentUser?.full_name || '').split(' ')[0];
+  const streakDays = typeof userProfile?.daily_streak === 'number' ? userProfile.daily_streak : 0;
+
+  // "This week" = real study minutes logged in the last 7 days (today + prior 6),
+  // summed from `study_session` rows written by the useStudyTime tracker.
+  const weekCutoff = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0];
+  const weeklyMinutes = (studySessions || [])
+    .filter((s: any) => s.date && s.date >= weekCutoff)
+    .reduce((n: number, s: any) => n + (s.duration_minutes || 0), 0);
+  const weeklyHours = Math.round((weeklyMinutes / 60) * 10) / 10;
+
+  // Proficiency level from the profile's difficulty setting.
+  const LEVEL_LABELS: Record<string, { label: string; sub: string }> = {
+    beginner: { label: 'A1', sub: 'beg' },
+    elementary: { label: 'A2', sub: 'elem' },
+    intermediate: { label: 'B1', sub: 'inter' },
+    upper: { label: 'B2', sub: 'upper' },
+    advanced: { label: 'C1', sub: 'adv' },
+  };
+  const level = LEVEL_LABELS[String(userProfile?.difficulty_level || '').toLowerCase()];
+  const levelLabel = level?.label || (userProfile?.difficulty_level ? String(userProfile.difficulty_level) : '—');
+  const levelSub = level?.sub || '';
+
+  // "Continue where you left off" — the student's current session and its progress.
+  const continueDayObj =
+    uniqueDays.find((d: any) => d.day_number === currentDay) || uniqueDays[currentDay - 1] || uniqueDays[0];
+  const continueDp = continueDayObj ? getDayProgress(continueDayObj.id) : null;
+  const continueTotal = continueDayObj?.subsections?.length || 6;
+  const continueDone = Math.min(continueTotal, continueDp?.subsections_completed?.length || 0);
+  const continuePct = continueTotal ? Math.round((continueDone / continueTotal) * 100) : 0;
+  const continueTitle =
+    continueDayObj?.title || t('dashboard.session', { n: currentDay });
+
+  // Next upcoming session date chip (illustrative until bookings are wired up).
+  const upcomingDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  const upcomingMonth = upcomingDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+  const upcomingDay = upcomingDate.getDate();
+
   // Don't render if loading or no language (Layout handles redirect)
   if (profileLoading || !userProfile?.language) {
     return (
@@ -698,59 +748,90 @@ export default function Home() {
             />
           </motion.div>
         ) : (
-          <div className="space-y-10">
+          <div className="space-y-6">
 
-            {/* Greeting — light overview only; the full stats live on the Progress page. */}
-            <div className="text-center">
-              <h1 className="text-3xl font-bold tracking-tight text-white">
-                {(userProfile?.full_name || currentUser?.full_name)
-                  ? t('dashboard.hiName', { name: String(userProfile?.full_name || currentUser?.full_name).split(' ')[0] })
-                  : t('dashboard.hiThere')}
-              </h1>
-              <p className="mt-1.5 text-sm text-slate-400">
-                {t('dashboard.dayOf', { n: userProfile?.current_day || 1 })}
-                {typeof userProfile?.daily_streak === 'number' && userProfile.daily_streak > 0
-                  ? ` · 🔥 ${t('dashboard.streak', { n: userProfile.daily_streak })}`
-                  : ''}
+            {/* Header */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-teal-400">
+                {t('dashboard.portal')}
               </p>
+              <h1 className="mt-2 text-4xl font-bold tracking-tight text-white">
+                {firstName
+                  ? t('dashboard.welcomeBack', { name: firstName })
+                  : t('dashboard.welcomeBackNoName')}
+              </h1>
+              <p className="mt-2 text-base text-slate-400">{t('dashboard.leftOff')}</p>
             </div>
 
-            {/* Continue → Schedule */}
-            <button
-              type="button"
-              onClick={() => navigate('/learn/lessons/days')}
-              className="mx-auto flex w-full max-w-md items-center justify-between rounded-2xl border border-teal-500/40 bg-teal-500/10 px-5 py-4 text-left transition hover:bg-teal-500/15"
-            >
-              <span className="flex items-center gap-3">
-                <span className="text-2xl">▶️</span>
-                <span>
-                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-teal-300">{t('dashboard.continue')}</span>
-                  <span className="block font-bold text-white">{t('dashboard.session', { n: userProfile?.current_day || 1 })}</span>
-                </span>
-              </span>
-              <ChevronRight className="h-5 w-5 text-teal-300" />
-            </button>
+            {/* Stats */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-5">
+                <p className="text-xs font-medium text-slate-400">{t('dashboard.statStreak')}</p>
+                <p className="mt-2 text-3xl font-bold text-white">
+                  {streakDays}
+                  <span className="ml-1.5 text-base font-medium text-teal-400">{t('dashboard.statStreakUnit')}</span>
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-5">
+                <p className="text-xs font-medium text-slate-400">{t('dashboard.statThisWeek')}</p>
+                <p className="mt-2 text-3xl font-bold text-white">
+                  {weeklyHours}
+                  <span className="ml-1.5 text-base font-medium text-teal-400">{t('dashboard.statThisWeekUnit')}</span>
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-5">
+                <p className="text-xs font-medium text-slate-400">{t('dashboard.statLevel')}</p>
+                <p className="mt-2 text-3xl font-bold text-white">
+                  {levelLabel}
+                  {levelSub && <span className="ml-1.5 text-base font-medium text-teal-400">{levelSub}</span>}
+                </p>
+              </div>
+            </div>
 
-            {/* Quick access */}
-            <div className="mx-auto grid max-w-md grid-cols-3 gap-3">
-              {[
-                { key: 'backpack', emoji: '🎒', href: '/library' },
-                { key: 'journal', emoji: '📓', href: '/journal' },
-                { key: 'practice', emoji: '🗣️', href: '/practice' },
-                { key: 'library', emoji: '📺', href: '/media' },
-                { key: 'progress', emoji: '📈', href: '/progress' },
-                { key: 'schedule', emoji: '📅', href: '/learn/lessons/days' },
-              ].map((s) => (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => navigate(s.href)}
-                  className="flex flex-col items-center gap-1.5 rounded-2xl border border-slate-800 bg-slate-900 p-4 transition hover:border-teal-500/50"
-                >
-                  <span className="text-2xl">{s.emoji}</span>
-                  <span className="text-xs font-semibold text-white">{t(`nav.${s.key}`)}</span>
-                </button>
-              ))}
+            {/* Continue where you left off */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-6">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                {t('dashboard.continueTitle')}
+              </p>
+              <h2 className="mt-2 text-xl font-bold text-white">{continueTitle}</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                {t('dashboard.lessonProgress', { n: continueDone, total: continueTotal })}
+              </p>
+              <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-teal-400 transition-all"
+                  style={{ width: `${continuePct}%` }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/learn/lessons/days')}
+                className="mt-5 rounded-xl bg-teal-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-400"
+              >
+                {t('dashboard.continueLesson')}
+              </button>
+            </div>
+
+            {/* Upcoming */}
+            <div>
+              <p className="mb-3 text-sm font-medium text-slate-400">{t('dashboard.upcoming')}</p>
+              <button
+                type="button"
+                onClick={() => navigate('/sessions')}
+                className="flex w-full items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-4 text-left transition hover:border-teal-500/50"
+              >
+                <span className="flex flex-col items-center justify-center rounded-xl bg-teal-500/15 px-3 py-2 text-teal-300">
+                  <span className="text-[10px] font-semibold uppercase leading-none">{upcomingMonth}</span>
+                  <span className="text-xl font-bold leading-tight">{upcomingDay}</span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-white">1-on-1 Coaching — Conversation</span>
+                  <span className="block text-sm text-slate-400">Thu 3:00 PM · 45 min · Zoom</span>
+                </span>
+                <span className="shrink-0 rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-teal-300">
+                  Confirmed
+                </span>
+              </button>
             </div>
 
             {/* RECOMMENDED FOR YOU */}
