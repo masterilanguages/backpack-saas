@@ -415,6 +415,11 @@ ${missing.map((s, i) => `${i + 1}. Transliteration: "${s.transliteration}" | Eng
               !stripCaptionNoise(segment.hebrew) &&
               !stripCaptionNoise(segment.english)) return null;
           const isActive = getIsActive(segIdx);
+          // Transliteration row renders only when it's a real Latin
+          // transliteration — native-script text there (raw ASR rows before
+          // enrichment, legacy data) would duplicate the native row below.
+          const translitShown = !!segment.transliteration &&
+            !(segment.hebrew && isRTLText(segment.transliteration));
 
           return (
             <div key={segIdx} className={`flex gap-3 items-start rounded-xl px-3 py-2 transition-all w-full max-w-lg ${isActive ? 'bg-cyan-500/10 border border-cyan-400/30' : 'border border-transparent'}`}>
@@ -516,7 +521,12 @@ ${missing.map((s, i) => `${i + 1}. Transliteration: "${s.transliteration}" | Eng
                   </div>
                 ) : (
                   <>
-                   {!hideTranslit && segment.transliteration && (
+                   {/* Row order: transliteration → English → native script.
+                       Hide the transliteration row when it's really native-
+                       script text (raw ASR rows before enrichment, legacy
+                       data) and the native row already shows it — otherwise
+                       the same Hebrew renders twice. */}
+                   {!hideTranslit && translitShown && (
                      <p className="text-white text-base font-medium leading-tight text-center break-words" dir={dirFor(segment.transliteration)}>
                        {renderWords(segIdx, 'transliteration', segment.transliteration, 'text-white text-base font-medium')}
                        {canEdit && (
@@ -530,14 +540,23 @@ ${missing.map((s, i) => `${i + 1}. Transliteration: "${s.transliteration}" | Eng
                        )}
                      </p>
                    )}
-                   {!hideHebrew && segment.hebrew && (
-                     <p className="text-cyan-300 text-base font-medium leading-tight text-center break-words" dir={dirFor(segment.hebrew)}>
-                       {renderWords(segIdx, 'hebrew', segment.hebrew, 'text-cyan-300 text-base font-medium')}
-                     </p>
-                   )}
                    {!hideEnglish && segment.english && (
                      <p className="text-white/60 text-sm leading-tight text-center break-words">
                        {renderWords(segIdx, 'english', segment.english, 'text-white/60 text-sm')}
+                     </p>
+                   )}
+                   {!hideHebrew && segment.hebrew && (
+                     <p className="text-cyan-300 text-base font-medium leading-tight text-center break-words" dir={dirFor(segment.hebrew)}>
+                       {renderWords(segIdx, 'hebrew', segment.hebrew, 'text-cyan-300 text-base font-medium')}
+                       {canEdit && !translitShown && (
+                         <button
+                           onClick={(e) => { e.stopPropagation(); startEditSegment(segIdx); }}
+                           className="ml-2 text-sm text-yellow-300 hover:text-yellow-200 transition-colors inline"
+                           title="Edit sentence"
+                         >
+                           ✏️
+                         </button>
+                       )}
                      </p>
                    )}
                   </>

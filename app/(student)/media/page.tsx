@@ -1071,21 +1071,24 @@ For each segment:
 - transliteration: the original English text
 - english: ${targetLangCap} translation of the sentence`;
     } else {
-      // Non-English source → keep the ORIGINAL text and add an English
-      // translation. Describe the source as the DETECTED language, not the
-      // user's profile language: a Hebrew transcript enriched while the
-      // profile said "french" used to tell the LLM "these are French
-      // sentences, keep the original French" — so it translated the Hebrew
-      // into French instead of keeping it.
+      // Non-English source → three fields per segment: a Latin-letter
+      // phonetic transliteration, an English translation, and the original
+      // native-script sentence (with nikud for Hebrew). Describe the source
+      // as the DETECTED language, not the user's profile language: a Hebrew
+      // transcript enriched while the profile said "french" used to tell the
+      // LLM "these are French sentences" — so it translated the Hebrew into
+      // French instead of keeping it.
       const srcLang = detectedLang || targetLang;
       const srcLangCap = srcLang.charAt(0).toUpperCase() + srcLang.slice(1);
-      return `These are ${srcLangCap} sentences. Return exactly ${batch.length} segments.
+      const nikudHint = srcLang === 'hebrew' ? ' with nikud (vowel points) added' : '';
+      return `These are ${srcLangCap} sentences. Return exactly ${batch.length} segments. Do NOT translate the original sentences into any language other than English.
 
 ${batch.map((s, idx) => `[${idx + 1}] "${s.text}"`).join('\n')}
 
 For each segment:
-- transliteration: the original ${srcLangCap} text EXACTLY as given (keep as-is, do NOT translate)
-- english: English translation of the sentence`;
+- transliteration: phonetic transliteration of the sentence in Latin letters
+- english: English translation of the sentence
+- hebrew: the original ${srcLangCap} sentence in its native script${nikudHint}`;
     }
   };
 
@@ -1150,7 +1153,8 @@ For each segment:
                     type: "object",
                     properties: {
                       transliteration: { type: "string" },
-                      english: { type: "string" }
+                      english: { type: "string" },
+                      hebrew: { type: "string" }
                     }
                   }
                 }
@@ -1164,6 +1168,10 @@ For each segment:
               text: segment.text,
               transliteration: processed.transliteration || segment.text,
               english: processed.english || '',
+              // Native-script row: the LLM's (nikud-added) version, falling
+              // back to the raw ASR text for non-English sources so the row
+              // never goes missing.
+              hebrew: processed.hebrew || (detectedLang !== 'english' ? segment.text : ''),
               start: segment.start
             });
           });
@@ -1275,6 +1283,9 @@ For each segment:
           text: s.text,
           transliteration: s.text,
           english: '',
+          // Raw ASR text doubles as the native-script row until enrichment
+          // replaces it (and adds a real Latin transliteration).
+          hebrew: s.text,
           start: s.start,
         }));
         setTranscript(rawSegments);
@@ -1323,7 +1334,8 @@ For each segment:
                     type: "object",
                     properties: {
                       transliteration: { type: "string" },
-                      english: { type: "string" }
+                      english: { type: "string" },
+                      hebrew: { type: "string" }
                     }
                   }
                 }
@@ -1337,6 +1349,9 @@ For each segment:
                   text: segment.text,
                   transliteration: processed.transliteration || segment.text,
                   english: processed.english || '',
+                  // Native-script row (nikud-added for Hebrew); raw ASR text
+                  // as fallback so the row never goes missing.
+                  hebrew: processed.hebrew || (detectedLang !== 'english' ? segment.text : ''),
                   start: segment.start
                 };
               });
