@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Play, Pause, Loader2, Check, X, Plus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { languageLabel, isRTLLanguage } from "@/lib/language";
+import { languageLabel, isRTLLanguage, isRTLText } from "@/lib/language";
 import { stripCaptionNoise } from "@/lib/transcription";
 
 export default function ContinuousTranscript({
@@ -19,10 +19,18 @@ export default function ContinuousTranscript({
   language = 'hebrew',
   translationInProgress = false,
 }) {
-  const lang = language || 'hebrew';
+  // Normalize ISO-style codes ("he", legacy "iw") to the full names the
+  // @/lib/language helpers expect — video records store both forms.
+  const rawLang = String(language || 'hebrew').toLowerCase();
+  const lang = rawLang === 'he' || rawLang === 'iw' ? 'hebrew' : rawLang;
   const isHebrew = lang === 'hebrew';
   const langLabel = languageLabel(lang);
   const isRTL = isRTLLanguage(lang);
+  // Direction per ROW, from the text's actual script — the language metadata
+  // on a video can be wrong ("he", or a profile-language fallback like
+  // "french" on a Hebrew video), and a wrong dir renders RTL text with the
+  // word order visually REVERSED.
+  const dirFor = (text) => (isRTLText(text) || isRTL ? "rtl" : "ltr");
   const [hideTranslit, setHideTranslit] = React.useState(false);
   const [hideHebrew, setHideHebrew] = React.useState(false);
   const [hideEnglish, setHideEnglish] = React.useState(false);
@@ -505,7 +513,7 @@ ${missing.map((s, i) => `${i + 1}. Transliteration: "${s.transliteration}" | Eng
                 ) : (
                   <>
                    {!hideTranslit && segment.transliteration && (
-                     <p className="text-white text-base font-medium leading-tight text-center break-words">
+                     <p className="text-white text-base font-medium leading-tight text-center break-words" dir={dirFor(segment.transliteration)}>
                        {renderWords(segIdx, 'transliteration', segment.transliteration, 'text-white text-base font-medium')}
                        {canEdit && (
                          <button
@@ -519,7 +527,7 @@ ${missing.map((s, i) => `${i + 1}. Transliteration: "${s.transliteration}" | Eng
                      </p>
                    )}
                    {!hideHebrew && segment.hebrew && (
-                     <p className="text-cyan-300 text-base font-medium leading-tight text-center break-words" dir={isRTL ? "rtl" : "ltr"}>
+                     <p className="text-cyan-300 text-base font-medium leading-tight text-center break-words" dir={dirFor(segment.hebrew)}>
                        {renderWords(segIdx, 'hebrew', segment.hebrew, 'text-cyan-300 text-base font-medium')}
                      </p>
                    )}
