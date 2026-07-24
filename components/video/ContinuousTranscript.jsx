@@ -13,6 +13,7 @@ export default function ContinuousTranscript({
   onSeekTo,
   onAddWord,
   onEditWord,
+  onBulkEdit,
   onDeleteSegment,
   canEdit,
   isPlaying: isPlayingProp = false,
@@ -36,12 +37,16 @@ export default function ContinuousTranscript({
   const [hideEnglish, setHideEnglish] = React.useState(false);
   const [localTranscript, setLocalTranscript] = React.useState(transcriptProp);
   // Re-entrancy guards for auto Hebrew generation (bug #31):
-  // generatingRef = a generateMissingHebrew() pass is currently in flight;
+  // generatingRef = a repairSegments() pass is currently in flight;
   // generatedKeyRef = the content key we have already generated for, so the
   // effect runs at most once per settled transcript even as its array identity
   // changes (the background translation replaces it on every batch).
   const generatingRef = React.useRef(false);
   const generatedKeyRef = React.useRef(null);
+  // Hard cap on self-repair passes per mount: if the LLM output itself fails
+  // the contract (e.g. returns Hebrew without nikud) the content key changes
+  // every pass and the effect would otherwise loop LLM calls forever.
+  const repairAttemptsRef = React.useRef(0);
 
   // Sync when prop changes (e.g. loaded from DB). Don't clobber locally-generated
   // Hebrew while a generation pass is in flight (bug #31).
@@ -50,24 +55,31 @@ export default function ContinuousTranscript({
     setLocalTranscript(transcriptProp);
   }, [transcriptProp]);
 
-  // Auto-generate Hebrew if missing when transcript loads (Hebrew only).
-  // Skip while the parent's background translation is still running, while a
-  // pass is already in flight, or if we've already handled this exact content —
-  // otherwise the effect re-fires on every translation batch and races itself.
+  // Self-healing pass (Hebrew only): the display contract is
+  // transliteration (Latin, modern Israeli) / English / Hebrew WITH nikud.
+  // Legacy and fresh-ASR data violate it in three ways — no Latin
+  // transliteration (the field holds Hebrew script), missing hebrew, or
+  // hebrew without nikud. Repair once via LLM and persist, so it never
+  // regenerates on later opens. Skip while the parent's background
+  // translation is still running, while a pass is in flight, or if we've
+  // already handled this exact content — otherwise the effect re-fires on
+  // every translation batch and races itself.
   React.useEffect(() => {
-    if (language !== 'hebrew') return;
+    if (lang !== 'hebrew') return;
     if (translationInProgress) return;
     if (generatingRef.current) return;
     if (!(transcriptProp?.length > 0)) return;
-    if (!transcriptProp.some(s => s.transliteration && !s.hebrew)) return;
+    if (!transcriptProp.some(needsRepair)) return;
 
     const contentKey = transcriptProp
-      .map(s => `${s.start || 0}:${s.transliteration || ''}`)
+      .map(s => `${s.start || 0}:${s.transliteration || ''}:${s.hebrew || ''}`)
       .join('|');
     if (generatedKeyRef.current === contentKey) return;
+    if (repairAttemptsRef.current >= 2) return;
     generatedKeyRef.current = contentKey;
-    generateMissingHebrew();
-  }, [transcriptProp, translationInProgress, language]);
+    repairAttemptsRef.current += 1;
+    repairSegments();
+  }, [transcriptProp, translationInProgress, lang]);
 
   const transcript = localTranscript;
 
@@ -90,50 +102,75 @@ export default function ContinuousTranscript({
   const [revealedSentences, setRevealedSentences] = React.useState(new Set());
   const [generatingHebrew, setGeneratingHebrew] = React.useState(false);
 
-  const missingHebrew = transcript.some(s => s.transliteration && !s.hebrew);
+  // Hebrew nikud marks live in U+0591–U+05C7.
+  const NIKUD_RE = /[֑-ׇ]/;
 
-  const generateMissingHebrew = async () => {
-    const missing = transcript
+  // Does a segment violate the display contract? (see the repair effect)
+  const needsRepair = (s) => {
+    const hasSource = !!(s?.hebrew || s?.transliteration || s?.text);
+    if (!hasSource) return false;
+    const missingTranslit = !s.transliteration || isRTLText(s.transliteration);
+    const missingHebrewText = !s.hebrew;
+    const missingNikud = !!s.hebrew && !NIKUD_RE.test(s.hebrew);
+    return missingTranslit || missingHebrewText || missingNikud;
+  };
+
+  const repairSegments = async () => {
+    const broken = transcript
       .map((s, i) => ({ ...s, _idx: i }))
-      .filter(s => s.transliteration && !s.hebrew);
-    if (!missing.length) return;
+      .filter(needsRepair);
+    if (!broken.length) return;
     // Re-entrancy guard: never run two passes at once (bug #31).
     if (generatingRef.current) return;
     generatingRef.current = true;
 
     setGeneratingHebrew(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        model: "claude_sonnet_4_6",
-        prompt: `You are an expert ${langLabel} linguist. Convert each of these ${langLabel} transliterations into precise, correct ${langLabel} ${isHebrew ? 'script (without nikud/vowel marks)' : 'native spelling (including any accents or diacritics)'}.
+      const patches = [];
+      const BATCH = 20;
+      for (let b = 0; b < broken.length; b += BATCH) {
+        const chunk = broken.slice(b, b + BATCH);
+        const result = await base44.integrations.Core.InvokeLLM({
+          model: "claude_sonnet_4_6",
+          prompt: `You are an expert Hebrew linguist. For each numbered sentence below you get the best available source (Hebrew script and/or a transliteration, with an English hint). Return for EACH one:
+- hebrew: the sentence in Hebrew script, FULLY vocalized with complete nikud (vowel points). Do not change the wording; only restore correct spelling and add nikud.
+- transliteration: a Latin-letter transliteration of that Hebrew, following modern Israeli pronunciation, with punctuation matching the Hebrew.
 
 Rules:
-- Be extremely accurate — match every word exactly to its correct ${langLabel} spelling
-- Use standard ${isHebrew ? 'modern Israeli Hebrew' : langLabel} spelling
-${isHebrew ? '- Do NOT add vowel marks (nikud)\n' : ''}- Each transliteration maps to exactly one ${langLabel} sentence
-- Return JSON with a "segments" array in the same order, each object: { hebrew: string } (the "hebrew" field must contain the ${langLabel} text)
+- Do NOT translate; the sentence stays in Hebrew.
+- Keep sentence wording exactly as given (fix only obvious ASR spelling slips).
+- Return JSON with a "segments" array in the same order, each object: { hebrew: string, transliteration: string }
 
-Transliterations:
-${missing.map((s, i) => `${i + 1}. Transliteration: "${s.transliteration}" | English meaning: "${s.english || ''}"`).join('\n')}`,
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            segments: {
-              type: 'array',
-              items: { type: 'object', properties: { hebrew: { type: 'string' } } }
+Sentences:
+${chunk.map((s, i) => `${i + 1}. Source: "${s.hebrew || s.transliteration || s.text}"${s.english ? ` | English meaning: "${s.english}"` : ''}`).join('\n')}`,
+          response_json_schema: {
+            type: 'object',
+            properties: {
+              segments: {
+                type: 'array',
+                items: { type: 'object', properties: { hebrew: { type: 'string' }, transliteration: { type: 'string' } } }
+              }
             }
           }
-        }
-      });
-      missing.forEach((seg, i) => {
-        const hebrew = result?.segments?.[i]?.hebrew;
-        if (hebrew) {
-          applyLocalEdit(seg._idx, 'hebrew', hebrew);
-          if (onEditWord) onEditWord(seg._idx, 'hebrew', hebrew);
-        }
-      });
+        });
+        chunk.forEach((seg, i) => {
+          const fixed = result?.segments?.[i];
+          if (!fixed?.hebrew) return;
+          const fields = { hebrew: fixed.hebrew };
+          if (fixed.transliteration) fields.transliteration = fixed.transliteration;
+          patches.push({ idx: seg._idx, fields });
+          // Progressive update so repaired rows appear as each batch lands.
+          Object.entries(fields).forEach(([f, v]) => applyLocalEdit(seg._idx, f, v));
+        });
+      }
+      if (patches.length > 0) {
+        // Persist once (bulk) when the parent supports it; fall back to
+        // per-field saves for older parents.
+        if (onBulkEdit) onBulkEdit(patches);
+        else if (onEditWord) patches.forEach(p => Object.entries(p.fields).forEach(([f, v]) => onEditWord(p.idx, f, v)));
+      }
     } catch (e) {
-      console.error('Failed to generate Hebrew', e);
+      console.error('Failed to repair transcript segments', e);
     } finally {
       generatingRef.current = false;
       setGeneratingHebrew(false);
@@ -372,7 +409,7 @@ ${missing.map((s, i) => `${i + 1}. Transliteration: "${s.transliteration}" | Eng
         <div className="ml-auto flex items-center gap-1.5 flex-wrap">
           {generatingHebrew && (
             <span className="flex items-center gap-1 px-2 py-1 text-xs text-purple-300">
-              <Loader2 className="w-3 h-3 animate-spin" /> Generating {langLabel}...
+              <Loader2 className="w-3 h-3 animate-spin" /> Restoring nikud & transliteration…
             </span>
           )}
           <button

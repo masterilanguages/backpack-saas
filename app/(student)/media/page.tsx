@@ -504,6 +504,22 @@ export default function MediaLibrary() {
     });
   };
 
+  // Bulk variant used by the reader's self-repair pass (nikud + translit
+  // restoration): apply many segment patches in ONE state update and ONE DB
+  // write, instead of a mutation per field.
+  const saveTranscriptBulk = async (patches: { idx: number; fields: Record<string, any> }[]) => {
+    if (!selectedVideo || !patches?.length) return;
+    setTranscript(prev => {
+      const byIdx = new Map(patches.map(p => [p.idx, p.fields]));
+      const updatedTranscript = prev.map((seg, i) => (byIdx.has(i) ? { ...seg, ...byIdx.get(i) } : seg));
+      updateVideoMutation.mutate({
+        id: selectedVideo.id,
+        data: { processed_transcript: updatedTranscript }
+      });
+      return updatedTranscript;
+    });
+  };
+
   const deleteTranscriptSegment = async (segmentIdx: number) => {
     if (!selectedVideo) return;
     const updatedTranscript = transcript.filter((_, i) => i !== segmentIdx);
@@ -1086,7 +1102,7 @@ For each segment:
 ${batch.map((s, idx) => `[${idx + 1}] "${s.text}"`).join('\n')}
 
 For each segment:
-- transliteration: phonetic transliteration of the sentence in Latin letters
+- transliteration: phonetic transliteration of the sentence in Latin letters${srcLang === 'hebrew' ? ', following modern Israeli pronunciation, punctuation matching the original' : ''}
 - english: English translation of the sentence
 - hebrew: the original ${srcLangCap} sentence in its native script${nikudHint}`;
     }
@@ -2359,6 +2375,7 @@ Return a JSON with a "videos" array. Each video must have:
                     onSeekTo={handleSeekTo}
                     onAddWord={handleAddWordFromTranscript}
                     onEditWord={saveTranscriptEdit}
+                    onBulkEdit={saveTranscriptBulk}
                     onDeleteSegment={deleteTranscriptSegment}
                     canEdit={canEdit}
                     isPlaying={isPlaying}
