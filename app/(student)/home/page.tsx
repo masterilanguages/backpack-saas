@@ -18,9 +18,38 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Palette, Loader2, X, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { languageLabel } from "@/lib/language";
+import { languageLabel, isRTLText } from "@/lib/language";
 import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
+import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
+
+// Shared, memoized loader for the YouTube IFrame API (same pattern as the
+// media page — a single global onYouTubeIframeAPIReady is last-writer-wins,
+// so every consumer must chain through one promise).
+let __ytApiPromise: any = null;
+function loadYouTubeApi() {
+  const w: any = window;
+  if (w.YT && w.YT.Player) return Promise.resolve(w.YT);
+  if (__ytApiPromise) return __ytApiPromise;
+  __ytApiPromise = new Promise((resolve) => {
+    const finish = () => { if (w.YT && w.YT.Player) resolve(w.YT); };
+    const prev = w.onYouTubeIframeAPIReady;
+    w.onYouTubeIframeAPIReady = () => {
+      if (typeof prev === "function") { try { prev(); } catch (e) {} }
+      finish();
+    };
+    if (!document.getElementById("youtube-iframe-api")) {
+      const tag = document.createElement("script");
+      tag.id = "youtube-iframe-api";
+      tag.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(tag);
+    }
+    const poll = setInterval(() => {
+      if (w.YT && w.YT.Player) { clearInterval(poll); resolve(w.YT); }
+    }, 100);
+  });
+  return __ytApiPromise;
+}
 
 // Writing starters for the in-shell journal (same set the old page offered).
 const JOURNAL_TOPICS: { label: string; starter: string }[] = [
@@ -120,6 +149,18 @@ export default function Home() {
   // Sentence-proposal cloud in the journal compose view
   const [proposals, setProposals] = useState<string[]>([]);
   const [proposalsLoading, setProposalsLoading] = useState(false);
+  // In-shell video player (Library tab): selected video, its transcript
+  // segments, playback state for line-syncing, and the turtle slow mode.
+  const [shellVideo, setShellVideo] = useState<any>(null);
+  const [shellSegments, setShellSegments] = useState<any[]>([]);
+  const [shellSegsLoading, setShellSegsLoading] = useState(false);
+  const [shellPlaying, setShellPlaying] = useState(false);
+  const [shellSlow, setShellSlow] = useState(false);
+  const [shellTime, setShellTime] = useState(0);
+  const shellPlayerRef = React.useRef<any>(null);
+  const shellTimerRef = React.useRef<any>(null);
+  const activeLineRef = React.useRef<HTMLButtonElement | null>(null);
+
   // In-shell add-video form (Library tab)
   const [libAddOpen, setLibAddOpen] = useState(false);
   const emptyLibForm = { video_url: "", video_id: "", title: "", language: "", difficulty_level: "All", topics: [] as string[] };
@@ -449,6 +490,127 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [journalMode]);
+
+  // -------------------------------------------------------------------------
+  // In-shell video player: open a library video inside the shell — YouTube
+  // player on top, tap-to-seek transcript below, synced highlighting.
+  // -------------------------------------------------------------------------
+  const openShellVideo = async (v: any) => {
+    setShellVideo(v);
+    setShellSegments(Array.isArray(v.processed_transcript) ? v.processed_transcript : []);
+    setShellPlaying(false);
+    setShellSlow(false);
+    setShellTime(0);
+
+    // No saved transcript → transcribe the audio now (and persist it when we
+    // own the row, so next open is instant).
+    if (!v.processed_transcript?.length && v.video_id) {
+      setShellSegsLoading(true);
+      try {
+        const data: any = await transcribeMediaSource(youtubeSource(v.video_id), { language: v.language || language });
+        const segs = (data?.transcript || []).map((s: any) => ({
+          text: s.text,
+          transliteration: s.text,
+          english: "",
+          start: s.start,
+        }));
+        setShellSegments(segs);
+        if (segs.length > 0) {
+          const entity = v._mine
+            ? base44.entities.UserSavedVideo
+            : currentUser?.role === "admin"
+            ? base44.entities.MediaLibrary
+            : null;
+          if (entity) {
+            entity.update(v.id, { processed_transcript: segs }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      setShellSegsLoading(false);
+    }
+  };
+
+  const closeShellVideo = () => {
+    try { shellPlayerRef.current?.destroy?.(); } catch (e) {}
+    shellPlayerRef.current = null;
+    if (shellTimerRef.current) { clearInterval(shellTimerRef.current); shellTimerRef.current = null; }
+    setShellVideo(null);
+    setShellSegments([]);
+    setShellPlaying(false);
+  };
+
+  // Create/destroy the YouTube player with the in-shell view.
+  useEffect(() => {
+    if (!shellVideo?.video_id) return;
+    let cancelled = false;
+    loadYouTubeApi().then((YT: any) => {
+      if (cancelled) return;
+      const container = document.getElementById("shell-yt-player");
+      if (!container) return;
+      try { shellPlayerRef.current?.destroy?.(); } catch (e) {}
+      container.innerHTML = "";
+      shellPlayerRef.current = new YT.Player("shell-yt-player", {
+        videoId: shellVideo.video_id,
+        playerVars: { enablejsapi: 1, autoplay: 0, controls: 1, rel: 0 },
+        events: {
+          onStateChange: (event: any) => setShellPlaying(event.data === 1),
+        },
+      });
+    });
+    // Poll the playhead to highlight + auto-scroll the active transcript line.
+    shellTimerRef.current = setInterval(() => {
+      const p = shellPlayerRef.current;
+      if (p?.getCurrentTime) {
+        try { setShellTime(p.getCurrentTime()); } catch (e) {}
+      }
+    }, 500);
+    return () => {
+      cancelled = true;
+      if (shellTimerRef.current) { clearInterval(shellTimerRef.current); shellTimerRef.current = null; }
+      try { shellPlayerRef.current?.destroy?.(); } catch (e) {}
+      shellPlayerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shellVideo?.id]);
+
+  // Active segment index for highlight/sync.
+  const activeSegIdx = useMemo(() => {
+    if (!shellSegments.length) return -1;
+    let idx = -1;
+    for (let i = 0; i < shellSegments.length; i++) {
+      if ((shellSegments[i].start ?? 0) <= shellTime) idx = i;
+      else break;
+    }
+    return idx;
+  }, [shellSegments, shellTime]);
+
+  useEffect(() => {
+    activeLineRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeSegIdx]);
+
+  const toggleShellPlay = () => {
+    const p = shellPlayerRef.current;
+    if (!p) return;
+    if (shellPlaying) p.pauseVideo?.();
+    else p.playVideo?.();
+  };
+
+  // Turtle button = slow mode (the turtle finally gets a job).
+  const toggleShellSlow = () => {
+    const p = shellPlayerRef.current;
+    const next = !shellSlow;
+    setShellSlow(next);
+    try { p?.setPlaybackRate?.(next ? 0.7 : 1); } catch (e) {}
+  };
+
+  const seekShellTo = (seconds: number, play = true) => {
+    const p = shellPlayerRef.current;
+    if (!p?.seekTo) return;
+    p.seekTo(seconds, true);
+    if (play) p.playVideo?.();
+  };
 
   // -------------------------------------------------------------------------
   // In-shell add-video (Library tab). Admins write to the master library;
@@ -960,8 +1122,95 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
           </div>
         )}
 
+        {/* ================= LIBRARY / VIDEO PLAYER ================= */}
+        {tab === "library" && shellVideo && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* Header */}
+            <div className="flex flex-shrink-0 items-center gap-2 px-4 pt-2 pb-2">
+              <button
+                onClick={closeShellVideo}
+                aria-label="Back"
+                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">{shellVideo.title}</span>
+            </div>
+
+            {/* Player */}
+            <div className="relative w-full flex-shrink-0 bg-black" style={{ aspectRatio: "16/9" }}>
+              <div id="shell-yt-player" className="h-full w-full" />
+            </div>
+
+            {/* Floating controls: play/pause + turtle slow mode */}
+            <div className="relative z-10 -mt-5 flex flex-shrink-0 justify-center gap-3">
+              <button
+                onClick={toggleShellPlay}
+                aria-label={shellPlaying ? "Pause" : "Play"}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-lg shadow-lg"
+              >
+                {shellPlaying ? "⏸️" : "▶️"}
+              </button>
+              <button
+                onClick={toggleShellSlow}
+                aria-label="Slow mode"
+                className={`flex h-11 w-11 items-center justify-center rounded-full border text-lg shadow-lg transition ${
+                  shellSlow ? "border-teal-500 bg-teal-50" : "border-slate-200 bg-white"
+                }`}
+              >
+                🐢
+              </button>
+            </div>
+
+            {/* Transcript — tap a line to jump there; active line highlighted */}
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+              {shellSegsLoading ? (
+                <div className="flex flex-col items-center gap-2 py-10">
+                  <Loader2 className="h-6 w-6 animate-spin text-teal-500" />
+                  <p className="text-xs text-slate-500">Transcribing the audio… this can take a minute.</p>
+                </div>
+              ) : shellSegments.length === 0 ? (
+                <p className="py-10 text-center text-sm text-slate-400">No transcript available for this video.</p>
+              ) : (
+                <div className="space-y-1">
+                  {shellSegments.map((s: any, i: number) => {
+                    const main = s.hebrew || s.transliteration || s.text || "";
+                    const rtl = isRTLText(main);
+                    const active = i === activeSegIdx;
+                    return (
+                      <button
+                        key={i}
+                        ref={active ? activeLineRef : null}
+                        onClick={() => seekShellTo(s.start ?? 0)}
+                        className={`flex w-full items-start gap-2 rounded-xl px-3 py-2.5 text-left transition ${
+                          active ? "bg-white shadow-sm" : "hover:bg-white/60"
+                        }`}
+                      >
+                        <span className={`mt-0.5 flex-shrink-0 text-sm ${active ? "text-sky-500" : "text-sky-300"}`}>🔊</span>
+                        <span className="min-w-0 flex-1">
+                          <span
+                            dir={rtl ? "rtl" : "ltr"}
+                            className={`block text-[15px] leading-relaxed ${rtl ? "text-right" : ""} ${
+                              active ? "font-semibold text-slate-900" : "text-slate-700"
+                            }`}
+                          >
+                            {main}
+                          </span>
+                          {s.english && (
+                            <span className={`block text-xs text-slate-400 ${rtl ? "text-right" : ""}`}>{s.english}</span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ================= LIBRARY / ADD VIDEO ================= */}
-        {tab === "library" && libAddOpen && (
+        {tab === "library" && !shellVideo && libAddOpen && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
             <div className="flex flex-shrink-0 items-center gap-2">
               <button
@@ -1085,7 +1334,7 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
         )}
 
         {/* ================= LIBRARY ================= */}
-        {tab === "library" && !libAddOpen && (
+        {tab === "library" && !shellVideo && !libAddOpen && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
             <div className="flex flex-shrink-0 items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800">📚 Library</h2>
@@ -1111,7 +1360,7 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
                     return (
                       <button
                         key={`${v._mine ? "mine" : "cat"}_${v.id}`}
-                        onClick={() => router.push(`/media?videoId=${encodeURIComponent(vid)}`)}
+                        onClick={() => openShellVideo(v)}
                         className="overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:shadow-md"
                       >
                         <div className="aspect-video w-full bg-slate-200">
@@ -1214,10 +1463,10 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
         {/* ================= BOTTOM MENU (pinned) ================= */}
         <div className="flex flex-shrink-0 items-center justify-around border-t border-slate-200 bg-white px-2 py-2">
           {[
-            { key: "learning", emoji: "🎒", label: "BACKPACK", onTap: () => setTab("learning") },
-            { key: "practice", emoji: "💬", label: "PRACTICE", onTap: () => { setTab("practice"); setJournalMode("off"); } },
-            { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => setTab("library") },
-            { key: "account", emoji: "👤", label: "ACCOUNT", onTap: () => setTab("account") },
+            { key: "learning", emoji: "🎒", label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
+            { key: "practice", emoji: "💬", label: "PRACTICE", onTap: () => { closeShellVideo(); setTab("practice"); setJournalMode("off"); } },
+            { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => { closeShellVideo(); setLibAddOpen(false); setTab("library"); } },
+            { key: "account", emoji: "👤", label: "ACCOUNT", onTap: () => { closeShellVideo(); setTab("account"); } },
           ].map((t) => (
             <button
               key={t.key}
