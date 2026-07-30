@@ -1,19 +1,23 @@
 "use client";
 
-// Duocards-style home screen: light app panel with a streak tip card, a
-// mascot scene around a campfire daily-goal ring, To Learn / Practiced /
-// Learned stats, a big START button and an expandable "My cards" list.
-// Data comes from the same Word/UserProfile entities the Backpack uses.
-// (The previous gamified dashboard lives in git history if it's ever needed.)
+// Duocards-style phone app shell. Everything lives inside the light rounded
+// panel — a fixed-height "phone screen" with the menu pinned at the bottom
+// and no page scrolling:
+//   LEARNING  the cards home (turtle mascot, goal ring, stats, START, My cards)
+//   PRACTICE  AI questions from the user's newest flashcard words + Journal
+//   LIBRARY   navigates to the Content Library
+//   ACCOUNT   profile menu — Progress and Schedule live here
+// The turtle mascot reacts (idle / happy / sad / cheer) like Duolingo's owl.
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
-import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { ChevronDown, Plus, BarChart3, Palette } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronDown, ChevronRight, Plus, BarChart3, Palette, Loader2, X } from "lucide-react";
+import { toast } from "sonner";
+import { languageLabel } from "@/lib/language";
 
 const DAILY_GOAL = 15;
 
@@ -26,15 +30,69 @@ const LANGUAGE_FLAGS: Record<string, string> = {
   italian: "🇮🇹",
 };
 
+type Mood = "idle" | "happy" | "sad" | "cheer";
+
+// ---------------------------------------------------------------------------
+// Turtle mascot with Duolingo-owl-style reactions. Mood drives the animation
+// and the reaction bubble next to it.
+// ---------------------------------------------------------------------------
+function Turtle({ mood, size = "text-6xl" }: { mood: Mood; size?: string }) {
+  const animations: Record<Mood, any> = {
+    idle: { y: [0, -3, 0], rotate: 0, scale: 1, transition: { repeat: Infinity, duration: 3 } },
+    happy: { y: [0, -18, 0, -10, 0], rotate: [0, -8, 8, 0], scale: 1.08, transition: { duration: 0.9 } },
+    cheer: { y: [0, -24, 0, -24, 0], rotate: [0, -12, 12, -12, 0], scale: 1.12, transition: { duration: 1.2 } },
+    sad: { y: [0, 4, 0], rotate: [0, -6, 0], scale: 0.94, transition: { duration: 0.8 } },
+  };
+  const emote = mood === "happy" ? "🎉" : mood === "cheer" ? "🏆" : mood === "sad" ? "💧" : null;
+  return (
+    <div className="relative inline-flex items-end">
+      <motion.span animate={animations[mood]} className={`${size} leading-none`}>
+        🐢
+      </motion.span>
+      <AnimatePresence>
+        {emote && (
+          <motion.span
+            key={mood}
+            initial={{ opacity: 0, y: 6, scale: 0.5 }}
+            animate={{ opacity: 1, y: -6, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute -right-4 -top-2 text-2xl"
+          >
+            {emote}
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [tab, setTab] = useState<"learning" | "practice" | "account">("learning");
   const [cardsOpen, setCardsOpen] = useState(false);
+  const [mood, setMood] = useState<Mood>("idle");
+
+  // Practice (AI quiz) state
+  const [quiz, setQuiz] = useState<any[]>([]);
+  const [quizIdx, setQuizIdx] = useState(0);
+  const [quizAnswer, setQuizAnswer] = useState<number | null>(null);
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizDone, setQuizDone] = useState(false);
 
   useEffect(() => {
     base44.auth.me().then(setCurrentUser).catch(() => {});
     document.title = "Home - Lashon Languages";
   }, []);
+
+  // Reactions decay back to idle.
+  useEffect(() => {
+    if (mood === "idle") return;
+    const t = setTimeout(() => setMood("idle"), 1600);
+    return () => clearTimeout(t);
+  }, [mood]);
 
   const { data: userProfile } = useQuery({
     queryKey: ["userProfile", currentUser?.email],
@@ -73,8 +131,15 @@ export default function Home() {
   }, [words]);
 
   const goalDone = Math.min(practicedToday, DAILY_GOAL);
-  const ringRadius = 46;
+  const ringRadius = 40;
   const ringCircumference = 2 * Math.PI * ringRadius;
+  const streak = userProfile?.daily_streak || 0;
+
+  const bumpWordMutation = useMutation({
+    mutationFn: ({ id, level }: any) =>
+      base44.entities.Word.update(id, { times_practiced: level, mastered: level >= 5 }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wordRatings"] }),
+  });
 
   const startLearning = () => {
     // Same handoff the Backpack uses for its "All Words" flashcard run.
@@ -84,189 +149,424 @@ export default function Home() {
     router.push("/library?flashcard=all");
   };
 
-  const streak = userProfile?.daily_streak || 0;
+  // -------------------------------------------------------------------------
+  // Practice: AI multiple-choice questions from the newest flashcard words.
+  // -------------------------------------------------------------------------
+  const startQuiz = async () => {
+    const pool = (words as any[])
+      .filter((w) => w.translation && (w.phonetic || w.word))
+      .sort((a, b) => new Date(b.created_date || 0).getTime() - new Date(a.created_date || 0).getTime())
+      .sort((a, b) => (a.times_practiced || 0) - (b.times_practiced || 0))
+      .slice(0, 8);
+    if (pool.length < 2) {
+      toast.info("Add a few words to your cards first!");
+      return;
+    }
+    setQuizLoading(true);
+    setQuizDone(false);
+    setQuiz([]);
+    setQuizIdx(0);
+    setQuizScore(0);
+    setQuizAnswer(null);
+    try {
+      const label = languageLabel(language);
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `You are a ${label} tutor. Create one multiple-choice exercise per word for these ${label} flashcards the student recently added:
+
+${pool.map((w) => `- "${w.phonetic || w.word}" = "${w.translation}"`).join("\n")}
+
+Mix question styles: translate ${label}→English, translate English→${label}, and fill-the-blank in a short sentence. Each question has exactly 4 options with ONE correct. Distractors must be plausible but clearly wrong. Keep questions short.
+
+Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the question text, "options": [4 strings], "correct_index": 0-3, "explanation": one short sentence } ] }`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            questions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  word: { type: "string" },
+                  prompt: { type: "string" },
+                  options: { type: "array", items: { type: "string" } },
+                  correct_index: { type: "number" },
+                  explanation: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      });
+      const qs = (result?.questions || []).filter((q: any) => Array.isArray(q.options) && q.options.length === 4);
+      if (qs.length === 0) throw new Error("no questions");
+      setQuiz(qs);
+    } catch (e) {
+      toast.error("Couldn't generate exercises — try again.");
+    }
+    setQuizLoading(false);
+  };
+
+  const answerQuiz = (idx: number) => {
+    if (quizAnswer !== null) return;
+    const q = quiz[quizIdx];
+    const correct = idx === q.correct_index;
+    setQuizAnswer(idx);
+    if (correct) {
+      setQuizScore((s) => s + 1);
+      setMood("happy");
+      // Correct answer counts as practice on that word (feeds the daily goal).
+      const w = (words as any[]).find(
+        (w) => (w.phonetic || w.word)?.toLowerCase() === (q.word || "").toLowerCase()
+      );
+      if (w) {
+        const level = Math.min((w.times_practiced || 0) + 1, 4);
+        bumpWordMutation.mutate({ id: w.id, level });
+      }
+    } else {
+      setMood("sad");
+    }
+  };
+
+  const nextQuiz = () => {
+    if (quizIdx + 1 >= quiz.length) {
+      setQuizDone(true);
+      if (quizScore === quiz.length) setMood("cheer");
+    } else {
+      setQuizIdx((i) => i + 1);
+      setQuizAnswer(null);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+
+  const goalPct = goalDone / DAILY_GOAL;
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      {/* Light "app screen" panel — the rest of the portal stays dark. */}
-      <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-[#eef4fb] shadow-2xl">
+    <div className="mx-auto flex w-full max-w-md justify-center">
+      {/* The phone screen: fixed height, no page scroll, menu pinned bottom. */}
+      <div className="flex h-[min(800px,calc(100dvh-7.5rem))] w-full flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-[#eef4fb] shadow-2xl">
 
         {/* Top bar: palette · language · stats */}
-        <div className="flex items-center justify-between border-b border-slate-200/70 bg-white/80 px-5 py-3">
-          <Palette className="h-6 w-6 text-slate-300" />
-          <Link
-            href="/settings"
-            className="flex items-center gap-2 text-xl font-semibold text-slate-800"
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/80 px-5 py-2.5">
+          <Palette className="h-5 w-5 text-slate-300" />
+          <button
+            onClick={() => router.push("/settings")}
+            className="flex items-center gap-2 text-lg font-semibold text-slate-800"
           >
-            <span className="text-2xl">{LANGUAGE_FLAGS[language] || "🌍"}</span>
+            <span className="text-xl">{LANGUAGE_FLAGS[language] || "🌍"}</span>
             <span className="capitalize">{language}</span>
             <ChevronDown className="h-4 w-4 text-slate-400" />
-          </Link>
-          <Link href="/progress" aria-label="Progress">
-            <BarChart3 className="h-6 w-6 text-slate-400 transition hover:text-slate-600" />
-          </Link>
+          </button>
+          <button onClick={() => { setTab("account"); }} aria-label="Stats">
+            <BarChart3 className="h-5 w-5 text-slate-400 transition hover:text-slate-600" />
+          </button>
         </div>
 
-        <div className="px-5 sm:px-8">
-          {/* Streak flame + AI-assistant tip card */}
-          <div className="relative mt-10">
-            <div className="absolute -top-7 left-1/2 z-10 -translate-x-1/2">
-              <div className="relative flex h-12 w-12 items-center justify-center">
-                <span className="text-5xl leading-none drop-shadow">🔥</span>
-                <span className="absolute top-4 text-sm font-bold text-white">{streak}</span>
+        {/* ================= LEARNING ================= */}
+        {tab === "learning" && (
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-5">
+            {/* Streak flame + tip card */}
+            <div className="relative flex-shrink-0">
+              <div className="absolute -top-4 left-1/2 z-10 -translate-x-1/2">
+                <div className="relative flex h-9 w-9 items-center justify-center">
+                  <span className="text-4xl leading-none drop-shadow">🔥</span>
+                  <span className="absolute top-3 text-xs font-bold text-white">{streak}</span>
+                </div>
+              </div>
+              <div
+                onClick={() => setTab("practice")}
+                className="relative cursor-pointer rounded-xl border border-slate-200 bg-white px-4 pb-3 pt-6 text-center shadow-sm transition hover:shadow-md"
+              >
+                <p className="text-sm font-semibold text-slate-800">Try our AI-assistant</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Tap Practice 💬 and get exercises built from your newest cards
+                </p>
+                <div className="absolute -bottom-2 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-b border-r border-slate-200 bg-white" />
               </div>
             </div>
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              onClick={() => router.push("/practice")}
-              className="relative cursor-pointer rounded-xl border border-slate-200 bg-white px-6 pb-5 pt-8 text-center shadow-sm transition hover:shadow-md"
-            >
-              <p className="text-lg font-semibold text-slate-800">Try our AI-assistant</p>
-              <ol className="mt-2 space-y-1.5 text-slate-700">
-                <li>1. Go to the Practice section 🗨️</li>
-                <li>2. Tap &quot;Chat&quot; 💬</li>
-                <li>3. Ask for something…</li>
-              </ol>
-              {/* Speech-bubble tail */}
-              <div className="absolute -bottom-2 left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-b border-r border-slate-200 bg-white" />
-            </motion.div>
-          </div>
 
-          {/* Mascot scene: grass, cave, mammoth, campfire goal ring */}
-          <div className="relative mx-auto mt-10 flex justify-center">
-            <div className="relative h-56 w-full max-w-xl">
-              {/* Grass ellipse */}
-              <div className="absolute inset-x-0 top-10 mx-auto h-44 w-[92%] rounded-[50%] bg-[#eaf7d9]" />
-              {/* Cave */}
-              <span className="absolute left-[12%] top-6 text-5xl">🏜️</span>
-              {/* Mammoth mascot */}
-              <motion.span
-                animate={{ scale: [0.98, 1.03, 0.98] }}
-                transition={{ repeat: Infinity, duration: 3 }}
-                className="absolute left-[30%] top-14 text-6xl"
-              >
-                🦣
-              </motion.span>
-              {/* Campfire with daily-goal ring */}
-              <div className="absolute left-1/2 top-16 -translate-x-1/4">
-                <div className="relative flex h-28 w-28 items-center justify-center">
-                  <svg viewBox="0 0 104 104" className="absolute inset-0 h-full w-full -rotate-90">
-                    <circle cx="52" cy="52" r={ringRadius} fill="none" stroke="#dce8f5" strokeWidth="4" />
+            {/* Turtle scene with campfire goal ring */}
+            <div className="relative mx-auto mt-6 h-40 w-full flex-shrink-0">
+              <div className="absolute inset-x-2 top-6 h-32 rounded-[50%] bg-[#eaf7d9]" />
+              <span className="absolute left-[8%] top-2 text-4xl">🏜️</span>
+              <div className="absolute left-[26%] top-10">
+                <Turtle mood={mood} />
+              </div>
+              <div className="absolute right-[10%] top-4">
+                <div className="relative flex h-24 w-24 items-center justify-center">
+                  <svg viewBox="0 0 96 96" className="absolute inset-0 h-full w-full -rotate-90">
+                    <circle cx="48" cy="48" r={ringRadius} fill="none" stroke="#dce8f5" strokeWidth="4" />
                     <circle
-                      cx="52" cy="52" r={ringRadius} fill="none"
+                      cx="48" cy="48" r={ringRadius} fill="none"
                       stroke="#f97316" strokeWidth="4" strokeLinecap="round"
                       strokeDasharray={ringCircumference}
-                      strokeDashoffset={ringCircumference * (1 - goalDone / DAILY_GOAL)}
+                      strokeDashoffset={ringCircumference * (1 - goalPct)}
                     />
                   </svg>
                   <div className="flex flex-col items-center">
-                    <span className="text-4xl">🔥</span>
-                    <span className="mt-0.5 text-sm font-semibold text-orange-600">
+                    <span
+                      className="cursor-pointer text-3xl"
+                      onClick={() => setMood(goalDone >= DAILY_GOAL ? "cheer" : "happy")}
+                    >
+                      🔥
+                    </span>
+                    <span className="text-xs font-semibold text-orange-600">
                       {goalDone} / {DAILY_GOAL}
                     </span>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Stats row */}
-          <div className="mt-8 grid grid-cols-3 divide-x divide-slate-200 rounded-2xl border border-slate-200 bg-white py-5 shadow-sm">
-            {[
-              { label: "TO LEARN", value: toLearn, color: "text-sky-500" },
-              { label: "PRACTICED", value: practiced, color: "text-green-600" },
-              { label: "LEARNED", value: learned, color: "text-amber-500" },
-            ].map((s) => (
-              <button
-                key={s.label}
-                onClick={() => router.push("/library")}
-                className="flex flex-col items-center gap-1"
-              >
-                <span className={`text-sm font-semibold tracking-wide ${s.color}`}>{s.label}</span>
-                <span className={`text-4xl font-bold ${s.color}`}>{s.value}</span>
-              </button>
-            ))}
-          </div>
+            {/* Stats row */}
+            <div className="mt-4 grid flex-shrink-0 grid-cols-3 divide-x divide-slate-200 rounded-2xl border border-slate-200 bg-white py-3 shadow-sm">
+              {[
+                { label: "TO LEARN", value: toLearn, color: "text-sky-500" },
+                { label: "PRACTICED", value: practiced, color: "text-green-600" },
+                { label: "LEARNED", value: learned, color: "text-amber-500" },
+              ].map((s) => (
+                <div key={s.label} className="flex flex-col items-center gap-0.5">
+                  <span className={`text-[11px] font-semibold tracking-wide ${s.color}`}>{s.label}</span>
+                  <span className={`text-3xl font-bold ${s.color}`}>{s.value}</span>
+                </div>
+              ))}
+            </div>
 
-          {/* START */}
-          <motion.button
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={startLearning}
-            className="mt-5 w-full rounded-full bg-gradient-to-b from-sky-400 to-sky-500 py-4 text-xl font-semibold tracking-wide text-white shadow-lg shadow-sky-500/30 transition hover:to-sky-600"
-          >
-            START
-          </motion.button>
-
-          {/* My cards */}
-          <div className="mt-6 flex items-stretch overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <button
-              onClick={() => setCardsOpen((o) => !o)}
-              className="flex flex-1 items-center gap-3 px-5 py-4 text-left"
+            {/* START */}
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={startLearning}
+              className="mt-3 w-full flex-shrink-0 rounded-full bg-gradient-to-b from-sky-400 to-sky-500 py-3 text-lg font-semibold tracking-wide text-white shadow-lg shadow-sky-500/30"
             >
-              <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform ${cardsOpen ? "" : "-rotate-90"}`} />
-              <span className="text-lg font-medium text-slate-800">My cards</span>
-              <span className="text-sm text-slate-400">{(words as any[]).length}</span>
-            </button>
-            <Link
-              href="/library"
-              aria-label="Add a card"
-              className="flex items-center border-l border-slate-200 px-5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
-            >
-              <Plus className="h-5 w-5" />
-            </Link>
-          </div>
-          {cardsOpen && (
-            <div className="mt-2 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-              {(words as any[]).length === 0 ? (
-                <p className="px-5 py-6 text-center text-slate-400">
-                  No cards yet — tap + to add your first word!
-                </p>
-              ) : (
-                (words as any[])
-                  .slice()
-                  .sort((a, b) => (a.phonetic || a.word || "").localeCompare(b.phonetic || b.word || ""))
-                  .map((w) => {
-                    const level = w.times_practiced || 0;
-                    const dot = level >= 5 ? "bg-amber-400" : level > 0 ? "bg-green-500" : "bg-sky-400";
-                    return (
-                      <Link
-                        key={w.id}
-                        href="/library"
-                        className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 last:border-b-0 hover:bg-slate-50"
-                      >
-                        <span className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${dot}`} />
-                        <span className="min-w-0 flex-1 truncate font-medium text-slate-800">
-                          {w.phonetic || w.word}
-                        </span>
-                        <span className="min-w-0 truncate text-sm text-slate-400">{w.translation}</span>
-                      </Link>
-                    );
-                  })
+              START
+            </motion.button>
+
+            {/* My cards — expands into the remaining space, scrolls internally */}
+            <div className="mt-3 flex min-h-0 flex-1 flex-col pb-3">
+              <div className="flex flex-shrink-0 items-stretch overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <button onClick={() => setCardsOpen((o) => !o)} className="flex flex-1 items-center gap-2 px-4 py-3 text-left">
+                  <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${cardsOpen ? "" : "-rotate-90"}`} />
+                  <span className="font-medium text-slate-800">My cards</span>
+                  <span className="text-sm text-slate-400">{(words as any[]).length}</span>
+                </button>
+                <button
+                  onClick={() => router.push("/library")}
+                  aria-label="Add a card"
+                  className="flex items-center border-l border-slate-200 px-4 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+              </div>
+              {cardsOpen && (
+                <div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  {(words as any[]).length === 0 ? (
+                    <p className="px-4 py-5 text-center text-sm text-slate-400">No cards yet — tap + to add your first word!</p>
+                  ) : (
+                    (words as any[])
+                      .slice()
+                      .sort((a, b) => (a.phonetic || a.word || "").localeCompare(b.phonetic || b.word || ""))
+                      .map((w) => {
+                        const level = w.times_practiced || 0;
+                        const dot = level >= 5 ? "bg-amber-400" : level > 0 ? "bg-green-500" : "bg-sky-400";
+                        return (
+                          <div key={w.id} className="flex items-center gap-3 border-b border-slate-100 px-4 py-2.5 last:border-b-0">
+                            <span className={`h-2 w-2 flex-shrink-0 rounded-full ${dot}`} />
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{w.phonetic || w.word}</span>
+                            <span className="min-w-0 truncate text-xs text-slate-400">{w.translation}</span>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Bottom tab row — quick links inside the app panel */}
-        <div className="mt-8 flex items-center justify-around border-t border-slate-200 bg-white px-2 py-3">
+        {/* ================= PRACTICE ================= */}
+        {tab === "practice" && (
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-5">
+            {quiz.length === 0 && !quizLoading ? (
+              <>
+                <div className="flex flex-shrink-0 flex-col items-center text-center">
+                  <Turtle mood={mood} size="text-5xl" />
+                  <h2 className="mt-2 text-lg font-bold text-slate-800">Practice</h2>
+                  <p className="mt-1 px-4 text-sm text-slate-500">
+                    AI questions and exercises built from the newest words in your cards.
+                  </p>
+                </div>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={startQuiz}
+                  className="mt-5 w-full flex-shrink-0 rounded-full bg-gradient-to-b from-green-400 to-green-500 py-3 text-lg font-semibold text-white shadow-lg shadow-green-500/30"
+                >
+                  Start exercises
+                </motion.button>
+
+                {/* Journal lives inside Practice */}
+                <button
+                  onClick={() => router.push("/journal")}
+                  className="mt-4 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:shadow-md"
+                >
+                  <span className="text-2xl">📓</span>
+                  <span className="flex-1">
+                    <span className="block font-medium text-slate-800">Journal</span>
+                    <span className="block text-xs text-slate-500">Write entries and turn them into lessons</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-slate-400" />
+                </button>
+
+                <button
+                  onClick={() => router.push("/practice")}
+                  className="mt-3 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:shadow-md"
+                >
+                  <span className="text-2xl">🗣️</span>
+                  <span className="flex-1">
+                    <span className="block font-medium text-slate-800">Chat &amp; speaking</span>
+                    <span className="block text-xs text-slate-500">Talk with the AI assistant</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-slate-400" />
+                </button>
+              </>
+            ) : quizLoading ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3">
+                <Turtle mood="idle" size="text-5xl" />
+                <Loader2 className="h-6 w-6 animate-spin text-green-500" />
+                <p className="text-sm text-slate-500">Building exercises from your cards…</p>
+              </div>
+            ) : quizDone ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                <Turtle mood={quizScore === quiz.length ? "cheer" : "happy"} size="text-6xl" />
+                <h2 className="text-2xl font-bold text-slate-800">
+                  {quizScore} / {quiz.length}
+                </h2>
+                <p className="text-sm text-slate-500">
+                  {quizScore === quiz.length ? "Perfect! The turtle is thrilled! 🏆" : "Nice work — keep practicing!"}
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button onClick={startQuiz} className="rounded-full bg-green-500 px-5 py-2.5 font-semibold text-white shadow">
+                    Practice again
+                  </button>
+                  <button onClick={() => { setQuiz([]); setQuizDone(false); }} className="rounded-full border border-slate-300 bg-white px-5 py-2.5 font-semibold text-slate-600">
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="flex flex-shrink-0 items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400">
+                    {quizIdx + 1} / {quiz.length}
+                  </span>
+                  <button onClick={() => { setQuiz([]); setQuizAnswer(null); }} aria-label="Quit practice">
+                    <X className="h-4 w-4 text-slate-400" />
+                  </button>
+                </div>
+                <div className="mt-1 h-1.5 flex-shrink-0 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${((quizIdx + (quizAnswer !== null ? 1 : 0)) / quiz.length) * 100}%` }} />
+                </div>
+
+                <div className="mt-4 flex flex-shrink-0 items-start gap-3">
+                  <Turtle mood={mood} size="text-4xl" />
+                  <div className="relative flex-1 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <p className="text-sm font-medium text-slate-800">{quiz[quizIdx].prompt}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-2">
+                  {quiz[quizIdx].options.map((opt: string, i: number) => {
+                    const isCorrect = i === quiz[quizIdx].correct_index;
+                    const chosen = quizAnswer === i;
+                    let cls = "border-slate-200 bg-white text-slate-800 hover:border-sky-400";
+                    if (quizAnswer !== null) {
+                      if (isCorrect) cls = "border-green-500 bg-green-50 text-green-700";
+                      else if (chosen) cls = "border-red-400 bg-red-50 text-red-600";
+                      else cls = "border-slate-200 bg-white text-slate-400";
+                    }
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => answerQuiz(i)}
+                        disabled={quizAnswer !== null}
+                        className={`flex-shrink-0 rounded-xl border-2 px-4 py-3 text-left text-sm font-medium shadow-sm transition ${cls}`}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                  {quizAnswer !== null && (
+                    <div className="flex-shrink-0 pb-1">
+                      {quiz[quizIdx].explanation && (
+                        <p className="mb-2 text-xs text-slate-500">{quiz[quizIdx].explanation}</p>
+                      )}
+                      <button onClick={nextQuiz} className="w-full rounded-full bg-sky-500 py-3 font-semibold text-white shadow">
+                        {quizIdx + 1 >= quiz.length ? "Finish" : "Next"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= ACCOUNT ================= */}
+        {tab === "account" && (
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-6">
+            <div className="flex flex-shrink-0 flex-col items-center text-center">
+              <Turtle mood={mood} size="text-5xl" />
+              <p className="mt-2 font-semibold text-slate-800">{currentUser?.full_name || currentUser?.email}</p>
+              <p className="text-xs text-slate-400">{currentUser?.email}</p>
+            </div>
+            <div className="mt-5 space-y-2.5 overflow-y-auto pb-3">
+              {[
+                { emoji: "📈", label: "Progress", desc: "Streaks, words and study time", href: "/progress" },
+                { emoji: "🗓️", label: "Schedule", desc: "Your sessions and daily tasks", href: "/learn/lessons/days" },
+                { emoji: "🎒", label: "Backpack", desc: "All your cards and flashcards", href: "/library" },
+                { emoji: "⚙️", label: "Settings", desc: "Language and preferences", href: "/settings" },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => router.push(item.href)}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition hover:shadow-md"
+                >
+                  <span className="text-2xl">{item.emoji}</span>
+                  <span className="flex-1">
+                    <span className="block font-medium text-slate-800">{item.label}</span>
+                    <span className="block text-xs text-slate-500">{item.desc}</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-slate-400" />
+                </button>
+              ))}
+              <button
+                onClick={() => base44.auth.logout()}
+                className="flex w-full items-center gap-3 rounded-2xl border border-red-100 bg-white px-4 py-3.5 text-left shadow-sm transition hover:bg-red-50"
+              >
+                <span className="text-2xl">🚪</span>
+                <span className="flex-1 font-medium text-red-500">Sign out</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ================= BOTTOM MENU (pinned) ================= */}
+        <div className="flex flex-shrink-0 items-center justify-around border-t border-slate-200 bg-white px-2 py-2">
           {[
-            { href: "/home", emoji: "🃏", label: "LEARNING", active: true },
-            { href: "/practice", emoji: "💬", label: "PRACTICE", active: false },
-            { href: "/media", emoji: "📚", label: "LIBRARY", active: false },
-            { href: "/settings", emoji: "👤", label: "ACCOUNT", active: false },
-          ].map((tab) => (
-            <Link
-              key={tab.label}
-              href={tab.href}
-              className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[11px] font-semibold tracking-wide ${
-                tab.active ? "text-slate-900" : "text-slate-400 hover:text-slate-600"
+            { key: "learning", emoji: "🃏", label: "LEARNING", onTap: () => setTab("learning") },
+            { key: "practice", emoji: "💬", label: "PRACTICE", onTap: () => setTab("practice") },
+            { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => router.push("/media") },
+            { key: "account", emoji: "👤", label: "ACCOUNT", onTap: () => setTab("account") },
+          ].map((t) => (
+            <button
+              key={t.key}
+              onClick={t.onTap}
+              className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[10px] font-semibold tracking-wide ${
+                tab === t.key ? "text-slate-900" : "text-slate-400 hover:text-slate-600"
               }`}
             >
-              <span className="text-2xl">{tab.emoji}</span>
-              {tab.label}
-            </Link>
+              <span className="text-xl">{t.emoji}</span>
+              {t.label}
+            </button>
           ))}
         </div>
       </div>
