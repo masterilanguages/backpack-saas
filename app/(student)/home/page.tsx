@@ -916,34 +916,51 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     setLibSearching(true);
     setLibResults([]);
     try {
-      const label = languageLabel(searchLang);
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Search YouTube for: "${q}". The user is learning ${label}, so ONLY include videos whose spoken language is ${label} or that teach ${label}. Find 8 real, currently-available YouTube videos, ORDERED BY VIEW COUNT from most to least popular.
+      // Real YouTube Data API first (exact view counts + durations, instant).
+      // Falls back to LLM web search while no YOUTUBE_API_KEY secret is set.
+      let vids: any[] = [];
+      try {
+        const apiResult = await base44.functions.invoke("youtubeSearch", { query: q, language: searchLang });
+        if (apiResult?.data?.videos?.length) {
+          vids = apiResult.data.videos;
+        } else if (apiResult?.data?.error && apiResult.data.error !== "no_api_key") {
+          console.warn("youtubeSearch:", apiResult.data.error);
+        }
+      } catch (e) {
+        console.warn("youtubeSearch unavailable, falling back to LLM", e);
+      }
+
+      if (vids.length === 0) {
+        const label = languageLabel(searchLang);
+        const result = await base44.integrations.Core.InvokeLLM({
+          prompt: `Search YouTube for: "${q}". The user is learning ${label}, so ONLY include videos whose spoken language is ${label} or that teach ${label}. Find 8 real, currently-available YouTube videos, ORDERED BY VIEW COUNT from most to least popular.
 
 Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact 11-character YouTube video id, "channel": channel name, "views": approximate view count as a number, "duration": length like "6:05" } ] }`,
-        add_context_from_internet: true,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            videos: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  title: { type: "string" },
-                  youtube_id: { type: "string" },
-                  channel: { type: "string" },
-                  views: { type: "number" },
-                  duration: { type: "string" },
+          add_context_from_internet: true,
+          response_json_schema: {
+            type: "object",
+            properties: {
+              videos: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    youtube_id: { type: "string" },
+                    channel: { type: "string" },
+                    views: { type: "number" },
+                    duration: { type: "string" },
+                  },
                 },
               },
             },
           },
-        },
-      });
-      const vids = (result?.videos || [])
-        .filter((v: any) => v.youtube_id && String(v.youtube_id).length === 11)
-        .sort((a: any, b: any) => (b.views || 0) - (a.views || 0));
+        });
+        vids = (result?.videos || [])
+          .filter((v: any) => v.youtube_id && String(v.youtube_id).length === 11)
+          .sort((a: any, b: any) => (b.views || 0) - (a.views || 0));
+      }
+
       setLibResults(vids);
       if (vids.length === 0) toast.info("No videos found — try different words.");
     } catch (e) {
