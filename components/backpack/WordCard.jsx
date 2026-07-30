@@ -7,6 +7,7 @@ import EditableWord from "@/components/learning/EditableWord";
 import { toast } from "sonner";
 import { isRTLLanguage, isRTLText, languageLabel, needsTransliteration } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
+import { generateLessonAudio } from "@/lib/audio/lessonAudio";
 
 function SentenceWords({ words, onAddToBackpack, showHebrew = true, showTransliteration = true, lang = 'hebrew' }) {
   // Native-script line direction follows the actual generated text (RTL for Hebrew/Arabic, LTR for Latin).
@@ -360,6 +361,26 @@ export default function WordCard({
 
       {/* Example sentence */}
       <div className="px-2 pb-2" onClick={e => e.stopPropagation()}>
+        {/* Sentence the word was captured from (e.g. a video transcript line) —
+            saved on the card with a listen button. Session labels ("Session 3")
+            stored in the same column are not sentences and are skipped. */}
+        {word.example_sentence && word.example_sentence.includes(' ') && !/^Session \d+$/i.test(word.example_sentence) && (
+          <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-slate-700 bg-slate-800 p-2">
+            <button
+              onClick={() => generateLessonAudio({ text: word.example_sentence, language: lang }).play()}
+              title="Listen to sentence"
+              className="flex-shrink-0 rounded p-0.5 text-sm hover:bg-slate-700 transition-all"
+            >
+              🔊
+            </button>
+            <p
+              dir={isRTLText(word.example_sentence) ? 'rtl' : 'ltr'}
+              className={`flex-1 text-[11px] leading-relaxed text-slate-300 ${isRTLText(word.example_sentence) ? 'text-right' : ''}`}
+            >
+              {word.example_sentence}
+            </p>
+          </div>
+        )}
         <div className="bg-slate-800 rounded-lg p-2 border border-slate-700 min-h-[52px] flex flex-col justify-center gap-0.5">
           {generatingSentence[word.id] ? (
             <div className="flex items-center justify-center gap-1 py-1">

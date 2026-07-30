@@ -22,6 +22,10 @@ import { languageLabel, isRTLText } from "@/lib/language";
 import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
+import { generateLessonAudio } from "@/lib/audio/lessonAudio";
+
+// Strip punctuation from a tapped transcript token, keeping native letters.
+const cleanToken = (t: string) => t.replace(/[.,!?;:"'()\[\]{}«»„“”…׀׃־]+/g, "").trim();
 
 // Shared, memoized loader for the YouTube IFrame API (same pattern as the
 // media page — a single global onYouTubeIframeAPIReady is last-writer-wins,
@@ -160,6 +164,10 @@ export default function Home() {
   const shellPlayerRef = React.useRef<any>(null);
   const shellTimerRef = React.useRef<any>(null);
   const activeLineRef = React.useRef<HTMLButtonElement | null>(null);
+
+  // Word popup over the in-shell transcript (tap a word → sound / edit / add
+  // to backpack). Keyed by line+word index so tapping elsewhere moves it.
+  const [wordPopup, setWordPopup] = useState<any>(null);
 
   // In-shell add-video form (Library tab)
   const [libAddOpen, setLibAddOpen] = useState(false);
@@ -539,6 +547,7 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     setShellVideo(null);
     setShellSegments([]);
     setShellPlaying(false);
+    setWordPopup(null);
   };
 
   // Create/destroy the YouTube player with the in-shell view.
@@ -610,6 +619,65 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     if (!p?.seekTo) return;
     p.seekTo(seconds, true);
     if (play) p.playVideo?.();
+  };
+
+  // Tap a word in the transcript: pause the video and open the popup with
+  // sound / edit / add-to-backpack. The translation is looked up in context.
+  const vidLang = shellVideo?.language || language;
+  const tapTranscriptWord = async (key: string, token: string, sentence: string) => {
+    if (wordPopup?.key === key) { setWordPopup(null); return; }
+    const clean = cleanToken(token);
+    if (!clean) return;
+    shellPlayerRef.current?.pauseVideo?.();
+    const already = (words as any[]).some(
+      (w) => w.word === clean || (w.phonetic || "").toLowerCase() === clean.toLowerCase()
+    );
+    setWordPopup({ key, clean, sentence, translation: "", phonetic: "", loading: true, editing: false, saving: false, added: already });
+    try {
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `Translate the ${languageLabel(vidLang)} word "${clean}" as used in this sentence: "${sentence}". Return JSON with: translation (English meaning, 1-4 words), phonetic (Latin-letter transliteration of the word).`,
+        response_json_schema: {
+          type: "object",
+          properties: { translation: { type: "string" }, phonetic: { type: "string" } },
+        },
+      });
+      setWordPopup((p: any) =>
+        p?.key === key ? { ...p, translation: result?.translation || "", phonetic: result?.phonetic || "", loading: false } : p
+      );
+    } catch {
+      setWordPopup((p: any) => (p?.key === key ? { ...p, loading: false } : p));
+    }
+  };
+
+  const speakPopupWord = () => {
+    if (!wordPopup?.clean) return;
+    generateLessonAudio({ text: wordPopup.clean, language: vidLang }).play();
+  };
+
+  const savePopupWord = async () => {
+    if (!wordPopup || wordPopup.saving || wordPopup.added) return;
+    setWordPopup((p: any) => ({ ...p, saving: true }));
+    try {
+      await base44.entities.Word.create({
+        word: wordPopup.clean,
+        translation: wordPopup.translation || "",
+        phonetic: wordPopup.phonetic || wordPopup.clean,
+        category: "wordbank",
+        language: vidLang,
+        times_practiced: 0,
+        mastered: false,
+        // The sentence the word came from travels with the card, so the
+        // flashcard can play it back.
+        example_sentence: wordPopup.sentence,
+      });
+      queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
+      setWordPopup((p: any) => (p ? { ...p, saving: false, added: true } : p));
+      setMood("happy");
+      toast.success("Added to backpack! 🎒");
+    } catch (e: any) {
+      setWordPopup((p: any) => (p ? { ...p, saving: false } : p));
+      toast.error("Couldn't add the word");
+    }
   };
 
   // -------------------------------------------------------------------------
@@ -1177,16 +1245,22 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
                     const main = s.hebrew || s.transliteration || s.text || "";
                     const rtl = isRTLText(main);
                     const active = i === activeSegIdx;
+                    const tokens = main.split(/\s+/).filter(Boolean);
                     return (
-                      <button
+                      <div
                         key={i}
-                        ref={active ? activeLineRef : null}
-                        onClick={() => seekShellTo(s.start ?? 0)}
+                        ref={active ? (activeLineRef as any) : null}
                         className={`flex w-full items-start gap-2 rounded-xl px-3 py-2.5 text-left transition ${
                           active ? "bg-white shadow-sm" : "hover:bg-white/60"
                         }`}
                       >
-                        <span className={`mt-0.5 flex-shrink-0 text-sm ${active ? "text-sky-500" : "text-sky-300"}`}>🔊</span>
+                        <button
+                          onClick={() => seekShellTo(s.start ?? 0)}
+                          aria-label="Play from here"
+                          className={`mt-0.5 flex-shrink-0 text-sm ${active ? "text-sky-500" : "text-sky-300"}`}
+                        >
+                          🔊
+                        </button>
                         <span className="min-w-0 flex-1">
                           <span
                             dir={rtl ? "rtl" : "ltr"}
@@ -1194,13 +1268,100 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
                               active ? "font-semibold text-slate-900" : "text-slate-700"
                             }`}
                           >
-                            {main}
+                            {/* Tap a word → popup with sound / edit / backpack */}
+                            {tokens.map((tok: string, wi: number) => {
+                              const key = `${i}_${wi}`;
+                              const open = wordPopup?.key === key;
+                              return (
+                                <span key={key} className="relative inline-block">
+                                  <span
+                                    onClick={(e) => { e.stopPropagation(); tapTranscriptWord(key, tok, main); }}
+                                    className={`cursor-pointer rounded px-0.5 transition ${
+                                      open ? "bg-sky-100 text-sky-800" : "hover:bg-sky-50"
+                                    }`}
+                                  >
+                                    {tok}
+                                  </span>
+                                  {open && wordPopup && (
+                                    <span
+                                      dir="ltr"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="absolute bottom-full left-1/2 z-30 mb-1.5 block w-48 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-2.5 text-left shadow-xl"
+                                    >
+                                      {wordPopup.editing ? (
+                                        <span className="block space-y-1.5">
+                                          <input
+                                            value={wordPopup.clean}
+                                            onChange={(e) => setWordPopup((p: any) => ({ ...p, clean: e.target.value }))}
+                                            dir={rtl ? "rtl" : "ltr"}
+                                            className="w-full rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold text-slate-800 focus:border-teal-500 focus:outline-none"
+                                          />
+                                          <input
+                                            value={wordPopup.translation}
+                                            onChange={(e) => setWordPopup((p: any) => ({ ...p, translation: e.target.value }))}
+                                            placeholder="Meaning"
+                                            className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 focus:border-teal-500 focus:outline-none"
+                                          />
+                                        </span>
+                                      ) : (
+                                        <span className="block">
+                                          <span dir={rtl ? "rtl" : "ltr"} className="block text-sm font-bold text-slate-800">
+                                            {wordPopup.clean}
+                                          </span>
+                                          {wordPopup.loading ? (
+                                            <span className="block text-xs text-slate-400">translating…</span>
+                                          ) : (
+                                            <>
+                                              {wordPopup.phonetic && <span className="block text-[11px] text-sky-600">{wordPopup.phonetic}</span>}
+                                              <span className="block text-xs text-slate-500">{wordPopup.translation || "—"}</span>
+                                            </>
+                                          )}
+                                        </span>
+                                      )}
+                                      <span className="mt-2 flex items-center justify-between">
+                                        <button onClick={speakPopupWord} aria-label="Listen" className="rounded-lg p-1 text-base hover:bg-slate-50">
+                                          🔊
+                                        </button>
+                                        <button
+                                          onClick={() => setWordPopup((p: any) => ({ ...p, editing: !p.editing }))}
+                                          aria-label="Edit"
+                                          className={`rounded-lg p-1 text-base hover:bg-slate-50 ${wordPopup.editing ? "bg-slate-100" : ""}`}
+                                        >
+                                          ✏️
+                                        </button>
+                                        <button
+                                          onClick={savePopupWord}
+                                          aria-label="Add to backpack"
+                                          disabled={wordPopup.saving}
+                                          className="relative rounded-lg p-1 text-base hover:bg-slate-50 disabled:opacity-50"
+                                        >
+                                          🎒
+                                          {wordPopup.added && (
+                                            <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white">
+                                              ✓
+                                            </span>
+                                          )}
+                                          {wordPopup.saving && (
+                                            <Loader2 className="absolute -right-0.5 -top-0.5 h-3 w-3 animate-spin text-teal-500" />
+                                          )}
+                                        </button>
+                                        <button onClick={() => setWordPopup(null)} aria-label="Close" className="rounded-lg p-1 text-xs text-slate-400 hover:bg-slate-50">
+                                          ✕
+                                        </button>
+                                      </span>
+                                      {/* bubble tail */}
+                                      <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-slate-200 bg-white" />
+                                    </span>
+                                  )}
+                                </span>
+                              );
+                            }).reduce((acc: any[], el: any, idx: number) => (idx === 0 ? [el] : [...acc, " ", el]), [])}
                           </span>
                           {s.english && (
                             <span className={`block text-xs text-slate-400 ${rtl ? "text-right" : ""}`}>{s.english}</span>
                           )}
                         </span>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
