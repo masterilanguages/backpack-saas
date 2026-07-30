@@ -36,6 +36,25 @@ const deriveTitle = (text: string) => {
   return first.length > 48 ? first.slice(0, 48).trim() + "…" : first;
 };
 
+const extractYouTubeId = (url: string) => {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+    /youtube\.com\/shorts\/([^&\n?#]+)/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
+};
+
+// Same topic set the full library's add dialog offers.
+const VIDEO_TOPICS = [
+  "Religion / Spirituality", "Sports / Fitness", "Cooking / Food", "Nutrition",
+  "Health / Wellness", "Meditation / Mindfulness", "Music", "Travel", "Culture",
+  "Education / Learning", "Business / Career", "Personal Growth", "Relationships", "News / Current Events",
+];
+
 const DAILY_GOAL = 15;
 
 const LANGUAGE_FLAGS: Record<string, string> = {
@@ -101,6 +120,12 @@ export default function Home() {
   // Sentence-proposal cloud in the journal compose view
   const [proposals, setProposals] = useState<string[]>([]);
   const [proposalsLoading, setProposalsLoading] = useState(false);
+  // In-shell add-video form (Library tab)
+  const [libAddOpen, setLibAddOpen] = useState(false);
+  const emptyLibForm = { video_url: "", video_id: "", title: "", language: "", difficulty_level: "All", topics: [] as string[] };
+  const [libForm, setLibForm] = useState<any>(emptyLibForm);
+  const [libLoadingMeta, setLibLoadingMeta] = useState(false);
+  const [libSaving, setLibSaving] = useState(false);
 
   // Practice (AI quiz) state
   const [quiz, setQuiz] = useState<any[]>([]);
@@ -167,11 +192,13 @@ export default function Home() {
     refetchOnWindowFocus: false,
   });
 
+  // Strictly the active language: in Spanish mode only Spanish videos appear —
+  // both from the master catalog and the user's own additions.
   const shellVideos = useMemo(() => {
     const catalog = (libraryVideos as any[])
-      .filter((v) => v.is_active !== false && (!v.language || v.language === language));
+      .filter((v) => v.is_active !== false && v.language === language);
     const own = (myVideos as any[])
-      .filter((v) => v.created_by === currentUser?.email)
+      .filter((v) => v.created_by === currentUser?.email && v.language === language)
       .map((v) => ({ ...v, _mine: true }));
     return [...own, ...catalog];
   }, [libraryVideos, myVideos, language, currentUser?.email]);
@@ -422,6 +449,63 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [journalMode]);
+
+  // -------------------------------------------------------------------------
+  // In-shell add-video (Library tab). Admins write to the master library;
+  // everyone else adds to their personal collection (which also lands in the
+  // admin approval queue on the full library page).
+  // -------------------------------------------------------------------------
+  const loadLibMeta = async () => {
+    const vid = extractYouTubeId(libForm.video_url || "");
+    if (!vid) {
+      toast.error("Paste a valid YouTube link first");
+      return;
+    }
+    setLibLoadingMeta(true);
+    try {
+      const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(libForm.video_url)}&format=json`);
+      const meta = await res.json();
+      setLibForm((f: any) => ({ ...f, video_id: vid, title: f.title || meta.title || "" }));
+      toast.success("Video info loaded!");
+    } catch {
+      // oEmbed can fail for some videos — the id alone is enough to save.
+      setLibForm((f: any) => ({ ...f, video_id: vid }));
+    }
+    setLibLoadingMeta(false);
+  };
+
+  const saveLibVideo = async () => {
+    const vid = libForm.video_id || extractYouTubeId(libForm.video_url || "");
+    if (!vid) { toast.error("Paste a YouTube link first"); return; }
+    if (!libForm.title.trim()) { toast.error("Title is required"); return; }
+    setLibSaving(true);
+    const data = {
+      title: libForm.title.trim(),
+      language: libForm.language || language,
+      video_url: libForm.video_url,
+      video_id: vid,
+      topics: libForm.topics,
+      difficulty_level: libForm.difficulty_level || "All",
+      thumbnail_url: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+    };
+    try {
+      if (currentUser?.role === "admin") {
+        await base44.entities.MediaLibrary.create({ ...data, is_active: true, tags: "", notes: "" });
+      } else {
+        await base44.entities.UserSavedVideo.create(data);
+      }
+      queryClient.invalidateQueries({ queryKey: ["mediaLibrary"] });
+      queryClient.invalidateQueries({ queryKey: ["userSavedVideos"] });
+      toast.success("Video added!");
+      setLibForm(emptyLibForm);
+      setLibAddOpen(false);
+      setMood("happy");
+    } catch (e: any) {
+      console.error(e);
+      toast.error(`Couldn't add the video: ${e?.message || "unknown error"}`);
+    }
+    setLibSaving(false);
+  };
 
   const goalPct = goalDone / DAILY_GOAL;
 
@@ -876,13 +960,137 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
           </div>
         )}
 
+        {/* ================= LIBRARY / ADD VIDEO ================= */}
+        {tab === "library" && libAddOpen && (
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <button
+                onClick={() => setLibAddOpen(false)}
+                aria-label="Back"
+                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <span className="text-lg font-bold text-slate-800">➕ Add video</span>
+            </div>
+            <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pb-3">
+              {/* YouTube link */}
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-500">YouTube link</label>
+                <div className="flex gap-2">
+                  <input
+                    value={libForm.video_url}
+                    onChange={(e) => setLibForm((f: any) => ({ ...f, video_url: e.target.value }))}
+                    placeholder="https://youtube.com/watch?v=…"
+                    className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-teal-500 focus:outline-none"
+                  />
+                  <button
+                    onClick={loadLibMeta}
+                    disabled={libLoadingMeta || !libForm.video_url}
+                    className="flex-shrink-0 rounded-xl bg-teal-500 px-4 text-sm font-semibold text-white shadow disabled:opacity-40"
+                  >
+                    {libLoadingMeta ? <Loader2 className="h-4 w-4 animate-spin" /> : "Load"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Thumbnail preview */}
+              {libForm.video_id && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`https://i.ytimg.com/vi/${libForm.video_id}/hqdefault.jpg`}
+                  alt=""
+                  className="aspect-video w-full rounded-xl object-cover shadow-sm"
+                  onError={(e: any) => { e.target.style.display = "none"; }}
+                />
+              )}
+
+              {/* Title */}
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-500">Title</label>
+                <input
+                  value={libForm.title}
+                  onChange={(e) => setLibForm((f: any) => ({ ...f, title: e.target.value }))}
+                  placeholder="Video title"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Language + difficulty */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Language</label>
+                  <select
+                    value={libForm.language || language}
+                    onChange={(e) => setLibForm((f: any) => ({ ...f, language: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm capitalize text-slate-800 shadow-sm focus:border-teal-500 focus:outline-none"
+                  >
+                    {Object.entries(LANGUAGE_FLAGS).map(([id, flag]) => (
+                      <option key={id} value={id} className="capitalize">{flag} {id}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Difficulty</label>
+                  <select
+                    value={libForm.difficulty_level}
+                    onChange={(e) => setLibForm((f: any) => ({ ...f, difficulty_level: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-teal-500 focus:outline-none"
+                  >
+                    {["Beginner", "Intermediate", "Advanced", "All"].map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Topics */}
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-500">Topics</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {VIDEO_TOPICS.map((t) => {
+                    const on = libForm.topics.includes(t);
+                    return (
+                      <button
+                        key={t}
+                        onClick={() =>
+                          setLibForm((f: any) => ({
+                            ...f,
+                            topics: on ? f.topics.filter((x: string) => x !== t) : [...f.topics, t],
+                          }))
+                        }
+                        className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+                          on
+                            ? "border-teal-500 bg-teal-50 text-teal-700"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-teal-300"
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                onClick={saveLibVideo}
+                disabled={libSaving}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-b from-teal-400 to-teal-500 py-3 font-semibold text-white shadow-lg shadow-teal-500/30 disabled:opacity-50"
+              >
+                {libSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+                {libSaving ? "Adding…" : currentUser?.role === "admin" ? "Add to library" : "Add to my library"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ================= LIBRARY ================= */}
-        {tab === "library" && (
+        {tab === "library" && !libAddOpen && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
             <div className="flex flex-shrink-0 items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800">📚 Library</h2>
               <button
-                onClick={() => router.push("/media")}
+                onClick={() => { setLibForm({ ...emptyLibForm, language }); setLibAddOpen(true); }}
                 className="rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
               >
                 + Add video
