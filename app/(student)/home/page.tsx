@@ -98,6 +98,9 @@ export default function Home() {
   const [journalBusy, setJournalBusy] = useState(false);
   // In-shell learning-language picker (lives inside the Account tab)
   const [langPickerOpen, setLangPickerOpen] = useState(false);
+  // Sentence-proposal cloud in the journal compose view
+  const [proposals, setProposals] = useState<string[]>([]);
+  const [proposalsLoading, setProposalsLoading] = useState(false);
 
   // Practice (AI quiz) state
   const [quiz, setQuiz] = useState<any[]>([]);
@@ -360,6 +363,66 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
     setJournalBusy(false);
   };
 
+  // Propose short sentences the learner can tap into their journal entry.
+  // Ideas continue whatever they've written and, when possible, sneak in
+  // words from their backpack so the entry practices their own vocabulary.
+  const proposeSentences = async () => {
+    if (proposalsLoading) return;
+    setProposalsLoading(true);
+    try {
+      const label = languageLabel(language);
+      const recentWords = (words as any[])
+        .slice()
+        .sort((a, b) => new Date(b.created_date || 0).getTime() - new Date(a.created_date || 0).getTime())
+        .slice(0, 8)
+        .map((w) => `"${w.phonetic || w.word}" (${w.translation})`)
+        .join(", ");
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `A ${label} learner is writing a short personal journal entry (they write in simple English; it later becomes a ${label} lesson).
+
+Their entry so far:
+"""
+${journalText.trim() || "(empty — they haven't started yet)"}
+"""
+${recentWords ? `Words they are currently learning: ${recentWords}.` : ""}
+
+Propose 3 DIFFERENT short first-person sentences (max 12 words each, simple English) they could add next. The sentences must fit naturally after what they wrote (or start the entry if empty), feel personal and concrete, and — where it fits naturally — use the ENGLISH meaning of one of the words they are learning. No numbering, no quotes.
+
+Return JSON: { "sentences": ["...", "...", "..."] }`,
+        response_json_schema: {
+          type: "object",
+          properties: { sentences: { type: "array", items: { type: "string" } } },
+        },
+      });
+      const list = (result?.sentences || []).filter((s: any) => typeof s === "string" && s.trim()).slice(0, 3);
+      if (list.length === 0) throw new Error("no sentences");
+      setProposals(list);
+    } catch (e) {
+      toast.error("Couldn't think of ideas — try again.");
+    }
+    setProposalsLoading(false);
+  };
+
+  // Tap a proposal → it joins the entry, and fresh ideas can build on it.
+  const addProposal = (sentence: string) => {
+    setJournalText((txt) => {
+      const base = txt.trim();
+      if (!base) return sentence + " ";
+      const needsPeriod = /[.!?…]$/.test(base) ? "" : ".";
+      return `${base}${needsPeriod} ${sentence} `;
+    });
+    setProposals((p) => p.filter((s) => s !== sentence));
+    setMood("happy");
+  };
+
+  // Fresh ideas whenever the compose view opens.
+  useEffect(() => {
+    if (journalMode === "compose" && proposals.length === 0 && !proposalsLoading) {
+      proposeSentences();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [journalMode]);
+
   const goalPct = goalDone / DAILY_GOAL;
 
   return (
@@ -591,7 +654,7 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
 
             {journalMode === "compose" && (
               <div className="mt-3 flex min-h-0 flex-1 flex-col pb-3">
-                <div className="flex flex-shrink-0 flex-wrap gap-1.5">
+                <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5">
                   {JOURNAL_TOPICS.map((t) => (
                     <button
                       key={t.label}
@@ -601,6 +664,16 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
                       {t.label}
                     </button>
                   ))}
+                  {/* Lesson creation moved up here — the big CTA slot below now
+                      belongs to the sentence-proposal cloud. */}
+                  <button
+                    onClick={generateJournalLesson}
+                    disabled={journalBusy || !journalText.trim()}
+                    className="ml-auto flex items-center gap-1 rounded-full bg-teal-500 px-3 py-1 text-xs font-semibold text-white shadow disabled:opacity-40"
+                  >
+                    {journalBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {journalBusy ? "Creating…" : "Lesson"}
+                  </button>
                 </div>
                 <textarea
                   value={journalText}
@@ -608,14 +681,52 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
                   placeholder="Write about your day in English or Hebrew…"
                   className="mt-2 min-h-0 w-full flex-1 resize-none rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-teal-500 focus:outline-none"
                 />
-                <button
-                  onClick={generateJournalLesson}
-                  disabled={journalBusy || !journalText.trim()}
-                  className="mt-3 flex flex-shrink-0 items-center justify-center gap-2 rounded-full bg-gradient-to-b from-teal-400 to-teal-500 py-3 font-semibold text-white shadow-lg shadow-teal-500/30 disabled:opacity-50"
-                >
-                  {journalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  {journalBusy ? "Creating your lesson…" : "Turn into a lesson"}
-                </button>
+
+                {/* Sentence-proposal cloud: the turtle "thinks up" sentences the
+                    learner can tap to add to the entry. */}
+                <div className="relative mt-4 flex-shrink-0">
+                  {/* thought-bubble dots */}
+                  <span className="absolute -top-3 left-8 h-2.5 w-2.5 rounded-full bg-white shadow-sm" />
+                  <span className="absolute -top-1 left-12 h-3.5 w-3.5 rounded-full bg-white shadow-sm" />
+                  <div className="rounded-[1.75rem] border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                        <span className="text-lg">🐢💭</span> Sentence ideas — tap to add
+                      </p>
+                      <button
+                        onClick={proposeSentences}
+                        disabled={proposalsLoading}
+                        aria-label="New ideas"
+                        className="rounded-full px-2 py-1 text-sm text-slate-400 transition hover:bg-slate-50 hover:text-teal-600 disabled:opacity-40"
+                      >
+                        {proposalsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "🔄"}
+                      </button>
+                    </div>
+                    <div className="mt-2 space-y-1.5">
+                      {proposalsLoading && proposals.length === 0 ? (
+                        <p className="py-2 text-center text-xs text-slate-400">Thinking of ideas…</p>
+                      ) : proposals.length === 0 ? (
+                        <button
+                          onClick={proposeSentences}
+                          className="w-full rounded-xl border border-dashed border-slate-300 py-2.5 text-xs text-slate-500 hover:border-teal-400 hover:text-teal-600"
+                        >
+                          ☁️ Get sentence ideas
+                        </button>
+                      ) : (
+                        proposals.map((s, i) => (
+                          <button
+                            key={`${i}_${s.slice(0, 12)}`}
+                            onClick={() => addProposal(s)}
+                            className="flex w-full items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-left text-xs font-medium text-sky-800 transition hover:bg-sky-100"
+                          >
+                            <Plus className="h-3.5 w-3.5 flex-shrink-0 text-sky-500" />
+                            <span className="min-w-0 flex-1">{s}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
