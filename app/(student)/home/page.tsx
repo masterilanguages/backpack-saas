@@ -1,1405 +1,275 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Link, useNavigate, createPageUrl } from "@/lib/router-compat";
-import { useUI } from "@/lib/i18n/UILanguage";
+// Duocards-style home screen: light app panel with a streak tip card, a
+// mascot scene around a campfire daily-goal ring, To Learn / Practiced /
+// Learned stats, a big START button and an expandable "My cards" list.
+// Data comes from the same Word/UserProfile entities the Backpack uses.
+// (The previous gamified dashboard lives in git history if it's ever needed.)
+
+import React, { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { base44 as base44Client } from "@/api/base44Client";
-// base44Client is a JS shim whose `entities` are built dynamically, so TS can't
-// see entity keys. Cast to `any` for ergonomic access — the runtime shape is
-// guaranteed by the shim.
 const base44: any = base44Client;
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
-import { ShoppingCart, Dumbbell, Church, UtensilsCrossed, Heart, ShoppingBag, BookOpen, Users, Play, Trophy, Sparkles, ArrowRight, Flame, Briefcase, School, Baby, Star, ChevronRight, ChevronDown, X, Home as HomeIcon, Library, Book, Calendar, Check, Lock, Plus, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import { ChevronDown, Plus, BarChart3, Palette } from "lucide-react";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { toast } from "sonner";
-import RecommendedForYou from "@/components/dashboard/RecommendedForYou";
-import BabyGame from "@/components/dashboard/BabyGame";
-import AvatarMenu from "@/components/dashboard/AvatarMenu";
-import PostVideoFlashcards from "@/components/video/PostVideoFlashcards";
-import SongTranscriptModal from "@/components/dashboard/SongTranscriptModal";
-import ContentLibraryPicker from "@/components/dashboard/ContentLibraryPicker";
+const DAILY_GOAL = 15;
 
-
-
-
-const activities = [
-  { id: "supermarket", name: "Supermarket", icon: ShoppingCart, gradient: "from-green-500 to-emerald-500", cost: 50, minAge: 5, description: "Buy groceries in Hebrew" },
-  { id: "sports", name: "Sports Club", icon: Trophy, gradient: "from-amber-500 to-yellow-500", cost: 60, minAge: 8, description: "Play and learn sports terms" },
-  { id: "gym", name: "Gym", icon: Dumbbell, gradient: "from-orange-500 to-red-500", cost: 75, minAge: 16, description: "Learn body vocabulary", unlockReq: { activity: "sports", count: 2 } },
-  { id: "synagogue", name: "Synagogue", icon: Church, gradient: "from-blue-500 to-indigo-500", cost: 100, minAge: 8, description: "Learn important prayers" },
-  { id: "job", name: "Get a Job", icon: Briefcase, gradient: "from-slate-500 to-gray-600", cost: 100, minAge: 18, description: "Work and earn extra coins" },
-  { id: "shabbat_dinner", name: "Shabbat Dinner", icon: UtensilsCrossed, gradient: "from-purple-500 to-violet-500", cost: 150, minAge: 16, description: "Traditional dinner", unlockReq: { activity: "synagogue", count: 3, item: "tuxedo" } },
-  { id: "meet_moroccan", name: "Moroccan Date", icon: Heart, gradient: "from-pink-500 to-rose-500", cost: 100, minAge: 18, description: "Meet someone special", unlockReq: { activity: "shabbat_dinner", count: 1 } },
-  { id: "mall", name: "Shopping Mall", icon: ShoppingBag, gradient: "from-cyan-500 to-blue-500", cost: 75, minAge: 10, description: "Shop and learn" },
-  { id: "meet_blonde", name: "Mall Date", icon: Heart, gradient: "from-yellow-500 to-amber-500", cost: 100, minAge: 18, description: "Another encounter", unlockReq: { activity: "mall", count: 1 } },
-  { id: "journaling", name: "Journaling", icon: BookOpen, gradient: "from-teal-500 to-green-500", cost: 50, minAge: 14, description: "Self development", unlockReq: { bothDates: true } },
-  { id: "choose_partner", name: "Choose Partner", icon: Users, gradient: "from-red-500 to-pink-500", cost: 200, minAge: 21, description: "Make your choice", unlockReq: { bothDates: true } },
-];
-
-const storeItems = [
-  { id: "tuxedo", name: "Tuxedo", emoji: "🤵", price: 300 },
-  { id: "tennis_racquet", name: "Tennis Racquet", emoji: "🎾", price: 100 },
-  { id: "soccer_ball", name: "Soccer Ball", emoji: "⚽", price: 100 },
-  { id: "crown", name: "Golden Crown", emoji: "👑", price: 300 },
-];
-
-
+const LANGUAGE_FLAGS: Record<string, string> = {
+  hebrew: "🇮🇱",
+  english: "🇬🇧",
+  spanish: "🇪🇸",
+  french: "🇫🇷",
+  portuguese: "🇵🇹",
+  italian: "🇮🇹",
+};
 
 export default function Home() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { t } = useUI();
-  const [buyCoinsDialog, setBuyCoinsDialog] = useState(false);
-  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
-  const [selectedActivity, setSelectedActivity] = useState<any>(null);
-  const [timer, setTimer] = useState(0);
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [timerSpeed, setTimerSpeed] = useState(1);
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [showExtras, setShowExtras] = useState(false);
-  const [showUserManager, setShowUserManager] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState<any>(null);
-  const [managingUserEmail, setManagingUserEmail] = useState<any>(
-    typeof window !== "undefined" ? localStorage.getItem('admin_managing_user') : null
-  );
-  const [showCoachManager, setShowCoachManager] = useState(false);
-  const [showAssignDialog, setShowAssignDialog] = useState(false);
-  const [selectedCoach, setSelectedCoach] = useState("");
-  const [selectedStudent, setSelectedStudent] = useState("");
-  const [expandedDay, setExpandedDay] = useState<any>(null);
-  const [draggedTask, setDraggedTask] = useState<any>(null);
-  const [dragOverTask, setDragOverTask] = useState<any>(null);
-  const [newTask, setNewTask] = useState({ name: "", youtube_url: "", page: "" });
-  const [editingTask, setEditingTask] = useState<any>(null);
-  const [editingTaskData, setEditingTaskData] = useState<any>({ name: "", youtube_url: "", page: "" });
-  const [currentWeek, setCurrentWeek] = useState(1);
-  const [addingTaskToDayId, setAddingTaskToDayId] = useState<any>(null);
-  const [quickVideoUrl, setQuickVideoUrl] = useState<any>({});
-  const [addingVideoToDayId, setAddingVideoToDayId] = useState<any>(null);
-  const [newTaskForm, setNewTaskForm] = useState<any>({}); // { [dayId]: { title, transcript, mediaUrl, videoId, mediaUploaded } }
-  const [libraryPickerDayId, setLibraryPickerDayId] = useState<any>(null);
-  const [sessionModal, setSessionModal] = useState<any>(null); // day object
+  const [cardsOpen, setCardsOpen] = useState(false);
 
-  const [showSessionFlashcards, setShowSessionFlashcards] = useState(false);
-  const [sessionFlashcardWords, setSessionFlashcardWords] = useState<any[]>([]);
-  const [loadingSessionWords, setLoadingSessionWords] = useState(false);
-  const [selectedSongForTranscript, setSelectedSongForTranscript] = useState<any>(null);
-  const [savingSongTranscript, setSavingSongTranscript] = useState(false);
-
-
-  // Get current user
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const user = await base44.auth.me();
-        setCurrentUser(user);
-      } catch (e) {}
-    };
-    fetchUser();
-    document.title = "Masteri Languages";
+    base44.auth.me().then(setCurrentUser).catch(() => {});
+    document.title = "Home - Lashon Languages";
   }, []);
 
-  const { data: userProfile, isLoading: profileLoading } = useQuery({
-    queryKey: ['userProfile', currentUser?.email],
+  const { data: userProfile } = useQuery({
+    queryKey: ["userProfile", currentUser?.email],
     queryFn: async () => {
       const profiles = await base44.entities.UserProfile.filter({ created_by: currentUser.email });
       return profiles[0] || null;
     },
     enabled: !!currentUser?.email,
-    staleTime: 0,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  });
-
-  const { data: userCoins } = useQuery({
-    queryKey: ['userCoins', currentUser?.email],
-    queryFn: async () => {
-      const coins = await base44.entities.UserCoins.filter({ created_by: currentUser.email });
-      if (coins.length === 0) {
-        return await base44.entities.UserCoins.create({ coins: 100000000, unlocked_items: [], equipped_item: null });
-      }
-      return coins[0];
-    },
-    enabled: !!currentUser?.email,
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  });
-
-  const profileLoaded = !!userProfile;
-
-  const { data: lessonProgress = [] } = useQuery({
-    queryKey: ['lessonProgress', currentUser?.email],
-    queryFn: () => base44.entities.LessonProgress.filter({ created_by: currentUser.email }),
-    enabled: profileLoaded && !!currentUser?.email,
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  });
-
-  const { data: songProgress = [] } = useQuery({
-    queryKey: ['songProgress'],
-    queryFn: () => base44.entities.SongProgress.list(),
-    enabled: profileLoaded,
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  });
-
-  const { data: songs = [] } = useQuery({
-    queryKey: ['songs'],
-    queryFn: () => base44.entities.Song.list(),
-    enabled: profileLoaded,
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  });
-
-  const { data: todoProgress = [] } = useQuery({
-    queryKey: ['todoProgress'],
-    queryFn: () => base44.entities.TodoProgress.list(),
-    enabled: profileLoaded,
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  });
-
-  const { data: days = [] } = useQuery({
-    queryKey: ['days', userProfile?.language],
-    queryFn: () => {
-      if (!userProfile?.language) return [];
-      return base44.entities.Day.filter({ language: userProfile.language });
-    },
-    enabled: profileLoaded && !!userProfile.language,
-    staleTime: 0,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  });
-
-  const { data: dayProgress = [] } = useQuery({
-    queryKey: ['dayProgress'],
-    queryFn: () => base44.entities.DayProgress.list(),
-    enabled: profileLoaded,
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  });
-
-  const { data: studySessions = [] } = useQuery({
-    queryKey: ['studySessions'],
-    queryFn: () => base44.entities.StudySession.list(),
-    enabled: profileLoaded,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
   });
 
-  const { data: activityProgress = [] } = useQuery({
-    queryKey: ['activityProgress'],
-    queryFn: () => base44.entities.ActivityProgress.list(),
-    enabled: profileLoaded,
-    staleTime: 30 * 60 * 1000,
+  const language = userProfile?.language || "hebrew";
+
+  const { data: words = [] } = useQuery({
+    queryKey: ["wordRatings", language, currentUser?.email],
+    queryFn: () => base44.entities.Word.filter({ category: "wordbank", language, created_by: currentUser.email }),
+    enabled: !!userProfile && !!currentUser?.email,
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
   });
 
-  const { data: journalEntries = [] } = useQuery({
-    queryKey: ['journalEntries'],
-    queryFn: () => base44.entities.JournalEntry.list('-date'),
-    enabled: profileLoaded,
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  });
-
-  const { data: wordRatings = [] } = useQuery({
-    queryKey: ['wordRatings', currentUser?.email],
-    queryFn: () => base44.entities.Word.filter({ category: "wordbank", created_by: currentUser.email }),
-    enabled: profileLoaded && !!currentUser?.email,
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-  });
-
-  const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers'],
-    queryFn: async () => {
-      if (currentUser?.role !== 'admin') return [];
-      return await base44.entities.User.list();
-    },
-    enabled: currentUser?.role === 'admin',
-    staleTime: 30 * 60 * 1000,
-  });
-
-  const { data: allProfiles = [] } = useQuery({
-    queryKey: ['allProfiles'],
-    queryFn: async () => {
-      if (currentUser?.role !== 'admin') return [];
-      return await base44.entities.UserProfile.list();
-    },
-    enabled: currentUser?.role === 'admin',
-    staleTime: 30 * 60 * 1000,
-  });
-
-  const { data: coachAssignments = [] } = useQuery({
-    queryKey: ['coachAssignments'],
-    queryFn: () => base44.entities.CoachAssignment.list(),
-    enabled: currentUser?.role === 'admin',
-    staleTime: 30 * 60 * 1000,
-  });
-
-  const updateCoinsMutation = useMutation({
-    mutationFn: (data: any) => base44.entities.UserCoins.update(userCoins?.id, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['userCoins'] }),
-  });
-
-  const updateProfileMutation = useMutation({
-    mutationFn: (data: any) => base44.entities.UserProfile.update(userProfile?.id, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['userProfile'] }),
-  });
-
-  const toggleTaskMutation = useMutation({
-    mutationFn: async ({ dayId, taskId, dayNumber }: any) => {
-      const progress = dayProgress.find((p: any) => p.day_id === dayId) || { day_id: dayId, day_number: dayNumber, subsections_completed: [] };
-      const isCompleted = progress.subsections_completed?.includes(taskId);
-      const newCompleted = isCompleted
-        ? progress.subsections_completed.filter((id: any) => id !== taskId)
-        : [...(progress.subsections_completed || []), taskId];
-
-      if (progress.id) {
-        await base44.entities.DayProgress.update(progress.id, { subsections_completed: newCompleted });
-      } else {
-        await base44.entities.DayProgress.create({ day_id: dayId, day_number: dayNumber, subsections_completed: newCompleted });
+  const { toLearn, practiced, learned, practicedToday } = useMemo(() => {
+    const today = new Date().toDateString();
+    let toLearn = 0, practiced = 0, learned = 0, practicedToday = 0;
+    for (const w of words as any[]) {
+      const level = w.times_practiced || 0;
+      if (level === 0) toLearn++;
+      else if (level >= 5) learned++;
+      else practiced++;
+      if (level > 0 && w.updated_date && new Date(w.updated_date).toDateString() === today) {
+        practicedToday++;
       }
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['dayProgress'] }),
-  });
-
-  const updateDayMutation = useMutation({
-    mutationFn: ({ id, data }: any) => base44.entities.Day.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['days'] });
-      toast.success("Day updated!");
-    },
-  });
-
-  const updateSongTranscriptMutation = useMutation({
-    mutationFn: ({ songId, transcript }: any) => base44.entities.DailySong.update(songId, { lyrics_he: transcript }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dailySongs'] });
-      toast.success("Transcript saved!");
-      setSelectedSongForTranscript(null);
-    },
-  });
-
-  const createDayMutation = useMutation({
-    mutationFn: (data: any) => base44.entities.Day.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['days'] });
-      toast.success("Day created!");
-    },
-  });
-
-  const deleteDayMutation = useMutation({
-    mutationFn: (dayId: any) => base44.entities.Day.delete(dayId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['days'] });
-      toast.success("Day deleted!");
-    },
-  });
-
-  const addDefaultTasksMutation = useMutation({
-    mutationFn: async () => {
-      const defaultTasks = [
-        { id: "video", name: "Watch a video", duration: "20 minutes", page: "BabyVideos" },
-        { id: "flashcards", name: "Vocab Flashcards", duration: "10 minutes", page: "Flashcards" },
-        { id: "listen", name: "Listen to conversation", duration: "5 minutes", page: "Flashcards" },
-        { id: "speak", name: "Speak exercise", duration: "5 minutes", page: "SpeakingSession" }
-      ];
-
-      for (const day of days) {
-        const existingIds = (day.subsections || []).map((s: any) => s.id);
-        const tasksToAdd = defaultTasks.filter(t => !existingIds.includes(t.id));
-
-        if (tasksToAdd.length > 0) {
-          const updatedSubsections = [...(day.subsections || []), ...tasksToAdd];
-          await base44.entities.Day.update(day.id, { subsections: updatedSubsections });
-        }
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['days'] });
-      toast.success("Default tasks added to all days!");
-    },
-  });
-
-  const deleteProfileMutation = useMutation({
-    mutationFn: () => base44.entities.UserProfile.delete(userProfile?.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userProfile'] });
-      navigate(createPageUrl("AvatarSelect"));
-    },
-  });
-
-  const changeLanguageMutation = useMutation({
-    mutationFn: (newLanguage: any) => base44.entities.UserProfile.update(userProfile?.id, { language: newLanguage }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userProfile'] });
-      queryClient.invalidateQueries({ queryKey: ['days'] });
-      toast.success("Language updated!");
-    },
-  });
-
-  const createAssignmentMutation = useMutation({
-    mutationFn: (data: any) => base44.entities.CoachAssignment.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coachAssignments'] });
-      setShowAssignDialog(false);
-      setSelectedCoach("");
-      setSelectedStudent("");
-      toast.success("Coach assigned!");
-    },
-  });
-
-  const deleteAssignmentMutation = useMutation({
-    mutationFn: (id: any) => base44.entities.CoachAssignment.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coachAssignments'] });
-      toast.success("Assignment removed");
-    },
-  });
-
-  // Master user = admin role AND not in onboarding
-  const isMasterUser = currentUser?.role === 'admin' && userProfile?.is_new_user !== true;
-
-  // Timer logic
-  useEffect(() => {
-    let interval: any;
-    if (timerRunning && timer > 0) {
-      interval = setInterval(() => {
-        setTimer(prev => {
-          if (prev <= timerSpeed) {
-            setTimerRunning(false);
-            // Play baby song when timer ends
-            const audio = new Audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3");
-            audio.play().catch(() => {});
-            toast.success("Time's up! 🎵 Great job learning!");
-            return 0;
-          }
-          return prev - timerSpeed;
-        });
-      }, 1000);
     }
-    return () => clearInterval(interval);
-  }, [timerRunning, timer, timerSpeed]);
+    return { toLearn, practiced, learned, practicedToday };
+  }, [words]);
 
-  const startTimer = (minutes: number) => {
-    setTimer(minutes * 60);
-    setTimerRunning(true);
-    setTimerSpeed(1);
-  };
+  const goalDone = Math.min(practicedToday, DAILY_GOAL);
+  const ringRadius = 46;
+  const ringCircumference = 2 * Math.PI * ringRadius;
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getProgress = (activityId: string) => activityProgress.find((p: any) => p.activity_id === activityId);
-  const coins = userCoins?.coins || 0;
-  const unlockedItems = userCoins?.unlocked_items || [];
-  const equippedItem = storeItems.find(i => i.id === userCoins?.equipped_item);
-
-  const isUnlocked = (activity: any) => {
-    if (!activity.unlockReq) return true;
-    const req = activity.unlockReq;
-
-    if (req.bothDates) {
-      const moroccan = getProgress("meet_moroccan");
-      const blonde = getProgress("meet_blonde");
-      return (moroccan?.completions || 0) >= 1 && (blonde?.completions || 0) >= 1;
+  const startLearning = () => {
+    // Same handoff the Backpack uses for its "All Words" flashcard run.
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("pendingFlashcardWords", JSON.stringify({ allWords: true }));
     }
-
-    if (req.activity) {
-      const progress = getProgress(req.activity);
-      const hasCompletions = (progress?.completions || 0) >= req.count;
-      const hasItem = req.item ? unlockedItems.includes(req.item) : true;
-      return hasCompletions && hasItem;
-    }
-
-    return true;
+    router.push("/library?flashcard=all");
   };
 
-  const buyCoins = (amount: number) => {
-    updateCoinsMutation.mutate({ coins: coins + amount });
-    toast.success(`Added ${amount.toLocaleString()} coins!`);
-    setBuyCoinsDialog(false);
-  };
-
-  const handleToddlerNeedComplete = (need?: any) => {
-    // Award coins and XP
-    const newXp = (userProfile?.xp || 0) + 10;
-    const needsCompleted = (userProfile?.toddler_needs_completed || 0) + 1;
-
-    // Check if should age up (every 20 needs = 1 year until age 5)
-    const shouldAgeUp = needsCompleted % 20 === 0 && (userProfile?.age_level || 3) < 5;
-
-    updateProfileMutation.mutate({
-      xp: newXp,
-      toddler_needs_completed: needsCompleted,
-      age_level: shouldAgeUp ? (userProfile?.age_level || 3) + 1 : userProfile?.age_level,
-    });
-
-    updateCoinsMutation.mutate({ coins: coins + 15 });
-    toast.success(`+15 coins, +10 XP! ${shouldAgeUp ? '🎉 Level up!' : ''}`);
-  };
-
-  const handleRestartLife = () => {
-    // Delete all word ratings too for full reset
-    updateProfileMutation.mutate({
-      age_level: 3,
-      xp: 0,
-      toddler_needs_completed: 0,
-      badges: [],
-      total_words_learned: 0,
-    });
-    deleteProfileMutation.mutate();
-    toast.success("Starting new life from the beginning!");
-  };
-
-  const handleChangeAvatar = () => {
-    deleteProfileMutation.mutate();
-  };
-
-
-
-  const currentDay = userProfile?.current_day || 1;
-  // Filter by current language client-side (guards against stale cache after language switch)
-  const currentLang = userProfile?.language || 'hebrew';
-  const sortedDays = [...days]
-    .filter((d: any) => d.language === currentLang)
-    .sort((a: any, b: any) => a.day_number - b.day_number);
-
-  // Deduplicate by day_number (keep first occurrence)
-  const uniqueDays = Array.from(new Map(sortedDays.map((d: any) => [d.day_number, d])).values());
-
-  const isDayUnlocked = (dayNum: number) => isMasterUser || dayNum <= currentDay;
-  const getDayProgress = (dayId: any) => dayProgress.find((p: any) => p.day_id === dayId);
-
-  const handleAddTask = (dayId: any) => {
-    if (!newTask.name.trim()) return;
-
-    const day = days.find((d: any) => d.id === dayId);
-    const videoId = extractYouTubeId(newTask.youtube_url);
-    const updatedSubsections = [...(day.subsections || []), {
-      id: Date.now().toString(),
-      name: newTask.name,
-      youtube_url: newTask.youtube_url,
-      video_id: videoId || undefined,
-      page: newTask.page || (videoId ? "MediaLibrary" : ""),
-    }];
-    updateDayMutation.mutate({ id: dayId, data: { subsections: updatedSubsections } });
-    setNewTask({ name: "", youtube_url: "", page: "" });
-    setAddingTaskToDayId(null);
-  };
-
-  // Admin: create a new empty session (Day) for the current language. The next
-  // day_number is one above the highest existing session. After creating, open
-  // it so the admin can add content via "Add from content library".
-  const handleCreateSession = async () => {
-    const maxNum = uniqueDays.reduce((m: number, d: any) => Math.max(m, d.day_number || 0), 0);
-    const nextNum = maxNum + 1;
-    try {
-      await createDayMutation.mutateAsync({
-        day_number: nextNum,
-        language: currentLang,
-        title: `Day ${nextNum}`,
-        subsections: [],
-        order: nextNum,
-      });
-      toast.success(`Day ${nextNum} created!`);
-      setExpandedDay(nextNum);
-    } catch (e) {
-      console.error('Create session failed', e);
-      toast.error('Could not create session.');
-    }
-  };
-
-  const handleDeleteTask = (dayId: any, taskId: any) => {
-    const day = days.find((d: any) => d.id === dayId);
-    const updatedSubsections = day.subsections.filter((s: any) => s.id !== taskId);
-    updateDayMutation.mutate({ id: dayId, data: { subsections: updatedSubsections } });
-  };
-
-  const extractYouTubeId = (url: string) => {
-    if (!url) return null;
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([^&\n?#]+)/);
-    return match ? match[1] : null;
-  };
-
-  const handleStartEditTask = (dayId: any, task: any) => {
-    setEditingTask({ dayId, taskId: task.id });
-    setEditingTaskData({ name: task.name, youtube_url: task.youtube_url || "", page: task.page || "", mediaUrl: task.mediaUrl || "" });
-  };
-
-  const handleSaveEditedTask = (dayId: any) => {
-    if (!editingTaskData.name.trim()) return;
-
-    const day = days.find((d: any) => d.id === dayId);
-    const videoId = extractYouTubeId(editingTaskData.youtube_url);
-    const updatedSubsections = day.subsections.map((s: any) =>
-      s.id === editingTask.taskId
-        ? { ...s, name: editingTaskData.name, youtube_url: editingTaskData.youtube_url, video_id: videoId || (editingTaskData.mediaUrl ? null : s.video_id), page: editingTaskData.page || (videoId ? "MediaLibrary" : s.page), mediaUrl: editingTaskData.mediaUrl || s.mediaUrl }
-        : s
-    );
-    updateDayMutation.mutate({ id: dayId, data: { subsections: updatedSubsections } });
-    setEditingTask(null);
-    setEditingTaskData({ name: "", youtube_url: "", page: "" });
-  };
-
-  const handleCancelEdit = () => {
-    setEditingTask(null);
-    setEditingTaskData({ name: "", youtube_url: "", page: "" });
-  };
-
-  const handleQuickAddVideo = async (dayId: any, dayNumber: number) => {
-    const url = quickVideoUrl[dayId]?.trim();
-    if (!url) return;
-    const videoId = extractYouTubeId(url);
-    if (!videoId) { toast.error("Invalid YouTube URL"); return; }
-
-    // Fetch title from oEmbed
-    let title = `Video - Session ${dayNumber}`;
-    try {
-      const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
-      const meta = await res.json();
-      title = meta.title || title;
-    } catch {}
-
-    // Add to MediaLibrary
-    await base44.entities.MediaLibrary.create({
-      title,
-      language: userProfile?.language || "hebrew",
-      video_url: url,
-      video_id: videoId,
-      topics: [],
-      difficulty_level: "All",
-      tags: "",
-      is_active: true,
-      thumbnail_url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-      notes: `Session ${dayNumber}`,
-    });
-
-    // Add as task to the day
-    const day = days.find((d: any) => d.id === dayId);
-    const taskId = `video_${videoId}`;
-    const existing = (day?.subsections || []).find((s: any) => s.id === taskId || s.video_id === videoId);
-    if (!existing) {
-      const updatedSubsections = [...(day?.subsections || []), {
-        id: taskId,
-        name: `▶ ${title}`,
-        video_id: videoId,
-        page: "MediaLibrary",
-      }];
-      updateDayMutation.mutate({ id: dayId, data: { subsections: updatedSubsections } });
-    }
-
-    setQuickVideoUrl((prev: any) => ({ ...prev, [dayId]: "" }));
-    setAddingVideoToDayId(null);
-    toast.success("Video added to schedule!");
-    queryClient.invalidateQueries({ queryKey: ['mediaLibrary'] });
-  };
-
-  const reorderTasks = (dayId: any, fromIdx: number, toIdx: number) => {
-    const day = days.find((d: any) => d.id === dayId);
-    if (!day) return;
-    const updated = [...(day.subsections || [])];
-    const [item] = updated.splice(fromIdx, 1);
-    updated.splice(toIdx, 0, item);
-    updateDayMutation.mutate({ id: dayId, data: { subsections: updated } });
-  };
-
-  const currentAge = userProfile?.age_level || 3;
-  const isBaby = currentAge < 5;
-  const hasDiaper = unlockedItems.includes("diaper");
-
-  // Calculate word levels
-  const fluentWords = (wordRatings || []).filter((w: any) => w.times_practiced >= 5);
-  const learningWords = (wordRatings || []).filter((w: any) => w.times_practiced > 0 && w.times_practiced < 5);
-
-  // ── Dashboard overview values ───────────────────────────────────────────────
-  const firstName = String(userProfile?.full_name || currentUser?.full_name || '').split(' ')[0];
-  const streakDays = typeof userProfile?.daily_streak === 'number' ? userProfile.daily_streak : 0;
-
-  // "This week" = real study minutes logged in the last 7 days (today + prior 6),
-  // summed from `study_session` rows written by the useStudyTime tracker.
-  const weekCutoff = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split('T')[0];
-  const weeklyMinutes = (studySessions || [])
-    .filter((s: any) => s.date && s.date >= weekCutoff)
-    .reduce((n: number, s: any) => n + (s.duration_minutes || 0), 0);
-  const weeklyHours = Math.round((weeklyMinutes / 60) * 10) / 10;
-
-  // Proficiency level from the profile's difficulty setting.
-  const LEVEL_LABELS: Record<string, { label: string; sub: string }> = {
-    beginner: { label: 'A1', sub: 'beg' },
-    elementary: { label: 'A2', sub: 'elem' },
-    intermediate: { label: 'B1', sub: 'inter' },
-    upper: { label: 'B2', sub: 'upper' },
-    advanced: { label: 'C1', sub: 'adv' },
-  };
-  const level = LEVEL_LABELS[String(userProfile?.difficulty_level || '').toLowerCase()];
-  const levelLabel = level?.label || (userProfile?.difficulty_level ? String(userProfile.difficulty_level) : '—');
-  const levelSub = level?.sub || '';
-
-  // "Continue where you left off" — the student's current session and its progress.
-  const continueDayObj =
-    uniqueDays.find((d: any) => d.day_number === currentDay) || uniqueDays[currentDay - 1] || uniqueDays[0];
-  const continueDp = continueDayObj ? getDayProgress(continueDayObj.id) : null;
-  const continueTotal = continueDayObj?.subsections?.length || 6;
-  const continueDone = Math.min(continueTotal, continueDp?.subsections_completed?.length || 0);
-  const continuePct = continueTotal ? Math.round((continueDone / continueTotal) * 100) : 0;
-  const continueTitle =
-    continueDayObj?.title || t('dashboard.session', { n: currentDay });
-
-  // Next upcoming session date chip (illustrative until bookings are wired up).
-  const upcomingDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-  const upcomingMonth = upcomingDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-  const upcomingDay = upcomingDate.getDate();
-
-  // Don't render if loading or no language (Layout handles redirect)
-  if (profileLoading || !userProfile?.language) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="w-12 h-12 border-4 border-teal-400 border-t-transparent rounded-full"
-        />
-      </div>
-    );
-  }
+  const streak = userProfile?.daily_streak || 0;
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      {/* Animated background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-20 -left-20 w-[500px] h-[500px] rounded-full blur-3xl" style={{ background: 'radial-gradient(circle, rgba(20,184,166,0.08) 0%, transparent 70%)' }} />
-        <div className="absolute top-1/3 right-0 w-96 h-96 rounded-full blur-3xl" style={{ background: 'radial-gradient(circle, rgba(45,212,191,0.06) 0%, transparent 70%)' }} />
-        <div className="absolute bottom-0 left-1/4 w-80 h-80 rounded-full blur-3xl" style={{ background: 'radial-gradient(circle, rgba(13,148,136,0.05) 0%, transparent 70%)' }} />
-      </div>
+    <div className="mx-auto w-full max-w-3xl">
+      {/* Light "app screen" panel — the rest of the portal stays dark. */}
+      <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-[#eef4fb] shadow-2xl">
 
-
-
-      <div className="max-w-4xl mx-auto px-4 pt-4">
-
-        {/* Managing user banner */}
-        {managingUserEmail && currentUser?.role === 'admin' && (
-          <div className="mt-4 bg-teal-500/10 border border-teal-500/30 rounded-lg p-3 text-center">
-            <p className="text-teal-300 font-medium text-sm">👤 Managing: {managingUserEmail}</p>
-            <Button
-              onClick={() => {
-                localStorage.removeItem('admin_managing_user');
-                setManagingUserEmail(null);
-                toast.success("Returned to admin view");
-                window.location.reload();
-              }}
-              size="sm"
-              className="mt-2 bg-red-500 hover:bg-red-600"
-            >
-              Exit User View
-            </Button>
-          </div>
-        )}
-      </div>
-
-
-
-      <div className="relative z-10 max-w-4xl mx-auto px-4 py-8">
-        {/* Show activity content */}
-        {selectedActivity ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center"
+        {/* Top bar: palette · language · stats */}
+        <div className="flex items-center justify-between border-b border-slate-200/70 bg-white/80 px-5 py-3">
+          <Palette className="h-6 w-6 text-slate-300" />
+          <Link
+            href="/settings"
+            className="flex items-center gap-2 text-xl font-semibold text-slate-800"
           >
-            <button
-              onClick={() => { setSelectedActivity(null); setTimer(0); setTimerRunning(false); }}
-              className="mb-6 text-slate-400 hover:text-white flex items-center gap-2 mx-auto"
+            <span className="text-2xl">{LANGUAGE_FLAGS[language] || "🌍"}</span>
+            <span className="capitalize">{language}</span>
+            <ChevronDown className="h-4 w-4 text-slate-400" />
+          </Link>
+          <Link href="/progress" aria-label="Progress">
+            <BarChart3 className="h-6 w-6 text-slate-400 transition hover:text-slate-600" />
+          </Link>
+        </div>
+
+        <div className="px-5 sm:px-8">
+          {/* Streak flame + AI-assistant tip card */}
+          <div className="relative mt-10">
+            <div className="absolute -top-7 left-1/2 z-10 -translate-x-1/2">
+              <div className="relative flex h-12 w-12 items-center justify-center">
+                <span className="text-5xl leading-none drop-shadow">🔥</span>
+                <span className="absolute top-4 text-sm font-bold text-white">{streak}</span>
+              </div>
+            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onClick={() => router.push("/practice")}
+              className="relative cursor-pointer rounded-xl border border-slate-200 bg-white px-6 pb-5 pt-8 text-center shadow-sm transition hover:shadow-md"
             >
-              <ArrowRight className="w-4 h-4 rotate-180" /> Back to levels
-            </button>
-
-            <div className="text-6xl mb-4">👶</div>
-            <h2 className="text-2xl font-bold text-white mb-4">
-              Will you be my babysitter and learn Hebrew with me? 🍼
-            </h2>
-
-            <BabyGame
-              avatarName={userProfile?.avatar_name || 'Baby'}
-              correctCount={userProfile?.toddler_needs_completed || 0}
-              onCorrect={handleToddlerNeedComplete}
-              onWatchTV={() => navigate(createPageUrl("BabyVideos"))}
-            />
-          </motion.div>
-        ) : (
-          <div className="space-y-6">
-
-            {/* Header */}
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-teal-400">
-                {t('dashboard.portal')}
-              </p>
-              <h1 className="mt-2 text-4xl font-bold tracking-tight text-white">
-                {firstName
-                  ? t('dashboard.welcomeBack', { name: firstName })
-                  : t('dashboard.welcomeBackNoName')}
-              </h1>
-              <p className="mt-2 text-base text-slate-400">{t('dashboard.leftOff')}</p>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-5">
-                <p className="text-xs font-medium text-slate-400">{t('dashboard.statStreak')}</p>
-                <p className="mt-2 text-3xl font-bold text-white">
-                  {streakDays}
-                  <span className="ml-1.5 text-base font-medium text-teal-400">{t('dashboard.statStreakUnit')}</span>
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-5">
-                <p className="text-xs font-medium text-slate-400">{t('dashboard.statThisWeek')}</p>
-                <p className="mt-2 text-3xl font-bold text-white">
-                  {weeklyHours}
-                  <span className="ml-1.5 text-base font-medium text-teal-400">{t('dashboard.statThisWeekUnit')}</span>
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-5">
-                <p className="text-xs font-medium text-slate-400">{t('dashboard.statLevel')}</p>
-                <p className="mt-2 text-3xl font-bold text-white">
-                  {levelLabel}
-                  {levelSub && <span className="ml-1.5 text-base font-medium text-teal-400">{levelSub}</span>}
-                </p>
-              </div>
-            </div>
-
-            {/* Continue where you left off */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-6">
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-                {t('dashboard.continueTitle')}
-              </p>
-              <h2 className="mt-2 text-xl font-bold text-white">{continueTitle}</h2>
-              <p className="mt-1 text-sm text-slate-400">
-                {t('dashboard.lessonProgress', { n: continueDone, total: continueTotal })}
-              </p>
-              <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-800">
-                <div
-                  className="h-full rounded-full bg-teal-400 transition-all"
-                  style={{ width: `${continuePct}%` }}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/learn/lessons/days')}
-                className="mt-5 rounded-xl bg-teal-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-400"
-              >
-                {t('dashboard.continueLesson')}
-              </button>
-            </div>
-
-            {/* Upcoming */}
-            <div>
-              <p className="mb-3 text-sm font-medium text-slate-400">{t('dashboard.upcoming')}</p>
-              <button
-                type="button"
-                onClick={() => navigate('/sessions')}
-                className="flex w-full items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-4 text-left transition hover:border-teal-500/50"
-              >
-                <span className="flex flex-col items-center justify-center rounded-xl bg-teal-500/15 px-3 py-2 text-teal-300">
-                  <span className="text-[10px] font-semibold uppercase leading-none">{upcomingMonth}</span>
-                  <span className="text-xl font-bold leading-tight">{upcomingDay}</span>
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-white">1-on-1 Coaching — Conversation</span>
-                  <span className="block text-sm text-slate-400">Thu 3:00 PM · 45 min · Zoom</span>
-                </span>
-                <span className="shrink-0 rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-teal-300">
-                  Confirmed
-                </span>
-              </button>
-            </div>
-
-            {/* RECOMMENDED FOR YOU */}
-            {userProfile?.onboarding_completed && (
-              <RecommendedForYou userProfile={userProfile} />
-            )}
-
-            {/* SCHEDULE SECTION — moved to the Schedule page (/learn/lessons/days).
-                Disabled here so the Dashboard is a lean overview and no longer
-                duplicates the schedule. Kept inert (not deleted) to avoid touching
-                the admin session-management logic it contains. */}
-            {false && (() => {
-              const hasContent = uniqueDays.some((d: any) => (d.subsections || []).length > 0);
-              return (
-              <div className="flex justify-center">
-              <div className="w-full max-w-md">
-                <div className="flex items-center justify-between mb-4">
-                  <h2
-                    className="text-2xl font-bold cursor-pointer hover:opacity-80 transition-opacity"
-                    style={{ color: '#ffffff', fontFamily: 'Inter, sans-serif' }}
-                    onClick={() => navigate(createPageUrl("Days"))}
-                  >
-                    📅 Schedule <ChevronRight className="inline w-5 h-5 mb-1" />
-                  </h2>
-                  {isMasterUser && (
-                    <button
-                      onClick={handleCreateSession}
-                      disabled={createDayMutation.isPending}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:opacity-90 disabled:opacity-50"
-                      style={{ background: '#14b8a6', color: '#ffffff' }}
-                    >
-                      {createDayMutation.isPending ? '…' : '+ New Session'}
-                    </button>
-                  )}
-                </div>
-                  <div className="space-y-2">
-                    {!hasContent && !isMasterUser && (
-                      <div
-                        className="rounded-2xl p-5 text-center"
-                        style={{ background: '#0f172a', border: '1px solid #1e293b' }}
-                      >
-                        <p className="text-sm" style={{ color: '#e2e8f0' }}>
-                          No sessions assigned yet. Your coach will add lessons here — check back soon.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => navigate(createPageUrl('Backpack'))}
-                          className="mt-3 text-sm font-semibold underline"
-                          style={{ color: '#2dd4bf' }}
-                        >
-                          Open your Backpack →
-                        </button>
-                      </div>
-                    )}
-                    {uniqueDays.slice(0, 5).map((day: any, idx: number) => {
-                    const dayColors = [
-                      { bg: '#5a6b5a', text: '#f5f0e8' },
-                      { bg: '#6b7c63', text: '#f5f0e8' },
-                      { bg: '#4a5a4a', text: '#f5f0e8' },
-                    ];
-                    const dayColor = dayColors[idx % dayColors.length];
-                    const progress = getDayProgress(day.id);
-                    const allCompleted = day.subsections?.length > 0 &&
-                      day.subsections.every((task: any) => progress?.subsections_completed?.includes(task.id));
-                    const isExpanded = expandedDay === day.day_number;
-
-                    return (
-                      <div key={day.id}>
-                        <div
-                          className="rounded-2xl p-3 flex items-center justify-between cursor-pointer transition-all"
-                          style={{ background: '#0f172a', border: '1px solid #1e293b' }}
-                          onClick={() => {
-                            if (isMasterUser) { setExpandedDay(expandedDay === day.day_number ? null : day.day_number); return; }
-                            setSessionModal(day);
-                          }}
-                        >
-                          <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>Day {day.day_number}</h3>
-                          <ChevronDown className={`w-4 h-4 transition-transform ml-auto ${isExpanded ? 'rotate-180' : ''}`} style={{ color: '#94a3b8' }} />
-                        </div>
-                        <AnimatePresence>
-                          {isExpanded && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.2 }}
-                              className="overflow-hidden"
-                            >
-                              <div className="mt-1 space-y-1 pl-3">
-                                {/* Add from content library — always show for admin */}
-                                {isMasterUser && (
-                                  <button
-                                    onClick={() => setLibraryPickerDayId(day.id)}
-                                    className="w-full text-left px-3 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1 mb-1"
-                                    style={{ color: '#2dd4bf', background: 'rgba(20,184,166,0.1)', border: '1px dashed rgba(20,184,166,0.4)' }}
-                                  >
-                                    <Plus className="w-3 h-3" /> + Add item
-                                  </button>
-                                )}
-                                {(day.subsections || []).filter((task: any) => {
-                                  const taskName = task.name?.toLowerCase() || '';
-                                  const userLang = userProfile?.language || 'hebrew';
-                                  // A real content item (video/audio/song) — always show it,
-                                  // even if its TITLE mentions other languages
-                                  // (e.g. "David Danced | Hebrew - English - Arabic").
-                                  const hasContent = !!(task.video_id || task.youtube_url || task.mediaUrl || task.song_id);
-                                  // Hide generic "Watch a video" placeholder if a specific video task exists
-                                  if (task.id === 'video' && (day.subsections || []).some((s: any) => s.video_id)) return false;
-                                  // Language-by-name filtering applies ONLY to generic placeholder tasks,
-                                  // never to real content items.
-                                  if (!hasContent) {
-                                    if (taskName.includes('the bride') && userLang !== 'hebrew') return false;
-                                    const otherLanguages = ['hebrew', 'english', 'spanish', 'french', 'portuguese', 'italian'].filter(l => l !== userLang);
-                                    if (otherLanguages.some(l => taskName.includes(l))) return false;
-                                  }
-                                  return true;
-                                }).map((task: any, idx: number) => {
-                                  const isSong = task.song_id || (songs && songs.find((s: any) => s.id === task.id));
-                                    const isTaskDone = progress?.subsections_completed?.includes(task.id);
-                                    const isDragging = draggedTask?.dayId === day.id && draggedTask?.idx === idx;
-                                    const isDragOver = dragOverTask?.dayId === day.id && dragOverTask?.idx === idx;
-                                    const isEditing = editingTask?.dayId === day.id && editingTask?.taskId === task.id;
-                                    return (
-                                      <div key={task.id} className="flex flex-col gap-1">
-                                        {isEditing ? (
-                                         <div className="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-xl border border-teal-500/50">
-                                             {/* Editable title */}
-                                             <input
-                                               autoFocus
-                                               value={editingTaskData.name}
-                                               onChange={(e) => setEditingTaskData((prev: any) => ({ ...prev, name: e.target.value }))}
-                                               onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditedTask(day.id); if (e.key === 'Escape') handleCancelEdit(); }}
-                                               className="flex-1 min-w-0 bg-transparent border-none outline-none text-sm font-medium text-white placeholder:text-slate-400"
-                                               placeholder="Title"
-                                             />
-                                             {/* YouTube URL — saves on blur */}
-                                             <input
-                                               value={editingTaskData.youtube_url}
-                                               onChange={(e) => setEditingTaskData((prev: any) => ({ ...prev, youtube_url: e.target.value }))}
-                                               onBlur={() => { if (editingTaskData.youtube_url.trim()) handleSaveEditedTask(day.id); }}
-                                               onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditedTask(day.id); }}
-                                               className="w-36 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 outline-none focus:border-teal-500 placeholder:text-slate-400"
-                                               placeholder="YouTube URL"
-                                             />
-                                             {/* MP3 upload — saves immediately */}
-                                             <label className="flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-600 cursor-pointer hover:bg-slate-800 transition-all text-xs text-slate-400 whitespace-nowrap flex-shrink-0">
-                                               🎵 MP3
-                                               <input
-                                                 type="file"
-                                                 accept="audio/*"
-                                                 className="hidden"
-                                                 onChange={async (e) => {
-                                                   const file = e.target.files?.[0];
-                                                   if (!file) return;
-                                                   const { file_url } = await base44.integrations.Core.UploadFile({ file });
-                                                   const updated = { ...editingTaskData, mediaUrl: file_url, youtube_url: '' };
-                                                   const d = days.find((x: any) => x.id === day.id);
-                                                   const updatedSubs = d.subsections.map((s: any) =>
-                                                     s.id === editingTask.taskId
-                                                       ? { ...s, name: updated.name, youtube_url: '', video_id: null, mediaUrl: file_url, page: updated.page }
-                                                       : s
-                                                   );
-                                                   updateDayMutation.mutate({ id: day.id, data: { subsections: updatedSubs } });
-                                                   setEditingTask(null);
-                                                   toast.success('MP3 uploaded!');
-                                                 }}
-                                               />
-                                             </label>
-                                           </div>
-                                        ) : (
-                                          <div
-                                            draggable
-                                            onDragStart={() => setDraggedTask({ dayId: day.id, idx })}
-                                            onDragOver={(e) => {
-                                              e.preventDefault();
-                                              setDragOverTask({ dayId: day.id, idx });
-                                            }}
-                                            onDragLeave={() => setDragOverTask(null)}
-                                            onDrop={() => {
-                                              if (draggedTask && draggedTask.dayId === day.id && draggedTask.idx !== idx) {
-                                                reorderTasks(day.id, draggedTask.idx, idx);
-                                              }
-                                              setDraggedTask(null);
-                                              setDragOverTask(null);
-                                            }}
-                                            className={`flex items-center justify-between px-3 py-2 rounded-lg hover:opacity-80 transition-all group ${isDragging ? 'cursor-grabbing opacity-50' : 'cursor-pointer'} ${isDragOver ? 'border-t-2 border-b-2 border-teal-400 my-2' : ''}`}
-                                            style={{ background: isTaskDone ? 'rgba(20,184,166,0.1)' : 'rgba(30,41,59,0.6)', border: isDragOver ? undefined : '1px solid #1e293b' }}
-                                            onClick={async () => {
-                                              if (isDragging) return;
-                                              // If generic "Watch a video" placeholder with no video, go to library to select one
-                                              if (task.id === 'video' && !task.video_id && !task.youtube_url) {
-                                                setLibraryPickerDayId(day.id);
-                                                return;
-                                              }
-                                              if (isSong) {
-                                                const songData = songs.find((s: any) => s.id === task.id || s.id === task.song_id);
-                                                if (songData?.id) {
-                                                  navigate(`/SingingLesson?songId=${songData.id}`);
-                                                } else {
-                                                  navigate('/SingingHome');
-                                                }
-                                                return;
-                                              }
-                                              const ytId = task.video_id || extractYouTubeId(task.youtube_url);
-                                             if (ytId) {
-                                               navigate(createPageUrl('MediaLibrary') + `?videoId=${ytId}&dayId=${day.id}&taskId=${task.id}`);
-                                             } else if (task.mediaUrl) {
-                                               // Look up saved transcript from MediaLibrary
-                                               let transcript = task.transcript || '';
-                                               let mediaLibraryId = null;
-                                               try {
-                                                 const results = await base44.entities.MediaLibrary.filter({ video_url: task.mediaUrl });
-                                                 if (results[0]) {
-                                                   transcript = results[0].transcript_phonetics || transcript;
-                                                   mediaLibraryId = results[0].id;
-                                                 }
-                                               } catch {}
-                                               sessionStorage.setItem('songListenData', JSON.stringify({ title: task.name, mediaUrl: task.mediaUrl || '', transcript, videoId: '', mediaLibraryId }));
-                                               navigate('/SongListenPage');
-                                             } else if (task.page) {
-                                               navigate(createPageUrl(task.page));
-                                              } else {
-                                                // Try to find a matching MediaLibrary entry by title
-                                                try {
-                                                  const allMedia = await base44.entities.MediaLibrary.list();
-                                                  const match = allMedia.find((m: any) =>
-                                                    m.title?.toLowerCase().includes(task.name?.toLowerCase()) ||
-                                                    task.name?.toLowerCase().includes(m.title?.toLowerCase())
-                                                  );
-                                                  if (match?.video_id) {
-                                                    navigate(createPageUrl('MediaLibrary') + `?videoId=${match.video_id}`);
-                                                  } else if (match?.video_url) {
-                                                    sessionStorage.setItem('songListenData', JSON.stringify({ title: match.title, mediaUrl: match.video_url, transcript: match.transcript_phonetics || '', videoId: '', mediaLibraryId: match.id }));
-                                                    navigate('/SongListenPage');
-                                                  } else {
-                                                    // No media found — open SongListenPage so user can add audio/transcript
-                                                    sessionStorage.setItem('songListenData', JSON.stringify({ title: task.name, mediaUrl: '', transcript: '', videoId: '' }));
-                                                    navigate('/SongListenPage');
-                                                  }
-                                                } catch {
-                                                  sessionStorage.setItem('songListenData', JSON.stringify({ title: task.name, mediaUrl: '', transcript: '', videoId: '' }));
-                                                  navigate('/SongListenPage');
-                                                }
-                                              }
-                                            }}
-                                          >
-                                            <div className="flex items-center gap-2">
-                                              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isTaskDone ? 'bg-green-500 border-green-500' : 'border-slate-600'}`}>
-                                                {isTaskDone && <Check className="w-2.5 h-2.5 text-white" />}
-                                              </div>
-                                              <span className="text-sm font-medium" style={{ color: '#e2e8f0' }}>{task.name}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                             {(task.video_id || extractYouTubeId(task.youtube_url)) && <span className="text-xs" style={{ color: '#2dd4bf' }}>▶ video</span>}
-                                             {task.mediaUrl && <span className="text-xs" style={{ color: '#2dd4bf' }}>🎵 audio</span>}
-                                             {isMasterUser && (
-                                                <button
-                                                  onClick={(e) => { e.stopPropagation(); handleStartEditTask(day.id, task); }}
-                                                  className="opacity-70 hover:opacity-100 transition-opacity text-slate-400 hover:text-white text-sm px-1"
-                                                  title="Edit task"
-                                                  >
-                                                  <span style={{ display: 'inline-block', transform: 'scaleX(-1)' }}>✏️</span>
-                                                </button>
-                                              )}
-                                            {isMasterUser && (
-                                               <button
-                                                 onClick={(e) => { e.stopPropagation(); handleDeleteTask(day.id, task.id); }}
-                                                 className="opacity-90 hover:opacity-100 transition-opacity text-red-400 hover:text-red-600 text-base px-1 font-bold"
-                                                 title="Remove from schedule"
-                                               >
-                                                 ✕
-                                               </button>
-                                             )}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                 })}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    );
-                  })}
-                  </div>
-              </div>
-            </div>
-              );
-            })()}
-
-
-
-
-          </div>
-        )}
-                </div>
-
-      {/* Session Instruction Modal */}
-      {sessionModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4" onClick={() => setSessionModal(null)}>
-          <div
-            className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="text-center">
-              <div className="text-4xl mb-2">🎬</div>
-              <h2 className="text-2xl font-bold" style={{ color: '#ffffff', fontFamily: 'Cormorant Garamond, serif' }}>Day {sessionModal.day_number}</h2>
-              <p className="text-slate-400 text-sm mt-1">Follow the steps below to complete this day</p>
-            </div>
-            <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-3">
-              <p className="font-semibold text-slate-200 text-sm">📋 Instructions</p>
-              <ol className="space-y-2 text-slate-300 text-sm list-decimal list-inside">
-                <li>Watch the video for this session</li>
-                <li>Follow along with the transcript</li>
-                <li>When you're done, click <strong>"I'm Done"</strong> below</li>
-                <li>Rank the key vocabulary words from the session</li>
+              <p className="text-lg font-semibold text-slate-800">Try our AI-assistant</p>
+              <ol className="mt-2 space-y-1.5 text-slate-700">
+                <li>1. Go to the Practice section 🗨️</li>
+                <li>2. Tap &quot;Chat&quot; 💬</li>
+                <li>3. Ask for something…</li>
               </ol>
-            </div>
-            {/* Video tasks - open in-app with sessionDay param */}
-            {(sessionModal.subsections || []).map((task: any) => {
-              const ytId = task.video_id || extractYouTubeId(task.youtube_url);
-              if (ytId) {
-                return (
-                  <button
-                    key={task.id}
-                    onClick={() => {
-                      setSessionModal(null);
-                      navigate(createPageUrl('MediaLibrary') + `?videoId=${ytId}&sessionDay=${sessionModal.day_number}&dayId=${sessionModal.id}&taskId=${task.id}`);
-                    }}
-                    className="flex items-center gap-3 bg-slate-800 rounded-xl p-3 border border-slate-700 hover:border-teal-500/50 transition-all w-full text-left"
-                  >
-                    <img src={`https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`} alt="" className="w-20 h-14 rounded-lg object-cover flex-shrink-0" />
-                    <div>
-                      <p className="text-slate-200 font-semibold text-sm">{task.name}</p>
-                      <p className="text-slate-400 text-xs mt-0.5">▶ Watch video</p>
-                    </div>
-                  </button>
-                );
-              } else if (task.mediaUrl) {
-                return (
-                  <button
-                    key={task.id}
-                    onClick={async () => {
-                      setSessionModal(null);
-                      let transcript = task.transcript || '';
-                      let mediaLibraryId = null;
-                      try {
-                        const results = await base44.entities.MediaLibrary.filter({ video_url: task.mediaUrl });
-                        if (results[0]) {
-                          transcript = results[0].transcript_phonetics || transcript;
-                          mediaLibraryId = results[0].id;
-                        }
-                      } catch {}
-                      sessionStorage.setItem('songListenData', JSON.stringify({ title: task.name, mediaUrl: task.mediaUrl, transcript, videoId: '', mediaLibraryId }));
-                      navigate('/SongListenPage');
-                    }}
-                    className="flex items-center gap-3 bg-slate-800 rounded-xl p-3 border border-slate-700 hover:border-teal-500/50 transition-all w-full text-left"
-                  >
-                    <div className="w-20 h-14 rounded-lg flex-shrink-0 flex items-center justify-center text-3xl bg-slate-700">🎵</div>
-                    <div>
-                      <p className="text-slate-200 font-semibold text-sm">{task.name}</p>
-                      <p className="text-slate-400 text-xs mt-0.5">🎧 Listen</p>
-                    </div>
-                  </button>
-                );
-              }
-              return null;
-            })}
-            <div className="pt-1">
-              <button
-                onClick={() => setSessionModal(null)}
-                className="w-full py-2.5 rounded-xl border border-slate-700 text-slate-400 text-sm font-medium hover:bg-slate-800 transition-all"
-              >
-                Cancel
-              </button>
-            </div>
+              {/* Speech-bubble tail */}
+              <div className="absolute -bottom-2 left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-b border-r border-slate-200 bg-white" />
+            </motion.div>
           </div>
-        </div>
-      )}
 
-      {/* Content Library Picker */}
-      <ContentLibraryPicker
-        open={!!libraryPickerDayId}
-        onOpenChange={(open: boolean) => { if (!open) setLibraryPickerDayId(null); }}
-        language={userProfile?.language}
-        onSelect={async (media: any) => {
-          const targetDayId = libraryPickerDayId;
-          // Find the session locally; fall back to fetching by id (robust if the
-          // days query is momentarily stale after creating a session).
-          let day = days.find((d: any) => d.id === targetDayId);
-          if (!day && targetDayId) {
-            try { day = await base44.entities.Day.get(targetDayId); } catch (e) { /* handled below */ }
-          }
-          if (!day) {
-            console.error('[add-to-session] session not found', { targetDayId, dayIds: days.map((d: any) => d.id) });
-            toast.error('No se encontró la sesión — recargá la página y reintentá.');
-            return;
-          }
-          const isYouTube = !!media.video_id;
-          const taskId = isYouTube ? `video_${media.video_id}` : `task_${Date.now()}`;
-          if ((day.subsections || []).some((s: any) => s.id === taskId)) { toast.info('Ese video ya está en la sesión.'); return; }
-          const sub = isYouTube
-            ? { id: taskId, name: `▶ ${media.title}`, video_id: media.video_id, page: 'MediaLibrary' }
-            : { id: taskId, name: media.title, page: '', mediaUrl: media.video_url || '' };
-          try {
-            await updateDayMutation.mutateAsync({ id: targetDayId, data: { subsections: [...(day.subsections || []), sub] } });
-            toast.success(`"${media.title}" added to session!`);
-          } catch (e: any) {
-            console.error('[add-to-session] update failed', e);
-            toast.error(`No se pudo agregar el video: ${e?.message || e}`);
-          }
-        }}
-      />
-
-      {/* Song Transcript Modal */}
-      <SongTranscriptModal
-        open={!!selectedSongForTranscript}
-        onOpenChange={(open: boolean) => !open && setSelectedSongForTranscript(null)}
-        song={selectedSongForTranscript}
-        onSave={(transcript: string) => {
-          setSavingSongTranscript(true);
-          updateSongTranscriptMutation.mutate({ songId: selectedSongForTranscript.id, transcript }, {
-            onSettled: () => setSavingSongTranscript(false),
-          });
-        }}
-        isSaving={savingSongTranscript}
-      />
-
-      {/* Post-video flashcards */}
-      {showSessionFlashcards && sessionFlashcardWords.length > 0 && (
-        <PostVideoFlashcards
-          words={sessionFlashcardWords}
-          videoTitle={sessionModal?.day_number ? `Session ${sessionModal.day_number}` : 'this session'}
-          userProfile={userProfile}
-          onClose={() => { setShowSessionFlashcards(false); setSessionFlashcardWords([]); }}
-          onJournal={() => { setShowSessionFlashcards(false); setSessionFlashcardWords([]); navigate(createPageUrl('Journal')); }}
-        />
-      )}
-      {showSessionFlashcards && sessionFlashcardWords.length === 0 && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 text-center space-y-4">
-            <div className="text-4xl">🎒</div>
-            <h3 className="text-xl font-bold" style={{ color: '#ffffff' }}>No vocab words yet</h3>
-            <p className="text-slate-400 text-sm">Vocab words will appear here once they've been added to this session.</p>
-            <button
-              onClick={() => setShowSessionFlashcards(false)}
-              className="w-full py-3 rounded-xl text-white font-bold"
-              style={{ background: '#14b8a6' }}
-            >
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
-
-        {/* Buy Coins Dialog */}
-      <Dialog open={buyCoinsDialog} onOpenChange={setBuyCoinsDialog}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
-          <DialogHeader>
-            <DialogTitle>💎 Buy Coins</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            {[
-              { coins: 1000, price: "$0.99", emoji: "💰" },
-              { coins: 5000, price: "$3.99", emoji: "💎" },
-              { coins: 15000, price: "$9.99", emoji: "👑" },
-              { coins: 50000, price: "$24.99", emoji: "🏆" },
-            ].map((pkg) => (
-              <button
-                key={pkg.coins}
-                onClick={() => buyCoins(pkg.coins)}
-                className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border border-yellow-500/30 rounded-xl hover:border-yellow-400 transition-all"
+          {/* Mascot scene: grass, cave, mammoth, campfire goal ring */}
+          <div className="relative mx-auto mt-10 flex justify-center">
+            <div className="relative h-56 w-full max-w-xl">
+              {/* Grass ellipse */}
+              <div className="absolute inset-x-0 top-10 mx-auto h-44 w-[92%] rounded-[50%] bg-[#eaf7d9]" />
+              {/* Cave */}
+              <span className="absolute left-[12%] top-6 text-5xl">🏜️</span>
+              {/* Mammoth mascot */}
+              <motion.span
+                animate={{ scale: [0.98, 1.03, 0.98] }}
+                transition={{ repeat: Infinity, duration: 3 }}
+                className="absolute left-[30%] top-14 text-6xl"
               >
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">{pkg.emoji}</span>
-                  <span className="font-bold">{pkg.coins.toLocaleString()} Coins</span>
+                🦣
+              </motion.span>
+              {/* Campfire with daily-goal ring */}
+              <div className="absolute left-1/2 top-16 -translate-x-1/4">
+                <div className="relative flex h-28 w-28 items-center justify-center">
+                  <svg viewBox="0 0 104 104" className="absolute inset-0 h-full w-full -rotate-90">
+                    <circle cx="52" cy="52" r={ringRadius} fill="none" stroke="#dce8f5" strokeWidth="4" />
+                    <circle
+                      cx="52" cy="52" r={ringRadius} fill="none"
+                      stroke="#f97316" strokeWidth="4" strokeLinecap="round"
+                      strokeDasharray={ringCircumference}
+                      strokeDashoffset={ringCircumference * (1 - goalDone / DAILY_GOAL)}
+                    />
+                  </svg>
+                  <div className="flex flex-col items-center">
+                    <span className="text-4xl">🔥</span>
+                    <span className="mt-0.5 text-sm font-semibold text-orange-600">
+                      {goalDone} / {DAILY_GOAL}
+                    </span>
+                  </div>
                 </div>
-                <span className="font-bold text-green-400">{pkg.price}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div className="mt-8 grid grid-cols-3 divide-x divide-slate-200 rounded-2xl border border-slate-200 bg-white py-5 shadow-sm">
+            {[
+              { label: "TO LEARN", value: toLearn, color: "text-sky-500" },
+              { label: "PRACTICED", value: practiced, color: "text-green-600" },
+              { label: "LEARNED", value: learned, color: "text-amber-500" },
+            ].map((s) => (
+              <button
+                key={s.label}
+                onClick={() => router.push("/library")}
+                className="flex flex-col items-center gap-1"
+              >
+                <span className={`text-sm font-semibold tracking-wide ${s.color}`}>{s.label}</span>
+                <span className={`text-4xl font-bold ${s.color}`}>{s.value}</span>
               </button>
             ))}
           </div>
-        </DialogContent>
-      </Dialog>
 
-      {/* Avatar Menu */}
-      <AvatarMenu
-        open={avatarMenuOpen}
-        onClose={() => setAvatarMenuOpen(false)}
-        onChangeAvatar={handleChangeAvatar}
-        onRestartLife={handleRestartLife}
-        avatarName={userProfile?.avatar_name || 'Avatar'}
-      />
+          {/* START */}
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={startLearning}
+            className="mt-5 w-full rounded-full bg-gradient-to-b from-sky-400 to-sky-500 py-4 text-xl font-semibold tracking-wide text-white shadow-lg shadow-sky-500/30 transition hover:to-sky-600"
+          >
+            START
+          </motion.button>
 
-      {/* Assign Coach Dialog */}
-      <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
-          <DialogHeader>
-            <DialogTitle>Assign Coach to Student</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-slate-400 text-sm mb-2 block">Coach</label>
-              <select
-                value={selectedCoach}
-                onChange={(e) => setSelectedCoach(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-              >
-                <option value="">Select coach...</option>
-                {allUsers.filter((user: any) => !['dorong@base44.com', 'liorben@base44.com'].includes(user.email)).map((user: any) => (
-                  <option key={user.id} value={user.email}>
-                    {user.email} {user.role === 'admin' ? '(Admin)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-slate-400 text-sm mb-2 block">Student</label>
-              <select
-                value={selectedStudent}
-                onChange={(e) => setSelectedStudent(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-              >
-                <option value="">Select student...</option>
-                {allUsers.filter((user: any) => !['dorong@base44.com', 'liorben@base44.com'].includes(user.email)).map((user: any) => (
-                  <option key={user.id} value={user.email}>
-                    {user.email}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={() => setShowAssignDialog(false)}
-                variant="outline"
-                className="flex-1 border-slate-700 text-white"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  if (!selectedCoach || !selectedStudent) {
-                    toast.error("Select both coach and student");
-                    return;
-                  }
-                  if (selectedCoach === selectedStudent) {
-                    toast.error("Coach cannot manage themselves");
-                    return;
-                  }
-                  createAssignmentMutation.mutate({
-                    coach_email: selectedCoach,
-                    student_email: selectedStudent,
-                    assigned_by: currentUser.email,
-                    assigned_at: new Date().toISOString(),
-                  });
-                }}
-                disabled={createAssignmentMutation.isPending}
-                className="flex-1 bg-teal-500 hover:bg-teal-400"
-              >
-                Assign
-              </Button>
-            </div>
+          {/* My cards */}
+          <div className="mt-6 flex items-stretch overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <button
+              onClick={() => setCardsOpen((o) => !o)}
+              className="flex flex-1 items-center gap-3 px-5 py-4 text-left"
+            >
+              <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform ${cardsOpen ? "" : "-rotate-90"}`} />
+              <span className="text-lg font-medium text-slate-800">My cards</span>
+              <span className="text-sm text-slate-400">{(words as any[]).length}</span>
+            </button>
+            <Link
+              href="/library"
+              aria-label="Add a card"
+              className="flex items-center border-l border-slate-200 px-5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
+            >
+              <Plus className="h-5 w-5" />
+            </Link>
           </div>
-        </DialogContent>
-      </Dialog>
+          {cardsOpen && (
+            <div className="mt-2 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+              {(words as any[]).length === 0 ? (
+                <p className="px-5 py-6 text-center text-slate-400">
+                  No cards yet — tap + to add your first word!
+                </p>
+              ) : (
+                (words as any[])
+                  .slice()
+                  .sort((a, b) => (a.phonetic || a.word || "").localeCompare(b.phonetic || b.word || ""))
+                  .map((w) => {
+                    const level = w.times_practiced || 0;
+                    const dot = level >= 5 ? "bg-amber-400" : level > 0 ? "bg-green-500" : "bg-sky-400";
+                    return (
+                      <Link
+                        key={w.id}
+                        href="/library"
+                        className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 last:border-b-0 hover:bg-slate-50"
+                      >
+                        <span className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${dot}`} />
+                        <span className="min-w-0 flex-1 truncate font-medium text-slate-800">
+                          {w.phonetic || w.word}
+                        </span>
+                        <span className="min-w-0 truncate text-sm text-slate-400">{w.translation}</span>
+                      </Link>
+                    );
+                  })
+              )}
+            </div>
+          )}
+        </div>
 
-
+        {/* Bottom tab row — quick links inside the app panel */}
+        <div className="mt-8 flex items-center justify-around border-t border-slate-200 bg-white px-2 py-3">
+          {[
+            { href: "/home", emoji: "🃏", label: "LEARNING", active: true },
+            { href: "/practice", emoji: "💬", label: "PRACTICE", active: false },
+            { href: "/media", emoji: "📚", label: "LIBRARY", active: false },
+            { href: "/settings", emoji: "👤", label: "ACCOUNT", active: false },
+          ].map((tab) => (
+            <Link
+              key={tab.label}
+              href={tab.href}
+              className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[11px] font-semibold tracking-wide ${
+                tab.active ? "text-slate-900" : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <span className="text-2xl">{tab.emoji}</span>
+              {tab.label}
+            </Link>
+          ))}
+        </div>
       </div>
-    );
+    </div>
+  );
 }
