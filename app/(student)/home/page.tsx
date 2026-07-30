@@ -18,9 +18,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Palette, Loader2, X, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { languageLabel, isRTLText } from "@/lib/language";
+import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
+import { mnemonicImagePrompt } from "@/lib/imageStyle";
 import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
+import WordCard from "@/components/backpack/WordCard";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 import { generateLessonAudio } from "@/lib/audio/lessonAudio";
 
@@ -140,7 +142,6 @@ export default function Home() {
   const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [tab, setTab] = useState<"learning" | "practice" | "library" | "account">("learning");
-  const [cardsOpen, setCardsOpen] = useState(false);
   const [mood, setMood] = useState<Mood>("idle");
 
   // In-shell journal (lives inside the Practice tab)
@@ -168,6 +169,19 @@ export default function Home() {
   // Word popup over the in-shell transcript (tap a word → sound / edit / add
   // to backpack). Keyed by line+word index so tapping elsewhere moves it.
   const [wordPopup, setWordPopup] = useState<any>(null);
+
+  // Backpack tab: one-by-one flashcards (full WordCard experience in-shell)
+  const [cardIdx, setCardIdx] = useState(0);
+  const [showAllEnglish, setShowAllEnglish] = useState(false);
+  const [showHebrewCards, setShowHebrewCards] = useState(true);
+  const [showTranslitCards, setShowTranslitCards] = useState(true);
+  const [cardSentences, setCardSentences] = useState<any>({});
+  const [generatingSentence, setGeneratingSentence] = useState<any>({});
+  const [mnemonicExplanations, setMnemonicExplanations] = useState<any>({});
+  const [suggestingMnemonic, setSuggestingMnemonic] = useState<any>(null);
+  const [dismissedCards, setDismissedCards] = useState<Set<any>>(new Set());
+  // WordCard checks membership; the shell has no auto-generate queue.
+  const emptyMnemonicQueue = React.useRef(new Set()).current;
 
   // In-shell add-video form (Library tab)
   const [libAddOpen, setLibAddOpen] = useState(false);
@@ -305,13 +319,183 @@ export default function Home() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wordRatings"] }),
   });
 
-  const startLearning = () => {
-    // Same handoff the Backpack uses for its "All Words" flashcard run.
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("pendingFlashcardWords", JSON.stringify({ allWords: true }));
-    }
-    router.push("/library?flashcard=all");
+  // -------------------------------------------------------------------------
+  // Backpack flashcards: the same mutations/handlers the full Backpack page
+  // wires into WordCard, in compact form (all cards here are the user's own).
+  // -------------------------------------------------------------------------
+  const updateWordMutation = useMutation({
+    mutationFn: ({ id, data }: any) => base44.entities.Word.update(id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wordRatings"] }),
+    onError: () => toast.error("Could not update word"),
+  });
+
+  const deleteWordMutation = useMutation({
+    mutationFn: ({ id }: any) => base44.entities.Word.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
+      toast.success("Word deleted!");
+    },
+    onError: () => toast.error("Could not delete word"),
+  });
+
+  const approveWordMutation = useMutation({
+    mutationFn: ({ id, approved }: any) =>
+      base44.entities.Word.update(id, {
+        approved,
+        approved_by: approved ? currentUser?.email : null,
+        approved_at: approved ? new Date().toISOString() : null,
+      }),
+    onSuccess: (_: any, { approved }: any) => {
+      queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
+      toast.success(approved ? "Card approved ✅" : "Approval removed");
+    },
+  });
+
+  const handleRateWord = async (wordId: any, rating: any, event: any) => {
+    event?.stopPropagation?.();
+    await updateWordMutation.mutateAsync({
+      id: wordId,
+      data: { times_practiced: rating, mastered: rating >= 5 },
+    });
+    setMood(rating >= 5 ? "cheer" : "happy");
   };
+
+  // Sound-anchor mnemonic image — same recipe as the full Backpack page.
+  const suggestMnemonicForWord = async (word: any) => {
+    setSuggestingMnemonic(word.id);
+    try {
+      const rawWord = word.phonetic || word.word;
+      const mnemonicLang = word.language || language;
+      // Strip Hebrew infinitive "l" prefix for verbs — Hebrew only.
+      const targetWord =
+        mnemonicLang === "hebrew" && (word.is_verb || word.phonetic?.startsWith("l")) && /^l/i.test(rawWord)
+          ? rawWord.slice(1)
+          : rawWord;
+      const meaning = word.translation || "";
+
+      const concept = await base44.integrations.Core.InvokeLLM({
+        prompt: `You create sound-based visual mnemonics for language learning.
+
+Target word: "${targetWord}" (meaning: "${meaning}")
+
+STEP 1 — SOUND MATCH: Find a real, common English noun whose spelling/pronunciation sounds like "${targetWord}" or its first 1-2 syllables. Think of words that rhyme or start the same way. Examples: "ask" → "Ask-him" → "eskimo", "shalom" → "shallow", "kelev" → "collar". The noun must be a physical, concrete, everyday object or creature. IMPORTANT: Do NOT use colors (like ivory, red, blue, gold, etc.) as the sound anchor — use objects or animals only.
+
+STEP 2 — SCENE: Place that physical noun object in a funny visual scene that ALSO shows the meaning "${meaning}". The object itself (not speech bubbles, not labels) should remind you of the sound. The MEANING "${meaning}" must be the BIG, obvious visual focus of the scene; the sound-anchor object is only a supporting prop inside it. Keep the scene MODERN, timeless and child-friendly — NEVER use historical/period or violent settings (no medieval, knights, soldiers, armor, battlefield, war, ancient, Victorian). If the sound-anchor would normally be historical or military (e.g. "armor"), reimagine it as a cute, modern, harmless cartoon version. NEVER write art-style or realism words (like "medieval", "realistic", "photograph", "oil painting", "cinematic", "render", "3D") inside the description — describe only WHAT happens, not how it is drawn.
+
+CRITICAL: Do NOT name any character, creature, animal, or person in the scene with the sound-anchor word, the target word, or any variant. They are just generic characters performing the action.
+
+STEP 3 — The image must show the OBJECT doing something related to the meaning. NO speech bubbles, NO text, NO characters speaking or calling out. PURE VISUAL ACTION ONLY — no mouths open to speak, no gesturing as if calling out.
+
+Return JSON:
+- sound_anchor: the English noun that sounds like "${targetWord}"
+- explanation: one punchy sentence like "An ESKIMO (askeem=agree) shaking hands in the snow"
+- image_prompt: a vivid description of the SCENE and ACTION only, where the meaning "${meaning}" is the clear centerpiece and the sound_anchor object is just a small prop. Modern/timeless setting. NO era/period words, NO art-style or realism words, no talking, no speech, no text, no naming any creatures.`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            sound_anchor: { type: "string" },
+            explanation: { type: "string" },
+            image_prompt: { type: "string" },
+          },
+        },
+      });
+
+      const imageResult = await base44.integrations.Core.GenerateImage({
+        prompt: mnemonicImagePrompt(concept.image_prompt),
+      });
+
+      setMnemonicExplanations((prev: any) => ({ ...prev, [word.id]: concept.explanation }));
+      await updateWordMutation.mutateAsync({
+        id: word.id,
+        data: { image_url: imageResult.url, mnemonic_explanation: concept.explanation },
+      });
+      toast.success("Mnemonic image created! 🎨");
+    } catch (e) {
+      toast.error("Failed to generate mnemonic");
+    }
+    setSuggestingMnemonic(null);
+  };
+
+  // One strict example sentence per card — session-only, same as the full page.
+  const generateCardSentence = async (word: any) => {
+    setGeneratingSentence((prev: any) => ({ ...prev, [word.id]: true }));
+    setCardSentences((prev: any) => { const next = { ...prev }; delete next[word.id]; return next; });
+    try {
+      const lang = word.language || language;
+      const label = languageLabel(lang);
+      const nikud = usesNikud(lang);
+      const hebrewScript = word.word && word.word !== word.phonetic ? word.word : null;
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `You are an expert ${label} linguist and language teacher creating example sentences for learners.
+
+TARGET WORD: ${hebrewScript ? `${label}: "${hebrewScript}"` : ""} Transliteration: "${word.phonetic || word.word}" | English meaning: "${word.translation}"
+
+TASK: Write ONE grammatically perfect, natural modern ${label} sentence that clearly demonstrates the meaning of "${word.translation}".
+
+STRICT RULES:
+1. The sentence MUST contain the word ${hebrewScript || word.phonetic} (or its correctly conjugated/declined form)
+2. The ${label} sentence and the English translation MUST convey the EXACT same meaning — no creative liberties
+3. Use correct ${nikud ? "nikud-less Hebrew script (standard modern written Hebrew)" : `${label} native spelling (including any accents or diacritics)`}
+4. 4–7 words only
+5. The English translation must be a direct, accurate translation of the ${label} — not a paraphrase
+6. Each word in the "words" array must map 1-to-1 to the actual ${label} words in the sentence in order
+7. Do NOT invent words or use placeholder meanings — every ${label} word must have its real translation
+
+Return JSON with:
+- hebrew_sentence: the full sentence in ${label} native script
+- transliteration: the full sentence in Latin letters (natural pronunciation)
+- english: the direct English translation of the ${label} sentence
+- words: array (one per ${label} word, in order) of { hebrew: the word in ${label} native script, word: its transliteration, meaning: its English meaning }`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            hebrew_sentence: { type: "string" },
+            transliteration: { type: "string" },
+            english: { type: "string" },
+            words: { type: "array", items: { type: "object", properties: { hebrew: { type: "string" }, word: { type: "string" }, meaning: { type: "string" } } } },
+          },
+        },
+      });
+      setCardSentences((prev: any) => ({ ...prev, [word.id]: result }));
+    } catch (e) {
+      toast.error("Failed to generate sentence");
+    }
+    setGeneratingSentence((prev: any) => ({ ...prev, [word.id]: false }));
+  };
+
+  const handleAddWordFromSentence = async (wordText: any, meaning: any, hebrew: any) => {
+    const exists = (words as any[]).find((w) => (w.phonetic || w.word)?.toLowerCase() === wordText.toLowerCase());
+    if (exists) { toast.info("Already in backpack!"); return; }
+    await base44.entities.Word.create({
+      word: hebrew || wordText,
+      translation: meaning,
+      phonetic: wordText,
+      category: "wordbank",
+      language,
+      times_practiced: 0,
+      mastered: false,
+    });
+    queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
+    toast.success(`"${wordText}" added! 🎒`);
+  };
+
+  const handleDismissWord = (wordId: any) => {
+    setDismissedCards((prev) => new Set([...prev, wordId]));
+    toast.success("Removed from your view");
+  };
+
+  // Deck for the one-by-one pager: new cards first, then by level.
+  const flashDeck = useMemo(() => {
+    return (words as any[])
+      .filter((w) => !dismissedCards.has(w.id))
+      .slice()
+      .sort(
+        (a, b) =>
+          (a.times_practiced || 0) - (b.times_practiced || 0) ||
+          (a.phonetic || a.word || "").localeCompare(b.phonetic || b.word || "")
+      );
+  }, [words, dismissedCards]);
+  const safeCardIdx = Math.min(cardIdx, Math.max(0, flashDeck.length - 1));
 
   // -------------------------------------------------------------------------
   // Practice: AI multiple-choice questions from the newest flashcard words.
@@ -765,124 +949,107 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
           </button>
         </div>
 
-        {/* ================= LEARNING ================= */}
+        {/* ================= BACKPACK (cards one by one) ================= */}
         {tab === "learning" && (
-          <div className="flex min-h-0 flex-1 flex-col px-4 pt-5">
-            {/* Streak flame + tip card */}
-            <div className="relative flex-shrink-0">
-              <div className="absolute -top-4 left-1/2 z-10 -translate-x-1/2">
-                <div className="relative flex h-9 w-9 items-center justify-center">
-                  <span className="text-4xl leading-none drop-shadow">🔥</span>
-                  <span className="absolute top-3 text-xs font-bold text-white">{streak}</span>
-                </div>
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-3">
+            {/* Compact header: streak · daily goal · stats */}
+            <div className="flex flex-shrink-0 items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
+              <span className="relative flex h-8 w-8 items-center justify-center">
+                <span className="text-2xl leading-none">🔥</span>
+                <span className="absolute top-2.5 text-[10px] font-bold text-white">{streak}</span>
+              </span>
+              <div className="flex items-center gap-3 text-center">
+                {[
+                  { label: "NEW", value: toLearn, color: "text-sky-500" },
+                  { label: "LEARNING", value: practiced, color: "text-green-600" },
+                  { label: "LEARNED", value: learned, color: "text-amber-500" },
+                ].map((s) => (
+                  <span key={s.label} className="flex flex-col">
+                    <span className={`text-[9px] font-semibold tracking-wide ${s.color}`}>{s.label}</span>
+                    <span className={`text-lg font-bold leading-tight ${s.color}`}>{s.value}</span>
+                  </span>
+                ))}
               </div>
-              <div
-                onClick={() => setTab("practice")}
-                className="relative cursor-pointer rounded-xl border border-slate-200 bg-white px-4 pb-3 pt-6 text-center shadow-sm transition hover:shadow-md"
-              >
-                <p className="text-sm font-semibold text-slate-800">Try our AI-assistant</p>
-                <p className="mt-1 text-xs text-slate-600">
-                  Tap Practice 💬 and get exercises built from your newest cards
-                </p>
-                <div className="absolute -bottom-2 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-b border-r border-slate-200 bg-white" />
-              </div>
+              <span className="flex flex-col items-center">
+                <span className="text-lg leading-none">🏕️</span>
+                <span className="text-[10px] font-semibold text-orange-600">{goalDone}/{DAILY_GOAL}</span>
+              </span>
             </div>
 
-            {/* Turtle scene with campfire goal ring */}
-            <div className="relative mx-auto mt-6 h-40 w-full flex-shrink-0">
-              <div className="absolute inset-x-2 top-6 h-32 rounded-[50%] bg-[#eaf7d9]" />
-              <span className="absolute left-[8%] top-2 text-4xl">🏜️</span>
-              <div className="absolute left-[26%] top-10">
-                <Turtle mood={mood} />
+            {flashDeck.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                <Turtle mood={mood} size="text-6xl" />
+                <p className="font-medium text-slate-700">No cards yet</p>
+                <p className="px-6 text-sm text-slate-500">
+                  Tap words in a video transcript or add them in the Journal — they become flashcards here.
+                </p>
+                <button
+                  onClick={() => setTab("library")}
+                  className="mt-1 rounded-full bg-sky-500 px-5 py-2.5 font-semibold text-white shadow"
+                >
+                  Watch a video
+                </button>
               </div>
-              <div className="absolute right-[10%] top-4">
-                <div className="relative flex h-24 w-24 items-center justify-center">
-                  <svg viewBox="0 0 96 96" className="absolute inset-0 h-full w-full -rotate-90">
-                    <circle cx="48" cy="48" r={ringRadius} fill="none" stroke="#dce8f5" strokeWidth="4" />
-                    <circle
-                      cx="48" cy="48" r={ringRadius} fill="none"
-                      stroke="#f97316" strokeWidth="4" strokeLinecap="round"
-                      strokeDasharray={ringCircumference}
-                      strokeDashoffset={ringCircumference * (1 - goalPct)}
+            ) : (
+              <>
+                {/* Pager */}
+                <div className="mt-2 flex flex-shrink-0 items-center justify-between px-1">
+                  <button
+                    onClick={() => setCardIdx((i) => Math.max(0, i - 1))}
+                    disabled={safeCardIdx === 0}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-1.5 text-lg font-bold text-slate-500 shadow-sm disabled:opacity-30"
+                  >
+                    ←
+                  </button>
+                  <span className="text-xs font-semibold text-slate-400">
+                    {safeCardIdx + 1} / {flashDeck.length}
+                  </span>
+                  <button
+                    onClick={() => setCardIdx((i) => Math.min(flashDeck.length - 1, i + 1))}
+                    disabled={safeCardIdx >= flashDeck.length - 1}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-1.5 text-lg font-bold text-slate-500 shadow-sm disabled:opacity-30"
+                  >
+                    →
+                  </button>
+                </div>
+
+                {/* The full WordCard flashcard (mnemonic image, ratings,
+                    sentence with clickable words, edit-in-place, …) */}
+                <div className="mt-2 flex min-h-0 flex-1 justify-center overflow-y-auto pb-3">
+                  <div className="h-fit">
+                    <WordCard
+                      word={flashDeck[safeCardIdx]}
+                      language={flashDeck[safeCardIdx]?.language || language}
+                      showAllEnglish={showAllEnglish}
+                      onEnglishToggle={() => setShowAllEnglish((v) => !v)}
+                      onHebrewToggle={() => setShowHebrewCards((v) => !v)}
+                      onScriptToggle={() => setShowHebrewCards((v) => !v)}
+                      onTranslitToggle={() => setShowTranslitCards((v) => !v)}
+                      showHebrew={showHebrewCards}
+                      showTransliteration={showTranslitCards}
+                      isContentEditable={(w: any) => !w.approved}
+                      mnemonicExplanations={mnemonicExplanations}
+                      setMnemonicExplanations={setMnemonicExplanations}
+                      cardSentences={cardSentences}
+                      generatingSentence={generatingSentence}
+                      fetchingTranslation={{}}
+                      suggestingMnemonic={suggestingMnemonic}
+                      mnemonicQueue={emptyMnemonicQueue}
+                      isAdmin={currentUser?.role === "admin"}
+                      updateWordMutation={updateWordMutation}
+                      handleRateWord={handleRateWord}
+                      suggestMnemonicForWord={suggestMnemonicForWord}
+                      approveWordMutation={approveWordMutation}
+                      handleDismissWord={handleDismissWord}
+                      deleteWordMutation={deleteWordMutation}
+                      handleAddWordFromSentence={handleAddWordFromSentence}
+                      generateCardSentence={generateCardSentence}
+                      sessionTitleMap={{}}
                     />
-                  </svg>
-                  <div className="flex flex-col items-center">
-                    <span
-                      className="cursor-pointer text-3xl"
-                      onClick={() => setMood(goalDone >= DAILY_GOAL ? "cheer" : "happy")}
-                    >
-                      🔥
-                    </span>
-                    <span className="text-xs font-semibold text-orange-600">
-                      {goalDone} / {DAILY_GOAL}
-                    </span>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Stats row */}
-            <div className="mt-4 grid flex-shrink-0 grid-cols-3 divide-x divide-slate-200 rounded-2xl border border-slate-200 bg-white py-3 shadow-sm">
-              {[
-                { label: "TO LEARN", value: toLearn, color: "text-sky-500" },
-                { label: "PRACTICED", value: practiced, color: "text-green-600" },
-                { label: "LEARNED", value: learned, color: "text-amber-500" },
-              ].map((s) => (
-                <div key={s.label} className="flex flex-col items-center gap-0.5">
-                  <span className={`text-[11px] font-semibold tracking-wide ${s.color}`}>{s.label}</span>
-                  <span className={`text-3xl font-bold ${s.color}`}>{s.value}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* START */}
-            <motion.button
-              whileTap={{ scale: 0.97 }}
-              onClick={startLearning}
-              className="mt-3 w-full flex-shrink-0 rounded-full bg-gradient-to-b from-sky-400 to-sky-500 py-3 text-lg font-semibold tracking-wide text-white shadow-lg shadow-sky-500/30"
-            >
-              START
-            </motion.button>
-
-            {/* My cards — expands into the remaining space, scrolls internally */}
-            <div className="mt-3 flex min-h-0 flex-1 flex-col pb-3">
-              <div className="flex flex-shrink-0 items-stretch overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <button onClick={() => setCardsOpen((o) => !o)} className="flex flex-1 items-center gap-2 px-4 py-3 text-left">
-                  <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${cardsOpen ? "" : "-rotate-90"}`} />
-                  <span className="font-medium text-slate-800">My cards</span>
-                  <span className="text-sm text-slate-400">{(words as any[]).length}</span>
-                </button>
-                <button
-                  onClick={() => router.push("/library")}
-                  aria-label="Add a card"
-                  className="flex items-center border-l border-slate-200 px-4 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
-                >
-                  <Plus className="h-5 w-5" />
-                </button>
-              </div>
-              {cardsOpen && (
-                <div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  {(words as any[]).length === 0 ? (
-                    <p className="px-4 py-5 text-center text-sm text-slate-400">No cards yet — tap + to add your first word!</p>
-                  ) : (
-                    (words as any[])
-                      .slice()
-                      .sort((a, b) => (a.phonetic || a.word || "").localeCompare(b.phonetic || b.word || ""))
-                      .map((w) => {
-                        const level = w.times_practiced || 0;
-                        const dot = level >= 5 ? "bg-amber-400" : level > 0 ? "bg-green-500" : "bg-sky-400";
-                        return (
-                          <div key={w.id} className="flex items-center gap-3 border-b border-slate-100 px-4 py-2.5 last:border-b-0">
-                            <span className={`h-2 w-2 flex-shrink-0 rounded-full ${dot}`} />
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{w.phonetic || w.word}</span>
-                            <span className="min-w-0 truncate text-xs text-slate-400">{w.translation}</span>
-                          </div>
-                        );
-                      })
-                  )}
-                </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
         )}
 
