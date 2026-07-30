@@ -90,6 +90,17 @@ const VIDEO_TOPICS = [
   "Education / Learning", "Business / Career", "Personal Growth", "Relationships", "News / Current Events",
 ];
 
+// Suggested YouTube searches per learning language (first chip is in the
+// target language — searching natively finds better material).
+const SEARCH_CHIPS: Record<string, string[]> = {
+  hebrew: ["שיחה קלה, הגייה בעברית", "Hebrew language lesson", "Hebrew for beginners"],
+  spanish: ["Conversación fácil en español", "Spanish language lesson", "Spanish for beginners"],
+  english: ["Easy English conversation", "English language lesson", "English for beginners"],
+  french: ["Conversation facile en français", "French language lesson", "French for beginners"],
+  portuguese: ["Conversa fácil em português", "Portuguese language lesson", "Portuguese for beginners"],
+  italian: ["Conversazione facile in italiano", "Italian language lesson", "Italian for beginners"],
+};
+
 const DAILY_GOAL = 15;
 
 const LANGUAGE_FLAGS: Record<string, string> = {
@@ -183,11 +194,17 @@ export default function Home() {
   // WordCard checks membership; the shell has no auto-generate queue.
   const emptyMnemonicQueue = React.useRef(new Set()).current;
 
-  // In-shell add-video form (Library tab)
-  const [libAddOpen, setLibAddOpen] = useState(false);
-  const emptyLibForm = { video_url: "", video_id: "", title: "", language: "", difficulty_level: "All", topics: [] as string[] };
-  const [libForm, setLibForm] = useState<any>(emptyLibForm);
-  const [libLoadingMeta, setLibLoadingMeta] = useState(false);
+  // Library tab add-flow: search YouTube (query or pasted link, with topic
+  // suggestion chips) → results by popularity → publish screen (level+topics).
+  const [libView, setLibView] = useState<"grid" | "search" | "publish">("grid");
+  const [libFilter, setLibFilter] = useState<"all" | "mine">("all");
+  const [libSearch, setLibSearch] = useState("");
+  const [libResults, setLibResults] = useState<any[]>([]);
+  const [libSearching, setLibSearching] = useState(false);
+  const [libPick, setLibPick] = useState<any>(null);
+  const [libLevel, setLibLevel] = useState("Beginner");
+  const [libTopics, setLibTopics] = useState<string[]>([]);
+  const [libLang, setLibLang] = useState("");
   const [libSaving, setLibSaving] = useState(false);
 
   // Practice (AI quiz) state
@@ -865,54 +882,101 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
   };
 
   // -------------------------------------------------------------------------
-  // In-shell add-video (Library tab). Admins write to the master library;
-  // everyone else adds to their personal collection (which also lands in the
-  // admin approval queue on the full library page).
+  // Library add-flow. Search YouTube (a pasted link jumps straight to the
+  // publish screen), pick a result, choose level + topics, save. Admins write
+  // to the master library; everyone else to their personal collection (which
+  // also lands in the admin approval queue on the full library page).
   // -------------------------------------------------------------------------
-  const loadLibMeta = async () => {
-    const vid = extractYouTubeId(libForm.video_url || "");
-    if (!vid) {
-      toast.error("Paste a valid YouTube link first");
-      return;
-    }
-    setLibLoadingMeta(true);
-    try {
-      const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(libForm.video_url)}&format=json`);
-      const meta = await res.json();
-      setLibForm((f: any) => ({ ...f, video_id: vid, title: f.title || meta.title || "" }));
-      toast.success("Video info loaded!");
-    } catch {
-      // oEmbed can fail for some videos — the id alone is enough to save.
-      setLibForm((f: any) => ({ ...f, video_id: vid }));
-    }
-    setLibLoadingMeta(false);
+  const searchLang = libLang || language;
+
+  const openPublish = (item: any) => {
+    setLibPick(item);
+    setLibLevel("Beginner");
+    setLibTopics([]);
+    setLibView("publish");
   };
 
-  const saveLibVideo = async () => {
-    const vid = libForm.video_id || extractYouTubeId(libForm.video_url || "");
-    if (!vid) { toast.error("Paste a YouTube link first"); return; }
-    if (!libForm.title.trim()) { toast.error("Title is required"); return; }
+  const runLibSearch = async (rawQuery?: string) => {
+    const q = (rawQuery ?? libSearch).trim();
+    if (!q || libSearching) return;
+    if (rawQuery !== undefined) setLibSearch(rawQuery);
+
+    // Pasted link → straight to the publish screen.
+    const linkedId = extractYouTubeId(q);
+    if (linkedId) {
+      let title = "";
+      try {
+        const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(q)}&format=json`);
+        title = (await res.json())?.title || "";
+      } catch {}
+      openPublish({ youtube_id: linkedId, title: title || "YouTube video", channel: "" });
+      return;
+    }
+
+    setLibSearching(true);
+    setLibResults([]);
+    try {
+      const label = languageLabel(searchLang);
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `Search YouTube for: "${q}". The user is learning ${label}, so ONLY include videos whose spoken language is ${label} or that teach ${label}. Find 8 real, currently-available YouTube videos, ORDERED BY VIEW COUNT from most to least popular.
+
+Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact 11-character YouTube video id, "channel": channel name, "views": approximate view count as a number, "duration": length like "6:05" } ] }`,
+        add_context_from_internet: true,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            videos: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  youtube_id: { type: "string" },
+                  channel: { type: "string" },
+                  views: { type: "number" },
+                  duration: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      });
+      const vids = (result?.videos || [])
+        .filter((v: any) => v.youtube_id && String(v.youtube_id).length === 11)
+        .sort((a: any, b: any) => (b.views || 0) - (a.views || 0));
+      setLibResults(vids);
+      if (vids.length === 0) toast.info("No videos found — try different words.");
+    } catch (e) {
+      toast.error("Search failed — try again.");
+    }
+    setLibSearching(false);
+  };
+
+  const savePublish = async () => {
+    if (!libPick?.youtube_id || libSaving) return;
     setLibSaving(true);
+    const vid = libPick.youtube_id;
     const data = {
-      title: libForm.title.trim(),
-      language: libForm.language || language,
-      video_url: libForm.video_url,
+      title: libPick.title || "YouTube video",
+      language: searchLang,
+      video_url: `https://www.youtube.com/watch?v=${vid}`,
       video_id: vid,
-      topics: libForm.topics,
-      difficulty_level: libForm.difficulty_level || "All",
+      topics: libTopics,
+      difficulty_level: libLevel,
       thumbnail_url: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
     };
     try {
       if (currentUser?.role === "admin") {
-        await base44.entities.MediaLibrary.create({ ...data, is_active: true, tags: "", notes: "" });
+        await base44.entities.MediaLibrary.create({ ...data, is_active: true, tags: libPick.channel || "", notes: "" });
       } else {
-        await base44.entities.UserSavedVideo.create(data);
+        await base44.entities.UserSavedVideo.create({ ...data, tags: libPick.channel || "" });
       }
       queryClient.invalidateQueries({ queryKey: ["mediaLibrary"] });
       queryClient.invalidateQueries({ queryKey: ["userSavedVideos"] });
-      toast.success("Video added!");
-      setLibForm(emptyLibForm);
-      setLibAddOpen(false);
+      toast.success("Video added to the library!");
+      setLibView("grid");
+      setLibPick(null);
+      setLibFilter(currentUser?.role === "admin" ? "all" : "mine");
       setMood("happy");
     } catch (e: any) {
       console.error(e);
@@ -1537,109 +1601,171 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
           </div>
         )}
 
-        {/* ================= LIBRARY / ADD VIDEO ================= */}
-        {tab === "library" && !shellVideo && libAddOpen && (
-          <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
+        {/* ================= LIBRARY / SEARCH YOUTUBE ================= */}
+        {tab === "library" && !shellVideo && libView === "search" && (
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-2">
             <div className="flex flex-shrink-0 items-center gap-2">
               <button
-                onClick={() => setLibAddOpen(false)}
+                onClick={() => setLibView("grid")}
                 aria-label="Back"
                 className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <span className="text-lg font-bold text-slate-800">➕ Add video</span>
+              <span className="flex-1 text-center text-base font-bold text-slate-800">Publish Video</span>
+              <span className="w-7" />
             </div>
-            <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pb-3">
-              {/* YouTube link */}
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-500">YouTube link</label>
-                <div className="flex gap-2">
-                  <input
-                    value={libForm.video_url}
-                    onChange={(e) => setLibForm((f: any) => ({ ...f, video_url: e.target.value }))}
-                    placeholder="https://youtube.com/watch?v=…"
-                    className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-teal-500 focus:outline-none"
-                  />
-                  <button
-                    onClick={loadLibMeta}
-                    disabled={libLoadingMeta || !libForm.video_url}
-                    className="flex-shrink-0 rounded-xl bg-teal-500 px-4 text-sm font-semibold text-white shadow disabled:opacity-40"
-                  >
-                    {libLoadingMeta ? <Loader2 className="h-4 w-4 animate-spin" /> : "Load"}
-                  </button>
-                </div>
-              </div>
 
-              {/* Thumbnail preview */}
-              {libForm.video_id && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={`https://i.ytimg.com/vi/${libForm.video_id}/hqdefault.jpg`}
-                  alt=""
-                  className="aspect-video w-full rounded-xl object-cover shadow-sm"
-                  onError={(e: any) => { e.target.style.display = "none"; }}
-                />
+            {/* Language */}
+            <div className="mt-3 flex-shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+              <p className="text-[11px] font-medium text-slate-400">Language</p>
+              <select
+                value={searchLang}
+                onChange={(e) => setLibLang(e.target.value)}
+                className="w-full bg-transparent text-base font-semibold capitalize text-slate-800 focus:outline-none"
+              >
+                {Object.entries(LANGUAGE_FLAGS).map(([id, flag]) => (
+                  <option key={id} value={id} className="capitalize">{flag} {id}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Search box */}
+            <div className="mt-3 flex flex-shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+              <input
+                value={libSearch}
+                onChange={(e) => setLibSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") runLibSearch(); }}
+                placeholder="Search on YouTube… or paste a link"
+                className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+              />
+              <button onClick={() => runLibSearch()} aria-label="Search" className="flex-shrink-0 text-sky-500">
+                {libSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : "🔍"}
+              </button>
+            </div>
+
+            {/* Suggested searches */}
+            <div className="mt-2 flex flex-shrink-0 gap-1.5 overflow-x-auto pb-1">
+              {(SEARCH_CHIPS[searchLang] || SEARCH_CHIPS.hebrew).map((chip) => (
+                <button
+                  key={chip}
+                  onClick={() => runLibSearch(chip)}
+                  className="flex-shrink-0 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm text-slate-700 shadow-sm transition hover:border-sky-400"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+
+            {/* Results / hint */}
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto pb-3">
+              {libSearching ? (
+                <div className="flex flex-col items-center gap-2 py-10">
+                  <Loader2 className="h-6 w-6 animate-spin text-sky-500" />
+                  <p className="text-xs text-slate-500">Searching YouTube…</p>
+                </div>
+              ) : libResults.length === 0 ? (
+                <div className="px-6 py-8 text-center text-sm leading-relaxed text-slate-400">
+                  <p>Search for videos in your target language — they become lessons with transcripts.</p>
+                  <p className="mt-3">For better results, search in the target language {LANGUAGE_FLAGS[searchLang] || "🌍"}.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {libResults.map((r: any) => (
+                    <button
+                      key={r.youtube_id}
+                      onClick={() => openPublish(r)}
+                      className="flex w-full items-stretch gap-3 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-sm transition hover:shadow-md"
+                    >
+                      <span className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-xl bg-slate-200">
+                        <img
+                          src={`https://i.ytimg.com/vi/${r.youtube_id}/hqdefault.jpg`}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          onError={(e: any) => { e.target.style.display = "none"; }}
+                        />
+                        {r.duration && (
+                          <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 text-[10px] font-semibold text-white">
+                            {r.duration}
+                          </span>
+                        )}
+                      </span>
+                      <span className="min-w-0 flex-1 py-0.5">
+                        <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800">{r.title}</span>
+                        <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-600">Auto transcript</span>
+                          {r.views > 0 && (
+                            <span className="text-[10px] text-slate-400">
+                              {r.views >= 1e6 ? `${(r.views / 1e6).toFixed(1)}M` : r.views >= 1e3 ? `${Math.round(r.views / 1e3)}K` : r.views} views
+                            </span>
+                          )}
+                        </span>
+                        {r.channel && <span className="mt-0.5 block truncate text-[11px] text-slate-400">{r.channel}</span>}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               )}
+            </div>
+          </div>
+        )}
 
-              {/* Title */}
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-500">Title</label>
-                <input
-                  value={libForm.title}
-                  onChange={(e) => setLibForm((f: any) => ({ ...f, title: e.target.value }))}
-                  placeholder="Video title"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-teal-500 focus:outline-none"
-                />
+        {/* ================= LIBRARY / PUBLISH ================= */}
+        {tab === "library" && !shellVideo && libView === "publish" && libPick && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex flex-shrink-0 items-center gap-2 px-4 pb-2 pt-2">
+              <button
+                onClick={() => setLibView(libResults.length ? "search" : "grid")}
+                aria-label="Back"
+                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <span className="flex-1 text-center text-base font-bold text-slate-800">Publish Video</span>
+              <span className="w-7" />
+            </div>
+
+            {/* Preview player */}
+            <div className="w-full flex-shrink-0 bg-black" style={{ aspectRatio: "16/9" }}>
+              <iframe
+                src={`https://www.youtube.com/embed/${libPick.youtube_id}?rel=0`}
+                title={libPick.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="h-full w-full"
+              />
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-3">
+              <p className="text-center text-base font-bold text-slate-800">{libPick.title}</p>
+              <p className="mt-1 text-center text-xs text-slate-400">A transcript is generated automatically on first watch.</p>
+
+              {/* Level */}
+              <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+                <p className="text-[11px] font-medium text-slate-400">Level</p>
+                <select
+                  value={libLevel}
+                  onChange={(e) => setLibLevel(e.target.value)}
+                  className="w-full bg-transparent text-base font-semibold text-slate-800 focus:outline-none"
+                >
+                  {["Beginner", "Intermediate", "Advanced"].map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
               </div>
 
-              {/* Language + difficulty */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Language</label>
-                  <select
-                    value={libForm.language || language}
-                    onChange={(e) => setLibForm((f: any) => ({ ...f, language: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm capitalize text-slate-800 shadow-sm focus:border-teal-500 focus:outline-none"
-                  >
-                    {Object.entries(LANGUAGE_FLAGS).map(([id, flag]) => (
-                      <option key={id} value={id} className="capitalize">{flag} {id}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Difficulty</label>
-                  <select
-                    value={libForm.difficulty_level}
-                    onChange={(e) => setLibForm((f: any) => ({ ...f, difficulty_level: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:border-teal-500 focus:outline-none"
-                  >
-                    {["Beginner", "Intermediate", "Advanced", "All"].map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Topics */}
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-500">Topics</label>
+              {/* Topic style */}
+              <div className="mt-3">
+                <p className="mb-1.5 text-[11px] font-medium text-slate-400">Topic style</p>
                 <div className="flex flex-wrap gap-1.5">
                   {VIDEO_TOPICS.map((t) => {
-                    const on = libForm.topics.includes(t);
+                    const on = libTopics.includes(t);
                     return (
                       <button
                         key={t}
-                        onClick={() =>
-                          setLibForm((f: any) => ({
-                            ...f,
-                            topics: on ? f.topics.filter((x: string) => x !== t) : [...f.topics, t],
-                          }))
-                        }
+                        onClick={() => setLibTopics((cur) => (on ? cur.filter((x) => x !== t) : [...cur, t]))}
                         className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
-                          on
-                            ? "border-teal-500 bg-teal-50 text-teal-700"
-                            : "border-slate-200 bg-white text-slate-500 hover:border-teal-300"
+                          on ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-200 bg-white text-slate-500 hover:border-sky-300"
                         }`}
                       >
                         {t}
@@ -1650,66 +1776,99 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
               </div>
 
               <button
-                onClick={saveLibVideo}
+                onClick={savePublish}
                 disabled={libSaving}
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-b from-teal-400 to-teal-500 py-3 font-semibold text-white shadow-lg shadow-teal-500/30 disabled:opacity-50"
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-b from-sky-400 to-sky-500 py-3.5 text-lg font-semibold tracking-wide text-white shadow-lg shadow-sky-500/30 disabled:opacity-50"
               >
-                {libSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-                {libSaving ? "Adding…" : currentUser?.role === "admin" ? "Add to library" : "Add to my library"}
+                {libSaving && <Loader2 className="h-5 w-5 animate-spin" />}
+                {libSaving ? "Saving…" : "SAVE"}
               </button>
             </div>
           </div>
         )}
 
         {/* ================= LIBRARY ================= */}
-        {tab === "library" && !shellVideo && !libAddOpen && (
+        {tab === "library" && !shellVideo && libView === "grid" && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
             <div className="flex flex-shrink-0 items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800">📚 Library</h2>
               <button
-                onClick={() => { setLibForm({ ...emptyLibForm, language }); setLibAddOpen(true); }}
+                onClick={() => { setLibSearch(""); setLibResults([]); setLibLang(""); setLibView("search"); }}
                 className="rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
               >
                 + Add video
               </button>
             </div>
+
+            {/* All videos / My videos */}
+            <div className="mt-3 flex flex-shrink-0 gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm">
+              {[
+                { key: "all", label: "All videos" },
+                { key: "mine", label: "My Videos" },
+              ].map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setLibFilter(f.key as any)}
+                  className={`flex-1 rounded-full py-1.5 text-xs font-semibold transition ${
+                    libFilter === f.key ? "bg-sky-500 text-white shadow" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
             <div className="mt-3 min-h-0 flex-1 overflow-y-auto pb-3">
-              {shellVideos.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-10 text-center">
-                  <span className="text-3xl">📺</span>
-                  <p className="text-sm font-medium text-slate-700">No videos yet</p>
-                  <p className="text-xs text-slate-500">Add a YouTube video to start learning from real content.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {shellVideos.map((v: any) => {
-                    const vid = v.video_id || "";
-                    const thumb = v.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : "");
-                    return (
+              {(() => {
+                const visible = libFilter === "mine" ? shellVideos.filter((v: any) => v._mine) : shellVideos;
+                if (visible.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-10 text-center">
+                      <span className="text-3xl">📺</span>
+                      <p className="text-sm font-medium text-slate-700">
+                        {libFilter === "mine" ? "You haven't added any videos yet" : "No videos yet"}
+                      </p>
+                      <p className="text-xs text-slate-500">Search YouTube and publish a video to start learning from real content.</p>
                       <button
-                        key={`${v._mine ? "mine" : "cat"}_${v.id}`}
-                        onClick={() => openShellVideo(v)}
-                        className="overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:shadow-md"
+                        onClick={() => { setLibSearch(""); setLibResults([]); setLibView("search"); }}
+                        className="mt-1 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow"
                       >
-                        <div className="aspect-video w-full bg-slate-200">
-                          {thumb && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={thumb} alt={v.title} className="h-full w-full object-cover" onError={(e: any) => { e.target.style.display = "none"; }} />
-                          )}
-                        </div>
-                        <div className="p-2.5">
-                          <p className="line-clamp-2 text-xs font-semibold leading-snug text-slate-800">{v.title}</p>
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                            {v.difficulty_level && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.difficulty_level}</span>}
-                            {v.duration_minutes && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.duration_minutes} min</span>}
-                            {v._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">My video</span>}
-                          </div>
-                        </div>
+                        + Add video
                       </button>
-                    );
-                  })}
-                </div>
-              )}
+                    </div>
+                  );
+                }
+                return (
+                  <div className="grid grid-cols-2 gap-3">
+                    {visible.map((v: any) => {
+                      const vid = v.video_id || "";
+                      const thumb = v.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : "");
+                      return (
+                        <button
+                          key={`${v._mine ? "mine" : "cat"}_${v.id}`}
+                          onClick={() => openShellVideo(v)}
+                          className="overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:shadow-md"
+                        >
+                          <div className="aspect-video w-full bg-slate-200">
+                            {thumb && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={thumb} alt={v.title} className="h-full w-full object-cover" onError={(e: any) => { e.target.style.display = "none"; }} />
+                            )}
+                          </div>
+                          <div className="p-2.5">
+                            <p className="line-clamp-2 text-xs font-semibold leading-snug text-slate-800">{v.title}</p>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                              {v.difficulty_level && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.difficulty_level}</span>}
+                              {v.duration_minutes && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.duration_minutes} min</span>}
+                              {v._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">My video</span>}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -1793,7 +1952,7 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
           {[
             { key: "learning", emoji: "🎒", label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
             { key: "practice", emoji: "💬", label: "PRACTICE", onTap: () => { closeShellVideo(); setTab("practice"); setJournalMode("off"); } },
-            { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => { closeShellVideo(); setLibAddOpen(false); setTab("library"); } },
+            { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => { closeShellVideo(); setLibView("grid"); setTab("library"); } },
             { key: "account", emoji: "👤", label: "ACCOUNT", onTap: () => { closeShellVideo(); setTab("account"); } },
           ].map((t) => (
             <button
