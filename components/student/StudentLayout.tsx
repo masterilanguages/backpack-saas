@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/AuthContext";
 import { useStudyTime } from "@/hooks/useStudyTime";
-import StudentSidebar from "./StudentSidebar";
-import StudentTopbar from "./StudentTopbar";
 
+// The student portal has no side menu anymore: the app IS the phone shell on
+// /home (rendered inside an iPhone-style frame over a full dark backdrop),
+// and every other screen is reached from the shell's bottom tabs / Account
+// menu. Inner pages get a floating "← Home" pill so nobody is stranded.
 export default function StudentLayout({ children }: { children: ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { isAuthenticated, isLoadingAuth } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -39,15 +41,21 @@ export default function StudentLayout({ children }: { children: ReactNode }) {
     );
   }
 
+  const isHome = pathname === "/home";
+
   return (
     <div className="min-h-screen bg-slate-950">
-      <StudentSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex min-h-screen flex-col lg:pl-64">
-        <StudentTopbar onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-5xl">{children}</div>
-        </main>
-      </div>
+      {!isHome && (
+        <Link
+          href="/home"
+          className="fixed left-4 top-4 z-50 flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/90 px-3.5 py-2 text-sm font-medium text-slate-200 shadow-lg backdrop-blur transition hover:border-teal-500 hover:text-white"
+        >
+          ← Home
+        </Link>
+      )}
+      <main className={isHome ? "" : "px-4 py-6 sm:px-6 lg:px-8"}>
+        <div className={isHome ? "" : "mx-auto w-full max-w-5xl pt-8"}>{children}</div>
+      </main>
     </div>
   );
 }

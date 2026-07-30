@@ -96,6 +96,8 @@ export default function Home() {
   const [journalText, setJournalText] = useState("");
   const [journalSelected, setJournalSelected] = useState<any>(null);
   const [journalBusy, setJournalBusy] = useState(false);
+  // In-shell learning-language picker (lives inside the Account tab)
+  const [langPickerOpen, setLangPickerOpen] = useState(false);
 
   // Practice (AI quiz) state
   const [quiz, setQuiz] = useState<any[]>([]);
@@ -201,6 +203,22 @@ export default function Home() {
   const ringRadius = 40;
   const ringCircumference = 2 * Math.PI * ringRadius;
   const streak = userProfile?.daily_streak || 0;
+
+  // Switch the learning language — same behavior the old sidebar switcher had:
+  // update the profile and invalidate everything that filters by language.
+  const changeLanguageMutation = useMutation({
+    mutationFn: async (lang: string) => {
+      const profiles = await base44.entities.UserProfile.filter({ created_by: currentUser?.email });
+      if (profiles[0]) return base44.entities.UserProfile.update(profiles[0].id, { language: lang });
+      return base44.entities.UserProfile.create({ language: lang, current_day: 1 });
+    },
+    onSuccess: (_data: any, lang: string) => {
+      queryClient.invalidateQueries({ queryKey: ["userProfile"] });
+      toast.success(`Language switched to ${lang.charAt(0).toUpperCase()}${lang.slice(1)}`);
+      setLangPickerOpen(false);
+    },
+    onError: (e: any) => toast.error(`Couldn't switch language: ${e?.message || "unknown error"}`),
+  });
 
   const bumpWordMutation = useMutation({
     mutationFn: ({ id, level }: any) =>
@@ -345,15 +363,20 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
   const goalPct = goalDone / DAILY_GOAL;
 
   return (
-    <div className="mx-auto flex w-full max-w-md justify-center">
-      {/* The phone screen: fixed height, no page scroll, menu pinned bottom. */}
-      <div className="flex h-[min(800px,calc(100dvh-7.5rem))] w-full flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-[#eef4fb] shadow-2xl">
+    // Full dark backdrop with an iPhone-looking frame centered on it.
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-3 py-4">
+      {/* Bezel */}
+      <div className="relative w-full max-w-md rounded-[3rem] border border-slate-700 bg-slate-900 p-2.5 shadow-[0_0_80px_rgba(45,212,191,0.07)]">
+        {/* Notch / dynamic island */}
+        <div className="absolute left-1/2 top-4 z-20 h-6 w-28 -translate-x-1/2 rounded-full bg-slate-900" />
+        {/* The phone screen: fixed height, no page scroll, menu pinned bottom. */}
+        <div className="flex h-[min(820px,calc(100dvh-3.5rem))] w-full flex-col overflow-hidden rounded-[2.4rem] bg-[#eef4fb]">
 
-        {/* Top bar: palette · language · stats */}
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/80 px-5 py-2.5">
+        {/* Top bar: palette · language · stats (padded below the notch) */}
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/80 px-5 pb-2.5 pt-8">
           <Palette className="h-5 w-5 text-slate-300" />
           <button
-            onClick={() => router.push("/settings")}
+            onClick={() => { setTab("account"); setLangPickerOpen(true); }}
             className="flex items-center gap-2 text-lg font-semibold text-slate-800"
           >
             <span className="text-xl">{LANGUAGE_FLAGS[language] || "🌍"}</span>
@@ -804,11 +827,46 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
               <p className="text-xs text-slate-400">{currentUser?.email}</p>
             </div>
             <div className="mt-5 space-y-2.5 overflow-y-auto pb-3">
+              {/* Learning language — expandable picker (was the sidebar switcher) */}
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <button
+                  onClick={() => setLangPickerOpen((o) => !o)}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
+                >
+                  <span className="text-2xl">{LANGUAGE_FLAGS[language] || "🌍"}</span>
+                  <span className="flex-1">
+                    <span className="block font-medium capitalize text-slate-800">{language}</span>
+                    <span className="block text-xs text-slate-500">Learning language</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${langPickerOpen ? "rotate-180" : ""}`} />
+                </button>
+                {langPickerOpen && (
+                  <div className="border-t border-slate-100 px-2 py-2">
+                    {Object.entries(LANGUAGE_FLAGS).map(([id, flag]) => (
+                      <button
+                        key={id}
+                        onClick={() => changeLanguageMutation.mutate(id)}
+                        disabled={changeLanguageMutation.isPending}
+                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-slate-50 ${
+                          id === language ? "font-semibold text-teal-600" : "text-slate-700"
+                        }`}
+                      >
+                        <span className="text-lg">{flag}</span>
+                        <span className="flex-1 capitalize">{id}</span>
+                        {id === language && <span className="text-xs">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {[
                 { emoji: "📈", label: "Progress", desc: "Streaks, words and study time", href: "/progress" },
                 { emoji: "🗓️", label: "Schedule", desc: "Your sessions and daily tasks", href: "/learn/lessons/days" },
-                { emoji: "🎒", label: "Backpack", desc: "All your cards and flashcards", href: "/library" },
-                { emoji: "⚙️", label: "Settings", desc: "Language and preferences", href: "/settings" },
+                { emoji: "⚙️", label: "Settings", desc: "Account and preferences", href: "/settings" },
+                ...(currentUser && ["admin", "coach", "owner"].includes(currentUser.role)
+                  ? [{ emoji: "🛠️", label: "Admin console", desc: "Manage your school", href: "/dashboard" }]
+                  : []),
               ].map((item) => (
                 <button
                   key={item.label}
@@ -837,7 +895,7 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
         {/* ================= BOTTOM MENU (pinned) ================= */}
         <div className="flex flex-shrink-0 items-center justify-around border-t border-slate-200 bg-white px-2 py-2">
           {[
-            { key: "learning", emoji: "🃏", label: "LEARNING", onTap: () => setTab("learning") },
+            { key: "learning", emoji: "🎒", label: "BACKPACK", onTap: () => setTab("learning") },
             { key: "practice", emoji: "💬", label: "PRACTICE", onTap: () => { setTab("practice"); setJournalMode("off"); } },
             { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => setTab("library") },
             { key: "account", emoji: "👤", label: "ACCOUNT", onTap: () => setTab("account") },
@@ -854,6 +912,9 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
             </button>
           ))}
         </div>
+        </div>
+        {/* Home indicator */}
+        <div className="mx-auto mt-2 h-1 w-28 rounded-full bg-slate-700" />
       </div>
     </div>
   );
