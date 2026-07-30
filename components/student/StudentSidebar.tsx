@@ -18,7 +18,7 @@ const NAV = [
   { href: "/learn/lessons/days", key: "schedule",  emoji: "🗓️" },
   { href: "/practice",           key: "practice",  emoji: "🗣️" },
   { href: "/library",            key: "backpack",  emoji: "🎒" },
-  { href: "/journal",            key: "journal",   emoji: "📓" },
+  // Journal lives inside the home shell (Practice tab); /journal redirects.
   { href: "/media",              key: "library",   emoji: "📺" },
   { href: "/progress",           key: "progress",  emoji: "📈" },
 ];

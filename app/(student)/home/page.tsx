@@ -4,8 +4,9 @@
 // panel — a fixed-height "phone screen" with the menu pinned at the bottom
 // and no page scrolling:
 //   LEARNING  the cards home (turtle mascot, goal ring, stats, START, My cards)
-//   PRACTICE  AI questions from the user's newest flashcard words + Journal
-//   LIBRARY   navigates to the Content Library
+//   PRACTICE  AI questions from the user's newest flashcard words + the
+//             in-shell Journal (write → AI turns it into a lesson)
+//   LIBRARY   the Content Library videos as an in-shell thumbnail grid
 //   ACCOUNT   profile menu — Progress and Schedule live here
 // The turtle mascot reacts (idle / happy / sad / cheer) like Duolingo's owl.
 
@@ -15,9 +16,25 @@ import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Plus, BarChart3, Palette, Loader2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Palette, Loader2, X, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel } from "@/lib/language";
+import { generateLesson } from "@/lib/journal/generateLesson";
+import JournalLessonView from "@/components/journal/JournalLessonView";
+
+// Writing starters for the in-shell journal (same set the old page offered).
+const JOURNAL_TOPICS: { label: string; starter: string }[] = [
+  { label: "My day", starter: "Today I " },
+  { label: "How I feel", starter: "Right now I feel " },
+  { label: "Grateful for", starter: "I'm grateful for " },
+  { label: "A goal", starter: "One thing I want to do is " },
+];
+
+const deriveTitle = (text: string) => {
+  const first = (text || "").trim().split("\n")[0].trim();
+  if (!first) return "Journal entry";
+  return first.length > 48 ? first.slice(0, 48).trim() + "…" : first;
+};
 
 const DAILY_GOAL = 15;
 
@@ -70,9 +87,15 @@ export default function Home() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [tab, setTab] = useState<"learning" | "practice" | "account">("learning");
+  const [tab, setTab] = useState<"learning" | "practice" | "library" | "account">("learning");
   const [cardsOpen, setCardsOpen] = useState(false);
   const [mood, setMood] = useState<Mood>("idle");
+
+  // In-shell journal (lives inside the Practice tab)
+  const [journalMode, setJournalMode] = useState<"off" | "list" | "compose" | "lesson">("off");
+  const [journalText, setJournalText] = useState("");
+  const [journalSelected, setJournalSelected] = useState<any>(null);
+  const [journalBusy, setJournalBusy] = useState(false);
 
   // Practice (AI quiz) state
   const [quiz, setQuiz] = useState<any[]>([]);
@@ -85,6 +108,13 @@ export default function Home() {
   useEffect(() => {
     base44.auth.me().then(setCurrentUser).catch(() => {});
     document.title = "Home - Lashon Languages";
+    // Deep-link support: /home?open=journal (old /journal links redirect here).
+    const open = new URLSearchParams(window.location.search).get("open");
+    if (open === "journal") {
+      setTab("practice");
+      setJournalMode("list");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   // Reactions decay back to idle.
@@ -114,6 +144,43 @@ export default function Home() {
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
+
+  // Library tab: master-library videos in the learner's language + their own
+  // personal videos, rendered as thumbnails inside the shell.
+  const { data: libraryVideos = [] } = useQuery({
+    queryKey: ["mediaLibrary"],
+    queryFn: () => base44.entities.MediaLibrary.list(),
+    enabled: !!currentUser && tab === "library",
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const { data: myVideos = [] } = useQuery({
+    queryKey: ["userSavedVideos", currentUser?.email],
+    queryFn: () => base44.entities.UserSavedVideo.list(),
+    enabled: !!currentUser && tab === "library",
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const shellVideos = useMemo(() => {
+    const catalog = (libraryVideos as any[])
+      .filter((v) => v.is_active !== false && (!v.language || v.language === language));
+    const own = (myVideos as any[])
+      .filter((v) => v.created_by === currentUser?.email)
+      .map((v) => ({ ...v, _mine: true }));
+    return [...own, ...catalog];
+  }, [libraryVideos, myVideos, language, currentUser?.email]);
+
+  // Journal entries (in-shell journal). Legacy daily-journal rows are left out.
+  const { data: journalEntries = [] } = useQuery({
+    queryKey: ["journalLessonEntries"],
+    queryFn: () => base44.entities.JournalEntry.list("-created_date"),
+    enabled: !!currentUser && journalMode !== "off",
+  });
+  const lessonEntries = useMemo(
+    () => (journalEntries as any[]).filter((e) => e.target_language || e.lesson || e.status),
+    [journalEntries]
+  );
 
   const { toLearn, practiced, learned, practicedToday } = useMemo(() => {
     const today = new Date().toDateString();
@@ -238,6 +305,42 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
   };
 
   // -------------------------------------------------------------------------
+  // In-shell journal: write an entry, AI turns it into a target-language
+  // lesson (same generateLesson module the old /journal page used).
+  // -------------------------------------------------------------------------
+  const generateJournalLesson = async () => {
+    if (!journalText.trim()) {
+      toast.info("Write a few sentences first!");
+      return;
+    }
+    setJournalBusy(true);
+    try {
+      const lesson = await generateLesson({
+        originalText: journalText,
+        targetLanguage: language,
+        invokeLLM: base44.integrations.Core.InvokeLLM,
+      });
+      const saved = await base44.entities.JournalEntry.create({
+        title: deriveTitle(journalText),
+        date: new Date().toISOString().split("T")[0],
+        text: journalText,
+        original_language: null,
+        target_language: language,
+        status: "generated",
+        lesson,
+      });
+      queryClient.invalidateQueries({ queryKey: ["journalLessonEntries"] });
+      // Shim may drop the lesson column pre-migration; keep the in-memory copy.
+      setJournalSelected({ ...(saved || {}), lesson: saved?.lesson || lesson });
+      setJournalMode("lesson");
+      setJournalText("");
+      setMood("happy");
+    } catch (e) {
+      console.error(e);
+      toast.error("Couldn't generate the lesson — please try again.");
+    }
+    setJournalBusy(false);
+  };
 
   const goalPct = goalDone / DAILY_GOAL;
 
@@ -383,8 +486,137 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
           </div>
         )}
 
+        {/* ================= PRACTICE / JOURNAL ================= */}
+        {tab === "practice" && journalMode !== "off" && (
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
+            {/* Journal header */}
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <button
+                onClick={() => {
+                  if (journalMode === "list") setJournalMode("off");
+                  else setJournalMode("list");
+                  setJournalSelected(null);
+                }}
+                aria-label="Back"
+                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <span className="text-lg font-bold text-slate-800">📓 Journal</span>
+              {journalMode === "list" && (
+                <button
+                  onClick={() => { setJournalText(""); setJournalMode("compose"); }}
+                  className="ml-auto flex items-center gap-1 rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
+                >
+                  <Plus className="h-3.5 w-3.5" /> New entry
+                </button>
+              )}
+            </div>
+
+            {journalMode === "list" && (
+              <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pb-3">
+                {lessonEntries.length === 0 ? (
+                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-8 text-center">
+                    <span className="text-3xl">📓</span>
+                    <p className="text-sm font-medium text-slate-700">No entries yet</p>
+                    <p className="text-xs text-slate-500">Write about your real life — it becomes a lesson you can use.</p>
+                    <button
+                      onClick={() => { setJournalText(""); setJournalMode("compose"); }}
+                      className="mt-1 rounded-full bg-teal-500 px-4 py-2 text-sm font-semibold text-white shadow"
+                    >
+                      + New entry
+                    </button>
+                  </div>
+                ) : (
+                  lessonEntries.map((e: any) => (
+                    <button
+                      key={e.id}
+                      onClick={() => {
+                        if (e.lesson) { setJournalSelected(e); setJournalMode("lesson"); }
+                        else { setJournalText(e.text || ""); setJournalMode("compose"); }
+                      }}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:shadow-md"
+                    >
+                      <span className="text-xl">{e.lesson ? "✨" : "✏️"}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-slate-800">{e.title || deriveTitle(e.text)}</span>
+                        <span className="block text-xs text-slate-400">{e.date || ""}</span>
+                      </span>
+                      <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                    </button>
+                  ))
+                )}
+                {/* Newest backpack words */}
+                {(words as any[]).length > 0 && (
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">🎒 Newest words in your backpack</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(words as any[])
+                        .slice()
+                        .sort((a, b) => new Date(b.created_date || 0).getTime() - new Date(a.created_date || 0).getTime())
+                        .slice(0, 6)
+                        .map((w) => (
+                          <span key={w.id} className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+                            {w.phonetic || w.word} · {w.translation}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {journalMode === "compose" && (
+              <div className="mt-3 flex min-h-0 flex-1 flex-col pb-3">
+                <div className="flex flex-shrink-0 flex-wrap gap-1.5">
+                  {JOURNAL_TOPICS.map((t) => (
+                    <button
+                      key={t.label}
+                      onClick={() => setJournalText((txt) => (txt ? txt : t.starter))}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 shadow-sm hover:border-teal-400"
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={journalText}
+                  onChange={(e) => setJournalText(e.target.value)}
+                  placeholder="Write about your day in English or Hebrew…"
+                  className="mt-2 min-h-0 w-full flex-1 resize-none rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-teal-500 focus:outline-none"
+                />
+                <button
+                  onClick={generateJournalLesson}
+                  disabled={journalBusy || !journalText.trim()}
+                  className="mt-3 flex flex-shrink-0 items-center justify-center gap-2 rounded-full bg-gradient-to-b from-teal-400 to-teal-500 py-3 font-semibold text-white shadow-lg shadow-teal-500/30 disabled:opacity-50"
+                >
+                  {journalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {journalBusy ? "Creating your lesson…" : "Turn into a lesson"}
+                </button>
+              </div>
+            )}
+
+            {journalMode === "lesson" && journalSelected && (
+              // JournalLessonView is dark-themed; give it a dark inset "reader"
+              // so it stays legible inside the light shell.
+              <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-2xl bg-slate-900 p-4 pb-6">
+                {journalSelected.lesson ? (
+                  <JournalLessonView
+                    lesson={journalSelected.lesson}
+                    language={String(journalSelected.target_language || language).toLowerCase()}
+                    journalEntryId={journalSelected.id}
+                    libraryLessonId={journalSelected.library_item_id || undefined}
+                  />
+                ) : (
+                  <p className="text-sm text-slate-400">This entry has no lesson yet.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ================= PRACTICE ================= */}
-        {tab === "practice" && (
+        {tab === "practice" && journalMode === "off" && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-5">
             {quiz.length === 0 && !quizLoading ? (
               <>
@@ -403,9 +635,9 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
                   Start exercises
                 </motion.button>
 
-                {/* Journal lives inside Practice */}
+                {/* Journal lives inside Practice — opens in-shell */}
                 <button
-                  onClick={() => router.push("/journal")}
+                  onClick={() => setJournalMode("list")}
                   className="mt-4 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:shadow-md"
                 >
                   <span className="text-2xl">📓</span>
@@ -510,6 +742,59 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
           </div>
         )}
 
+        {/* ================= LIBRARY ================= */}
+        {tab === "library" && (
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
+            <div className="flex flex-shrink-0 items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800">📚 Library</h2>
+              <button
+                onClick={() => router.push("/media")}
+                className="rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
+              >
+                + Add video
+              </button>
+            </div>
+            <div className="mt-3 min-h-0 flex-1 overflow-y-auto pb-3">
+              {shellVideos.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-10 text-center">
+                  <span className="text-3xl">📺</span>
+                  <p className="text-sm font-medium text-slate-700">No videos yet</p>
+                  <p className="text-xs text-slate-500">Add a YouTube video to start learning from real content.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {shellVideos.map((v: any) => {
+                    const vid = v.video_id || "";
+                    const thumb = v.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : "");
+                    return (
+                      <button
+                        key={`${v._mine ? "mine" : "cat"}_${v.id}`}
+                        onClick={() => router.push(`/media?videoId=${encodeURIComponent(vid)}`)}
+                        className="overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:shadow-md"
+                      >
+                        <div className="aspect-video w-full bg-slate-200">
+                          {thumb && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={thumb} alt={v.title} className="h-full w-full object-cover" onError={(e: any) => { e.target.style.display = "none"; }} />
+                          )}
+                        </div>
+                        <div className="p-2.5">
+                          <p className="line-clamp-2 text-xs font-semibold leading-snug text-slate-800">{v.title}</p>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                            {v.difficulty_level && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.difficulty_level}</span>}
+                            {v.duration_minutes && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.duration_minutes} min</span>}
+                            {v._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">My video</span>}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ================= ACCOUNT ================= */}
         {tab === "account" && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-6">
@@ -553,8 +838,8 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
         <div className="flex flex-shrink-0 items-center justify-around border-t border-slate-200 bg-white px-2 py-2">
           {[
             { key: "learning", emoji: "🃏", label: "LEARNING", onTap: () => setTab("learning") },
-            { key: "practice", emoji: "💬", label: "PRACTICE", onTap: () => setTab("practice") },
-            { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => router.push("/media") },
+            { key: "practice", emoji: "💬", label: "PRACTICE", onTap: () => { setTab("practice"); setJournalMode("off"); } },
+            { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => setTab("library") },
             { key: "account", emoji: "👤", label: "ACCOUNT", onTap: () => setTab("account") },
           ].map((t) => (
             <button
