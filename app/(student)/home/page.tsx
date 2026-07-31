@@ -1012,10 +1012,10 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {/* Notch / dynamic island */}
         <div className="absolute left-1/2 top-4 z-20 h-6 w-28 -translate-x-1/2 rounded-full bg-slate-900" />
         {/* The phone screen: fixed height, no page scroll, menu pinned bottom. */}
-        <div className="flex h-[min(820px,calc(100dvh-3.5rem))] w-full flex-col overflow-hidden rounded-[2.4rem] bg-[#eef4fb]">
+        <div className="flex h-[min(820px,calc(100dvh-3.5rem))] w-full flex-col overflow-hidden rounded-[2.4rem] bg-[#f7f3ea]">
 
         {/* Top bar: palette · language · stats (padded below the notch) */}
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/80 px-5 pb-2.5 pt-8">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-stone-200/70 bg-white/80 px-5 pb-2.5 pt-8">
           <Palette className="h-5 w-5 text-slate-300" />
           <button
             onClick={() => { setTab("account"); setLangPickerOpen(true); }}
@@ -1034,14 +1034,14 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {tab === "learning" && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-3">
             {/* Compact header: streak · daily goal · stats */}
-            <div className="flex flex-shrink-0 items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
+            <div className="flex flex-shrink-0 items-center justify-between rounded-2xl border border-stone-200 bg-white px-4 py-2 shadow-sm">
               <span className="relative flex h-8 w-8 items-center justify-center">
                 <span className="text-2xl leading-none">🔥</span>
                 <span className="absolute top-2.5 text-[10px] font-bold text-white">{streak}</span>
               </span>
               <div className="flex items-center gap-3 text-center">
                 {[
-                  { label: "NEW", value: toLearn, color: "text-sky-500" },
+                  { label: "NEW", value: toLearn, color: "text-violet-500" },
                   { label: "LEARNING", value: practiced, color: "text-green-600" },
                   { label: "LEARNED", value: learned, color: "text-amber-500" },
                 ].map((s) => (
@@ -1066,7 +1066,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 </p>
                 <button
                   onClick={() => setTab("library")}
-                  className="mt-1 rounded-full bg-sky-500 px-5 py-2.5 font-semibold text-white shadow"
+                  className="mt-1 rounded-full bg-teal-600 px-5 py-2.5 font-semibold text-white shadow"
                 >
                   Watch a video
                 </button>
@@ -1078,7 +1078,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <button
                     onClick={() => setCardIdx((i) => Math.max(0, i - 1))}
                     disabled={safeCardIdx === 0}
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-1.5 text-lg font-bold text-slate-500 shadow-sm disabled:opacity-30"
+                    className="rounded-xl border border-stone-200 bg-white px-4 py-1.5 text-lg font-bold text-slate-500 shadow-sm disabled:opacity-30"
                   >
                     ←
                   </button>
@@ -1088,7 +1088,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <button
                     onClick={() => setCardIdx((i) => Math.min(flashDeck.length - 1, i + 1))}
                     disabled={safeCardIdx >= flashDeck.length - 1}
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-1.5 text-lg font-bold text-slate-500 shadow-sm disabled:opacity-30"
+                    className="rounded-xl border border-stone-200 bg-white px-4 py-1.5 text-lg font-bold text-slate-500 shadow-sm disabled:opacity-30"
                   >
                     →
                   </button>
@@ -1164,7 +1164,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             {journalMode === "list" && (
               <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pb-3">
                 {lessonEntries.length === 0 ? (
-                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-8 text-center">
+                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-300 bg-white/60 px-4 py-8 text-center">
                     <span className="text-3xl">📓</span>
                     <p className="text-sm font-medium text-slate-700">No entries yet</p>
                     <p className="text-xs text-slate-500">Write about your real life — it becomes a lesson you can use.</p>
@@ -1183,7 +1183,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         if (e.lesson) { setJournalSelected(e); setJournalMode("lesson"); }
                         else { setJournalText(e.text || ""); setJournalMode("compose"); }
                       }}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:shadow-md"
+                      className="flex w-full items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-left shadow-sm transition hover:shadow-md"
                     >
                       <span className="text-xl">{e.lesson ? "✨" : "✏️"}</span>
                       <span className="min-w-0 flex-1">
@@ -1196,7 +1196,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 )}
                 {/* Newest backpack words */}
                 {(words as any[]).length > 0 && (
-                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm">
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">🎒 Newest words in your backpack</p>
                     <div className="flex flex-wrap gap-1.5">
                       {(words as any[])
@@ -1204,7 +1204,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         .sort((a, b) => new Date(b.created_date || 0).getTime() - new Date(a.created_date || 0).getTime())
                         .slice(0, 6)
                         .map((w) => (
-                          <span key={w.id} className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+                          <span key={w.id} className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">
                             {w.phonetic || w.word} · {w.translation}
                           </span>
                         ))}
@@ -1221,7 +1221,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     <button
                       key={t.label}
                       onClick={() => setJournalText((txt) => (txt ? txt : t.starter))}
-                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 shadow-sm hover:border-teal-400"
+                      className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs text-slate-600 shadow-sm hover:border-teal-400"
                     >
                       {t.label}
                     </button>
@@ -1241,7 +1241,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   value={journalText}
                   onChange={(e) => setJournalText(e.target.value)}
                   placeholder="Write about your day in English or Hebrew…"
-                  className="mt-2 min-h-0 w-full flex-1 resize-none rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-teal-500 focus:outline-none"
+                  className="mt-2 min-h-0 w-full flex-1 resize-none rounded-2xl border border-stone-200 bg-white p-4 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-teal-500 focus:outline-none"
                 />
 
                 {/* Sentence-proposal cloud: the turtle "thinks up" sentences the
@@ -1250,7 +1250,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   {/* thought-bubble dots */}
                   <span className="absolute -top-3 left-8 h-2.5 w-2.5 rounded-full bg-white shadow-sm" />
                   <span className="absolute -top-1 left-12 h-3.5 w-3.5 rounded-full bg-white shadow-sm" />
-                  <div className="rounded-[1.75rem] border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="rounded-[1.75rem] border border-stone-200 bg-white px-4 py-3 shadow-sm">
                     <div className="flex items-center justify-between">
                       <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                         <span className="text-lg">🐢💭</span> Sentence ideas — tap to add
@@ -1270,7 +1270,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       ) : proposals.length === 0 ? (
                         <button
                           onClick={proposeSentences}
-                          className="w-full rounded-xl border border-dashed border-slate-300 py-2.5 text-xs text-slate-500 hover:border-teal-400 hover:text-teal-600"
+                          className="w-full rounded-xl border border-dashed border-stone-300 py-2.5 text-xs text-slate-500 hover:border-teal-400 hover:text-teal-600"
                         >
                           ☁️ Get sentence ideas
                         </button>
@@ -1279,9 +1279,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                           <button
                             key={`${i}_${s.slice(0, 12)}`}
                             onClick={() => addProposal(s)}
-                            className="flex w-full items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-left text-xs font-medium text-sky-800 transition hover:bg-sky-100"
+                            className="flex w-full items-center gap-2 rounded-xl bg-teal-50 px-3 py-2 text-left text-xs font-medium text-teal-900 transition hover:bg-teal-100"
                           >
-                            <Plus className="h-3.5 w-3.5 flex-shrink-0 text-sky-500" />
+                            <Plus className="h-3.5 w-3.5 flex-shrink-0 text-teal-600" />
                             <span className="min-w-0 flex-1">{s}</span>
                           </button>
                         ))
@@ -1334,7 +1334,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 {/* Journal lives inside Practice — opens in-shell */}
                 <button
                   onClick={() => setJournalMode("list")}
-                  className="mt-4 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:shadow-md"
+                  className="mt-4 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-4 text-left shadow-sm transition hover:shadow-md"
                 >
                   <span className="text-2xl">📓</span>
                   <span className="flex-1">
@@ -1346,7 +1346,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
 
                 <button
                   onClick={() => router.push("/practice")}
-                  className="mt-3 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition hover:shadow-md"
+                  className="mt-3 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-4 text-left shadow-sm transition hover:shadow-md"
                 >
                   <span className="text-2xl">🗣️</span>
                   <span className="flex-1">
@@ -1375,7 +1375,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <button onClick={startQuiz} className="rounded-full bg-green-500 px-5 py-2.5 font-semibold text-white shadow">
                     Practice again
                   </button>
-                  <button onClick={() => { setQuiz([]); setQuizDone(false); }} className="rounded-full border border-slate-300 bg-white px-5 py-2.5 font-semibold text-slate-600">
+                  <button onClick={() => { setQuiz([]); setQuizDone(false); }} className="rounded-full border border-stone-300 bg-white px-5 py-2.5 font-semibold text-slate-600">
                     Done
                   </button>
                 </div>
@@ -1390,13 +1390,13 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     <X className="h-4 w-4 text-slate-400" />
                   </button>
                 </div>
-                <div className="mt-1 h-1.5 flex-shrink-0 overflow-hidden rounded-full bg-slate-200">
+                <div className="mt-1 h-1.5 flex-shrink-0 overflow-hidden rounded-full bg-stone-200">
                   <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${((quizIdx + (quizAnswer !== null ? 1 : 0)) / quiz.length) * 100}%` }} />
                 </div>
 
                 <div className="mt-4 flex flex-shrink-0 items-start gap-3">
                   <Turtle mood={mood} size="text-4xl" />
-                  <div className="relative flex-1 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="relative flex-1 rounded-xl border border-stone-200 bg-white p-3 shadow-sm">
                     <p className="text-sm font-medium text-slate-800">{quiz[quizIdx].prompt}</p>
                   </div>
                 </div>
@@ -1405,11 +1405,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   {quiz[quizIdx].options.map((opt: string, i: number) => {
                     const isCorrect = i === quiz[quizIdx].correct_index;
                     const chosen = quizAnswer === i;
-                    let cls = "border-slate-200 bg-white text-slate-800 hover:border-sky-400";
+                    let cls = "border-stone-200 bg-white text-slate-800 hover:border-teal-500";
                     if (quizAnswer !== null) {
                       if (isCorrect) cls = "border-green-500 bg-green-50 text-green-700";
                       else if (chosen) cls = "border-red-400 bg-red-50 text-red-600";
-                      else cls = "border-slate-200 bg-white text-slate-400";
+                      else cls = "border-stone-200 bg-white text-slate-400";
                     }
                     return (
                       <button
@@ -1427,7 +1427,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       {quiz[quizIdx].explanation && (
                         <p className="mb-2 text-xs text-slate-500">{quiz[quizIdx].explanation}</p>
                       )}
-                      <button onClick={nextQuiz} className="w-full rounded-full bg-sky-500 py-3 font-semibold text-white shadow">
+                      <button onClick={nextQuiz} className="w-full rounded-full bg-teal-600 py-3 font-semibold text-white shadow">
                         {quizIdx + 1 >= quiz.length ? "Finish" : "Next"}
                       </button>
                     </div>
@@ -1463,7 +1463,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <button
                 onClick={toggleShellPlay}
                 aria-label={shellPlaying ? "Pause" : "Play"}
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-lg shadow-lg"
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-stone-200 bg-white text-lg shadow-lg"
               >
                 {shellPlaying ? "⏸️" : "▶️"}
               </button>
@@ -1471,7 +1471,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onClick={toggleShellSlow}
                 aria-label="Slow mode"
                 className={`flex h-11 w-11 items-center justify-center rounded-full border text-lg shadow-lg transition ${
-                  shellSlow ? "border-teal-500 bg-teal-50" : "border-slate-200 bg-white"
+                  shellSlow ? "border-teal-500 bg-teal-50" : "border-stone-200 bg-white"
                 }`}
               >
                 🐢
@@ -1505,7 +1505,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         <button
                           onClick={() => seekShellTo(s.start ?? 0)}
                           aria-label="Play from here"
-                          className={`mt-0.5 flex-shrink-0 text-sm ${active ? "text-sky-500" : "text-sky-300"}`}
+                          className={`mt-0.5 flex-shrink-0 text-sm ${active ? "text-teal-600" : "text-teal-300"}`}
                         >
                           🔊
                         </button>
@@ -1525,7 +1525,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                   <span
                                     onClick={(e) => { e.stopPropagation(); tapTranscriptWord(key, tok, main); }}
                                     className={`cursor-pointer rounded px-0.5 transition ${
-                                      open ? "bg-sky-100 text-sky-800" : "hover:bg-sky-50"
+                                      open ? "bg-teal-100 text-teal-900" : "hover:bg-teal-50"
                                     }`}
                                   >
                                     {tok}
@@ -1534,7 +1534,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                     <span
                                       dir="ltr"
                                       onClick={(e) => e.stopPropagation()}
-                                      className="absolute bottom-full left-1/2 z-30 mb-1.5 block w-48 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-2.5 text-left shadow-xl"
+                                      className="absolute bottom-full left-1/2 z-30 mb-1.5 block w-48 -translate-x-1/2 rounded-2xl border border-stone-200 bg-white p-2.5 text-left shadow-xl"
                                     >
                                       {wordPopup.editing ? (
                                         <span className="block space-y-1.5">
@@ -1542,13 +1542,13 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                             value={wordPopup.clean}
                                             onChange={(e) => setWordPopup((p: any) => ({ ...p, clean: e.target.value }))}
                                             dir={rtl ? "rtl" : "ltr"}
-                                            className="w-full rounded-lg border border-slate-200 px-2 py-1 text-sm font-semibold text-slate-800 focus:border-teal-500 focus:outline-none"
+                                            className="w-full rounded-lg border border-stone-200 px-2 py-1 text-sm font-semibold text-slate-800 focus:border-teal-500 focus:outline-none"
                                           />
                                           <input
                                             value={wordPopup.translation}
                                             onChange={(e) => setWordPopup((p: any) => ({ ...p, translation: e.target.value }))}
                                             placeholder="Meaning"
-                                            className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 focus:border-teal-500 focus:outline-none"
+                                            className="w-full rounded-lg border border-stone-200 px-2 py-1 text-xs text-slate-600 focus:border-teal-500 focus:outline-none"
                                           />
                                         </span>
                                       ) : (
@@ -1560,7 +1560,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                             <span className="block text-xs text-slate-400">translating…</span>
                                           ) : (
                                             <>
-                                              {wordPopup.phonetic && <span className="block text-[11px] text-sky-600">{wordPopup.phonetic}</span>}
+                                              {wordPopup.phonetic && <span className="block text-[11px] text-teal-600">{wordPopup.phonetic}</span>}
                                               <span className="block text-xs text-slate-500">{wordPopup.translation || "—"}</span>
                                             </>
                                           )}
@@ -1573,7 +1573,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                         <button
                                           onClick={() => setWordPopup((p: any) => ({ ...p, editing: !p.editing }))}
                                           aria-label="Edit"
-                                          className={`rounded-lg p-1 text-base hover:bg-slate-50 ${wordPopup.editing ? "bg-slate-100" : ""}`}
+                                          className={`rounded-lg p-1 text-base hover:bg-slate-50 ${wordPopup.editing ? "bg-stone-100" : ""}`}
                                         >
                                           ✏️
                                         </button>
@@ -1598,7 +1598,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                         </button>
                                       </span>
                                       {/* bubble tail */}
-                                      <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-slate-200 bg-white" />
+                                      <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-stone-200 bg-white" />
                                     </span>
                                   )}
                                 </span>
@@ -1634,7 +1634,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             </div>
 
             {/* Language */}
-            <div className="mt-3 flex-shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+            <div className="mt-3 flex-shrink-0 rounded-xl border border-stone-200 bg-white px-4 py-2.5 shadow-sm">
               <p className="text-[11px] font-medium text-slate-400">Language</p>
               <select
                 value={searchLang}
@@ -1648,7 +1648,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             </div>
 
             {/* Search box */}
-            <div className="mt-3 flex flex-shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+            <div className="mt-3 flex flex-shrink-0 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 shadow-sm">
               <input
                 value={libSearch}
                 onChange={(e) => setLibSearch(e.target.value)}
@@ -1656,7 +1656,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 placeholder="Search on YouTube… or paste a link"
                 className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
               />
-              <button onClick={() => runLibSearch()} aria-label="Search" className="flex-shrink-0 text-sky-500">
+              <button onClick={() => runLibSearch()} aria-label="Search" className="flex-shrink-0 text-teal-600">
                 {libSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : "🔍"}
               </button>
             </div>
@@ -1667,7 +1667,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 <button
                   key={chip}
                   onClick={() => runLibSearch(chip)}
-                  className="flex-shrink-0 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm text-slate-700 shadow-sm transition hover:border-sky-400"
+                  className="flex-shrink-0 rounded-full border border-stone-200 bg-white px-3.5 py-1.5 text-sm text-slate-700 shadow-sm transition hover:border-teal-500"
                 >
                   {chip}
                 </button>
@@ -1678,7 +1678,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             <div className="mt-2 min-h-0 flex-1 overflow-y-auto pb-3">
               {libSearching ? (
                 <div className="flex flex-col items-center gap-2 py-10">
-                  <Loader2 className="h-6 w-6 animate-spin text-sky-500" />
+                  <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
                   <p className="text-xs text-slate-500">Searching YouTube…</p>
                 </div>
               ) : libResults.length === 0 ? (
@@ -1692,9 +1692,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     <button
                       key={r.youtube_id}
                       onClick={() => openPublish(r)}
-                      className="flex w-full items-stretch gap-3 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-sm transition hover:shadow-md"
+                      className="flex w-full items-stretch gap-3 overflow-hidden rounded-2xl border border-stone-200 bg-white p-2 text-left shadow-sm transition hover:shadow-md"
                     >
-                      <span className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-xl bg-slate-200">
+                      <span className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-xl bg-stone-200">
                         <img
                           src={`https://i.ytimg.com/vi/${r.youtube_id}/hqdefault.jpg`}
                           alt=""
@@ -1710,7 +1710,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       <span className="min-w-0 flex-1 py-0.5">
                         <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800">{r.title}</span>
                         <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-600">Auto transcript</span>
+                          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-600">Auto transcript</span>
                           {r.views > 0 && (
                             <span className="text-[10px] text-slate-400">
                               {r.views >= 1e6 ? `${(r.views / 1e6).toFixed(1)}M` : r.views >= 1e3 ? `${Math.round(r.views / 1e3)}K` : r.views} views
@@ -1758,7 +1758,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <p className="mt-1 text-center text-xs text-slate-400">A transcript is generated automatically on first watch.</p>
 
               {/* Level */}
-              <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+              <div className="mt-4 rounded-xl border border-stone-200 bg-white px-4 py-2.5 shadow-sm">
                 <p className="text-[11px] font-medium text-slate-400">Level</p>
                 <select
                   value={libLevel}
@@ -1782,7 +1782,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         key={t}
                         onClick={() => setLibTopics((cur) => (on ? cur.filter((x) => x !== t) : [...cur, t]))}
                         className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
-                          on ? "border-sky-500 bg-sky-50 text-sky-700" : "border-slate-200 bg-white text-slate-500 hover:border-sky-300"
+                          on ? "border-teal-600 bg-teal-50 text-teal-700" : "border-stone-200 bg-white text-slate-500 hover:border-teal-400"
                         }`}
                       >
                         {t}
@@ -1795,7 +1795,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <button
                 onClick={savePublish}
                 disabled={libSaving}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-b from-sky-400 to-sky-500 py-3.5 text-lg font-semibold tracking-wide text-white shadow-lg shadow-sky-500/30 disabled:opacity-50"
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-b from-teal-500 to-teal-600 py-3.5 text-lg font-semibold tracking-wide text-white shadow-lg shadow-teal-600/30 disabled:opacity-50"
               >
                 {libSaving && <Loader2 className="h-5 w-5 animate-spin" />}
                 {libSaving ? "Saving…" : "SAVE"}
@@ -1818,7 +1818,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             </div>
 
             {/* All videos / My videos */}
-            <div className="mt-3 flex flex-shrink-0 gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-sm">
+            <div className="mt-3 flex flex-shrink-0 gap-1 rounded-full border border-stone-200 bg-white p-1 shadow-sm">
               {[
                 { key: "all", label: "All videos" },
                 { key: "mine", label: "My Videos" },
@@ -1827,7 +1827,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   key={f.key}
                   onClick={() => setLibFilter(f.key as any)}
                   className={`flex-1 rounded-full py-1.5 text-xs font-semibold transition ${
-                    libFilter === f.key ? "bg-sky-500 text-white shadow" : "text-slate-500 hover:text-slate-700"
+                    libFilter === f.key ? "bg-teal-600 text-white shadow" : "text-slate-500 hover:text-slate-700"
                   }`}
                 >
                   {f.label}
@@ -1840,7 +1840,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 const visible = libFilter === "mine" ? shellVideos.filter((v: any) => v._mine) : shellVideos;
                 if (visible.length === 0) {
                   return (
-                    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-10 text-center">
+                    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-300 bg-white/60 px-4 py-10 text-center">
                       <span className="text-3xl">📺</span>
                       <p className="text-sm font-medium text-slate-700">
                         {libFilter === "mine" ? "You haven't added any videos yet" : "No videos yet"}
@@ -1848,7 +1848,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       <p className="text-xs text-slate-500">Search YouTube and publish a video to start learning from real content.</p>
                       <button
                         onClick={() => { setLibSearch(""); setLibResults([]); setLibView("search"); }}
-                        className="mt-1 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow"
+                        className="mt-1 rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow"
                       >
                         + Add video
                       </button>
@@ -1864,9 +1864,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         <button
                           key={`${v._mine ? "mine" : "cat"}_${v.id}`}
                           onClick={() => openShellVideo(v)}
-                          className="overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:shadow-md"
+                          className="overflow-hidden rounded-2xl border border-stone-200 bg-white text-left shadow-sm transition hover:shadow-md"
                         >
-                          <div className="aspect-video w-full bg-slate-200">
+                          <div className="aspect-video w-full bg-stone-200">
                             {thumb && (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={thumb} alt={v.title} className="h-full w-full object-cover" onError={(e: any) => { e.target.style.display = "none"; }} />
@@ -1875,8 +1875,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                           <div className="p-2.5">
                             <p className="line-clamp-2 text-xs font-semibold leading-snug text-slate-800">{v.title}</p>
                             <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                              {v.difficulty_level && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.difficulty_level}</span>}
-                              {v.duration_minutes && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.duration_minutes} min</span>}
+                              {v.difficulty_level && <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.difficulty_level}</span>}
+                              {v.duration_minutes && <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.duration_minutes} min</span>}
                               {v._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">My video</span>}
                             </div>
                           </div>
@@ -1900,7 +1900,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             </div>
             <div className="mt-5 space-y-2.5 overflow-y-auto pb-3">
               {/* Learning language — expandable picker (was the sidebar switcher) */}
-              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="rounded-2xl border border-stone-200 bg-white shadow-sm">
                 <button
                   onClick={() => setLangPickerOpen((o) => !o)}
                   className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
@@ -1913,7 +1913,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${langPickerOpen ? "rotate-180" : ""}`} />
                 </button>
                 {langPickerOpen && (
-                  <div className="border-t border-slate-100 px-2 py-2">
+                  <div className="border-t border-stone-100 px-2 py-2">
                     {Object.entries(LANGUAGE_FLAGS).map(([id, flag]) => (
                       <button
                         key={id}
@@ -1943,7 +1943,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 <button
                   key={item.label}
                   onClick={() => router.push(item.href)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition hover:shadow-md"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3.5 text-left shadow-sm transition hover:shadow-md"
                 >
                   <span className="text-2xl">{item.emoji}</span>
                   <span className="flex-1">
@@ -1965,7 +1965,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         )}
 
         {/* ================= BOTTOM MENU (pinned) ================= */}
-        <div className="flex flex-shrink-0 items-center justify-around border-t border-slate-200 bg-white px-2 py-2">
+        <div className="flex flex-shrink-0 items-center justify-around border-t border-stone-200 bg-white px-2 py-2">
           {[
             { key: "learning", emoji: "🎒", label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
             { key: "practice", emoji: "💬", label: "PRACTICE", onTap: () => { closeShellVideo(); setTab("practice"); setJournalMode("off"); } },
@@ -1976,7 +1976,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               key={t.key}
               onClick={t.onTap}
               className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[10px] font-semibold tracking-wide ${
-                tab === t.key ? "text-slate-900" : "text-slate-400 hover:text-slate-600"
+                tab === t.key ? "text-teal-700" : "text-slate-400 hover:text-slate-600"
               }`}
             >
               <span className="text-xl">{t.emoji}</span>
