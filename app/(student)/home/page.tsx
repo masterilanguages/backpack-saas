@@ -16,7 +16,7 @@ import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Palette, Loader2, X, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Palette, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
@@ -282,17 +282,19 @@ export default function Home() {
 
   // Library tab: master-library videos in the learner's language + their own
   // personal videos, rendered as thumbnails inside the shell.
+  // Fetched whenever the user is signed in (not just on the Library tab):
+  // the PATH tab is the landing surface and builds its journey from these.
   const { data: libraryVideos = [] } = useQuery({
     queryKey: ["mediaLibrary"],
     queryFn: () => base44.entities.MediaLibrary.list(),
-    enabled: !!currentUser && tab === "library",
+    enabled: !!currentUser,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
   const { data: myVideos = [] } = useQuery({
     queryKey: ["userSavedVideos", currentUser?.email],
     queryFn: () => base44.entities.UserSavedVideo.list(),
-    enabled: !!currentUser && tab === "library",
+    enabled: !!currentUser,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -2247,22 +2249,25 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
           {/* PATH is deliberately FIRST (bottom-left): it's the student's
               primary surface and the tab shown right after sign-in. */}
           {[
-            { key: "path", emoji: "🛤️", label: "PATH", onTap: () => { closeShellVideo(); setTab("path"); } },
-            { key: "learning", emoji: "🎒", label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
-            { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => { closeShellVideo(); setLibView("grid"); setTab("library"); } },
-            { key: "account", emoji: "👤", label: "ACCOUNT", onTap: () => { closeShellVideo(); setTab("account"); } },
-          ].map((t) => (
+            { key: "path", Icon: Route, label: "PATH", onTap: () => { closeShellVideo(); setTab("path"); } },
+            { key: "learning", Icon: Backpack, label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
+            { key: "library", Icon: Library, label: "LIBRARY", onTap: () => { closeShellVideo(); setLibView("grid"); setTab("library"); } },
+            { key: "account", Icon: CircleUser, label: "ACCOUNT", onTap: () => { closeShellVideo(); setTab("account"); } },
+          ].map((t) => {
+            const active = tab === t.key;
+            return (
             <button
               key={t.key}
               onClick={t.onTap}
-              className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[10px] font-semibold tracking-wide ${
-                tab === t.key ? "text-indigo-600" : "text-slate-400 hover:text-slate-600"
+              className={`flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-[10px] font-semibold tracking-wide ${
+                active ? "text-indigo-600" : "text-slate-400 hover:text-slate-600"
               }`}
             >
-              <span className="text-xl">{t.emoji}</span>
+              <t.Icon className="h-6 w-6" strokeWidth={active ? 2.4 : 2} aria-hidden="true" />
               {t.label}
             </button>
-          ))}
+            );
+          })}
         </div>
         </div>
         {/* Home indicator */}
