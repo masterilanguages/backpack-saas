@@ -195,6 +195,10 @@ export default function Home() {
   const shellPlayerRef = React.useRef<any>(null);
   const shellTimerRef = React.useRef<any>(null);
   const activeLineRef = React.useRef<HTMLButtonElement | null>(null);
+  // Transliteration repair bookkeeping: which video is open, and whether a
+  // repair pass is already running (one per open).
+  const shellVideoIdRef = React.useRef<any>(null);
+  const shellRepairRef = React.useRef(false);
 
   // Word popup over the in-shell transcript (tap a word → sound / edit / add
   // to backpack). Keyed by line+word index so tapping elsewhere moves it.
@@ -750,6 +754,7 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
   // -------------------------------------------------------------------------
   const openShellVideo = async (v: any) => {
     setShellVideo(v);
+    shellVideoIdRef.current = v.id;
     if (v.video_id) {
       setWatchedIds((prev) => {
         const next = new Set(prev);
@@ -800,6 +805,7 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
 
     // No usable transcript (missing or corrupt) → transcribe the audio now
     // (and persist when we own the row, so next open is instant).
+    let displaySegs = cleaned;
     if (cleaned.length === 0 && v.video_id) {
       setShellSegsLoading(true);
       try {
@@ -813,6 +819,7 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
           }))
           .filter((s: any) => s.text.length > 0);
         setShellSegments(segs);
+        displaySegs = segs;
         if (segs.length > 0 && writeEntity) {
           writeEntity.update(v.id, { processed_transcript: segs }).catch(() => {});
         }
@@ -821,9 +828,69 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
       }
       setShellSegsLoading(false);
     }
+
+    // Hebrew videos must show a LATIN transliteration row ("ha-sipur shelanu…"),
+    // not Hebrew script in the transliteration field. Legacy transcripts stored
+    // the native script there — repair them once in the background.
+    if (vidLangIsHebrew && displaySegs.length > 0) {
+      const violations = displaySegs.filter(
+        (s: any) => !s.transliteration || isRTLText(s.transliteration)
+      ).length;
+      if (violations > 0) repairShellTranscript(v, displaySegs, writeEntity);
+    }
+  };
+
+  // Batched LLM repair pass (same contract the media page reader uses):
+  // per line → hebrew WITH nikud + Latin transliteration (modern Israeli).
+  // Progressive display updates; one persist at the end; one pass per open.
+  const repairShellTranscript = async (v: any, segs: any[], writeEntity: any) => {
+    if (shellRepairRef.current) return;
+    shellRepairRef.current = true;
+    try {
+      const out = segs.map((s) => ({ ...s }));
+      for (let i = 0; i < out.length; i += 20) {
+        if (shellVideoIdRef.current !== v.id) return; // user moved on
+        const chunk = out.slice(i, i + 20);
+        const result = await base44.integrations.Core.InvokeLLM({
+          prompt: `You are an expert Hebrew linguist. For each numbered sentence below you get the best available source (Hebrew script and/or a transliteration, with an English hint). Return for EACH one:
+- hebrew: the sentence in Hebrew script WITH full nikud (vowel points), punctuation preserved.
+- transliteration: a Latin-letter transliteration of that Hebrew, following modern Israeli pronunciation, with punctuation matching the Hebrew.
+
+Rules:
+- Return JSON with a "segments" array in the same order, each object: { hebrew: string, transliteration: string }
+- Never leave a field empty; derive the missing form from whichever source exists.
+
+${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.transliteration || s.text}"${s.english ? ` | English meaning: "${s.english}"` : ""}`).join("\n")}`,
+          response_json_schema: {
+            type: "object",
+            properties: {
+              segments: {
+                type: "array",
+                items: { type: "object", properties: { hebrew: { type: "string" }, transliteration: { type: "string" } } },
+              },
+            },
+          },
+        });
+        chunk.forEach((s: any, j: number) => {
+          const fixed = result?.segments?.[j];
+          if (!fixed) return;
+          if (fixed.hebrew && isRTLText(fixed.hebrew)) s.hebrew = fixed.hebrew;
+          if (fixed.transliteration && !isRTLText(fixed.transliteration)) s.transliteration = fixed.transliteration;
+        });
+        if (shellVideoIdRef.current === v.id) setShellSegments([...out]);
+      }
+      if (shellVideoIdRef.current === v.id && writeEntity) {
+        writeEntity.update(v.id, { processed_transcript: out }).catch(() => {});
+      }
+    } catch (e) {
+      console.error("transliteration repair failed", e);
+    } finally {
+      shellRepairRef.current = false;
+    }
   };
 
   const closeShellVideo = () => {
+    shellVideoIdRef.current = null;
     try { shellPlayerRef.current?.destroy?.(); } catch (e) {}
     shellPlayerRef.current = null;
     if (shellTimerRef.current) { clearInterval(shellTimerRef.current); shellTimerRef.current = null; }
