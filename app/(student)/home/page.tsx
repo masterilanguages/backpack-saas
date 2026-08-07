@@ -16,7 +16,7 @@ import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Palette, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
@@ -1174,7 +1174,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
 
         {/* Top bar: palette · language · stats (padded below the notch) */}
         <div className="flex flex-shrink-0 items-center justify-between border-b border-indigo-100/70 bg-white/70 backdrop-blur px-5 pb-2.5 pt-8">
-          <Palette className="h-5 w-5 text-slate-300" />
+          <span className="w-5" aria-hidden="true" />
           <button
             onClick={() => { setTab("account"); setLangPickerOpen(true); }}
             className="flex items-center gap-2 text-lg font-semibold text-slate-800"
