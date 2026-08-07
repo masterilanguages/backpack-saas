@@ -174,6 +174,8 @@ export default function Home() {
   // Sentence-proposal cloud in the journal compose view
   const [proposals, setProposals] = useState<string[]>([]);
   const [proposalsLoading, setProposalsLoading] = useState(false);
+  // Per-proposal target-language translations, keyed by the English sentence.
+  const [proposalTranslations, setProposalTranslations] = useState<Record<string, { text?: string; translit?: string; loading?: boolean }>>({});
   // In-shell video player (Library tab): selected video, its transcript
   // segments, playback state for line-syncing, and the turtle slow mode.
   const [shellVideo, setShellVideo] = useState<any>(null);
@@ -693,6 +695,31 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
   };
 
   // Tap a proposal → it joins the entry, and fresh ideas can build on it.
+  // Translate a proposed English sentence into the learning language, shown
+  // inline under the sentence (native script + transliteration).
+  const translateProposal = async (sentence: string) => {
+    const existing = proposalTranslations[sentence];
+    if (existing?.loading || existing?.text) return;
+    setProposalTranslations((m) => ({ ...m, [sentence]: { loading: true } }));
+    try {
+      const label = languageLabel(language);
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `Translate this sentence into natural, simple ${label}: "${sentence}". Return JSON with: translation (the sentence in ${label} native script), transliteration (the full sentence in Latin letters, natural pronunciation).`,
+        response_json_schema: {
+          type: "object",
+          properties: { translation: { type: "string" }, transliteration: { type: "string" } },
+        },
+      });
+      setProposalTranslations((m) => ({
+        ...m,
+        [sentence]: { text: result?.translation || "", translit: result?.transliteration || "" },
+      }));
+    } catch {
+      setProposalTranslations((m) => ({ ...m, [sentence]: {} }));
+      toast.error("Couldn't translate — try again.");
+    }
+  };
+
   const addProposal = (sentence: string) => {
     setJournalText((txt) => {
       const base = txt.trim();
@@ -1320,16 +1347,43 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                           ☁️ Get sentence ideas
                         </button>
                       ) : (
-                        proposals.map((s, i) => (
-                          <button
-                            key={`${i}_${s.slice(0, 12)}`}
-                            onClick={() => addProposal(s)}
-                            className="flex w-full items-center gap-2 rounded-xl bg-teal-50 px-3 py-2 text-left text-xs font-medium text-teal-900 transition hover:bg-teal-100"
-                          >
-                            <Plus className="h-3.5 w-3.5 flex-shrink-0 text-teal-600" />
-                            <span className="min-w-0 flex-1">{s}</span>
-                          </button>
-                        ))
+                        proposals.map((s, i) => {
+                          const tr = proposalTranslations[s];
+                          return (
+                            <div
+                              key={`${i}_${s.slice(0, 12)}`}
+                              className="rounded-xl bg-teal-50 transition hover:bg-teal-100"
+                            >
+                              <div className="flex w-full items-center gap-2 px-3 py-2">
+                                <button
+                                  onClick={() => addProposal(s)}
+                                  className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs font-medium text-teal-900"
+                                >
+                                  <Plus className="h-3.5 w-3.5 flex-shrink-0 text-teal-600" />
+                                  <span className="min-w-0 flex-1">{s}</span>
+                                </button>
+                                {/* Translate this English sentence to the target language */}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); translateProposal(s); }}
+                                  disabled={tr?.loading}
+                                  aria-label="Translate"
+                                  title={`Translate to ${languageLabel(language)}`}
+                                  className="flex-shrink-0 rounded-lg px-1.5 py-0.5 text-sm transition hover:bg-white/70 disabled:opacity-50"
+                                >
+                                  {tr?.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-teal-600" /> : "🔤"}
+                                </button>
+                              </div>
+                              {tr?.text && (
+                                <div className="border-t border-teal-100 px-3 py-1.5">
+                                  <p dir={isRTLText(tr.text) ? "rtl" : "ltr"} className={`text-sm font-semibold text-teal-900 ${isRTLText(tr.text) ? "text-right" : ""}`}>
+                                    {tr.text}
+                                  </p>
+                                  {tr.translit && <p className="text-[11px] italic text-teal-700/80">{tr.translit}</p>}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </div>
