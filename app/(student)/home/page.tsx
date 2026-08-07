@@ -1106,6 +1106,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 <div className="mt-2 flex min-h-0 flex-1 justify-center overflow-y-auto pb-3">
                   <div className="h-fit">
                     <WordCard
+                      // Remount per card: each flashcard starts with its
+                      // translation hidden — pressing the card reveals it.
+                      key={flashDeck[safeCardIdx]?.id}
                       word={flashDeck[safeCardIdx]}
                       language={flashDeck[safeCardIdx]?.language || language}
                       showAllEnglish={showAllEnglish}
