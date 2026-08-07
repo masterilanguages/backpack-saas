@@ -161,7 +161,9 @@ export default function Home() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [tab, setTab] = useState<"learning" | "practice" | "path" | "library" | "account">("learning");
+  // Sign-in lands on the PATH: the video journey is the first thing a student
+  // sees (product decision — thumbnails → video + transcript).
+  const [tab, setTab] = useState<"learning" | "practice" | "path" | "library" | "account">("path");
   // Videos the user has opened on this device — drives the Path's progress.
   const [watchedIds, setWatchedIds] = useState<Set<string>>(() => {
     if (typeof window === "undefined") return new Set();
@@ -2242,9 +2244,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
 
         {/* ================= BOTTOM MENU (pinned) ================= */}
         <div className="flex flex-shrink-0 items-center justify-around border-t border-indigo-100 bg-white px-2 py-2">
+          {/* PATH is deliberately FIRST (bottom-left): it's the student's
+              primary surface and the tab shown right after sign-in. */}
           {[
-            { key: "learning", emoji: "🎒", label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
             { key: "path", emoji: "🛤️", label: "PATH", onTap: () => { closeShellVideo(); setTab("path"); } },
+            { key: "learning", emoji: "🎒", label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
             { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => { closeShellVideo(); setLibView("grid"); setTab("library"); } },
             { key: "account", emoji: "👤", label: "ACCOUNT", onTap: () => { closeShellVideo(); setTab("account"); } },
           ].map((t) => (

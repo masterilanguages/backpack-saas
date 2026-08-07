@@ -124,7 +124,9 @@ const PUBLIC_PATHS = new Set([
 
 /** Default landing path per portal group, used to redirect after auth. */
 const ADMIN_HOME = "/dashboard";
-const LEARNING_HOME = "/media";
+// The phone shell at /home is the student surface; it opens on the PATH tab,
+// so signing in lands the student directly on their video path.
+const LEARNING_HOME = "/home";
 
 // ── In-process slug -> org cache (cheap, request-bursty, short TTL) ───────────
 // Per-instance only; real caching authority is the STABLE RPC. Keeps a single
