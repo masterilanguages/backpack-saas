@@ -174,6 +174,9 @@ export default function Home() {
   const [shellPlaying, setShellPlaying] = useState(false);
   const [shellSlow, setShellSlow] = useState(false);
   const [shellTime, setShellTime] = useState(0);
+  // Transcript row visibility toggles (translation / transliteration)
+  const [shellShowEnglish, setShellShowEnglish] = useState(true);
+  const [shellShowTranslit, setShellShowTranslit] = useState(true);
   const shellPlayerRef = React.useRef<any>(null);
   const shellTimerRef = React.useRef<any>(null);
   const activeLineRef = React.useRef<HTMLButtonElement | null>(null);
@@ -1488,6 +1491,30 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               </button>
             </div>
 
+            {/* Row visibility: transliteration + translation toggles */}
+            <div className="mt-2 flex flex-shrink-0 justify-end gap-1.5 px-3">
+              <button
+                onClick={() => setShellShowTranslit((v) => !v)}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                  shellShowTranslit
+                    ? "border-teal-500 bg-teal-50 text-teal-700"
+                    : "border-stone-200 bg-white text-slate-400"
+                }`}
+              >
+                {shellShowTranslit ? "🙉" : "🙈"} abc
+              </button>
+              <button
+                onClick={() => setShellShowEnglish((v) => !v)}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                  shellShowEnglish
+                    ? "border-teal-500 bg-teal-50 text-teal-700"
+                    : "border-stone-200 bg-white text-slate-400"
+                }`}
+              >
+                {shellShowEnglish ? "🙉" : "🙈"} EN
+              </button>
+            </div>
+
             {/* Transcript — tap a line to jump there; active line highlighted */}
             <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
               {shellSegsLoading ? (
@@ -1504,6 +1531,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     const rtl = isRTLText(main);
                     const active = i === activeSegIdx;
                     const tokens = main.split(/\s+/).filter(Boolean);
+                    // A Latin transliteration distinct from the native line.
+                    const translit =
+                      s.transliteration && s.transliteration !== main && !isRTLText(s.transliteration)
+                        ? s.transliteration
+                        : null;
                     return (
                       <div
                         key={i}
@@ -1615,7 +1647,10 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                               );
                             }).reduce((acc: any[], el: any, idx: number) => (idx === 0 ? [el] : [...acc, " ", el]), [])}
                           </span>
-                          {s.english && (
+                          {shellShowTranslit && translit && (
+                            <span dir="ltr" className={`block text-xs italic text-teal-700/80 ${rtl ? "text-right" : ""}`}>{translit}</span>
+                          )}
+                          {shellShowEnglish && s.english && (
                             <span className={`block text-xs text-slate-400 ${rtl ? "text-right" : ""}`}>{s.english}</span>
                           )}
                         </span>
