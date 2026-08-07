@@ -1071,25 +1071,25 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
     // Full dark backdrop with an iPhone-looking frame centered on it.
     <div className="flex min-h-screen items-center justify-center bg-slate-950 px-3 py-4">
       {/* Bezel */}
-      <div className="relative w-full max-w-md rounded-[3rem] border border-slate-700 bg-slate-900 p-2.5 shadow-[0_0_80px_rgba(45,212,191,0.07)]">
+      <div className="relative w-full max-w-md rounded-[3rem] border border-indigo-500/30 bg-[#0a0d24] p-2.5 shadow-[0_0_90px_rgba(124,58,237,0.28)]">
         {/* Notch / dynamic island */}
-        <div className="absolute left-1/2 top-4 z-20 h-6 w-28 -translate-x-1/2 rounded-full bg-slate-900" />
+        <div className="absolute left-1/2 top-4 z-20 h-6 w-28 -translate-x-1/2 rounded-full bg-[#0a0d24]" />
         {/* The phone screen: fixed height, no page scroll, menu pinned bottom. */}
-        <div className="flex h-[min(820px,calc(100dvh-3.5rem))] w-full flex-col overflow-hidden rounded-[2.4rem] bg-[#f7f3ea]">
+        <div className="flex h-[min(820px,calc(100dvh-3.5rem))] w-full flex-col overflow-hidden rounded-[2.4rem] bg-gradient-to-b from-[#151a45] via-[#101334] to-[#0b0e26]">
 
         {/* Top bar: palette · language · stats (padded below the notch) */}
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-stone-200/70 bg-white/80 px-5 pb-2.5 pt-8">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-white/10 bg-white/5 px-5 pb-2.5 pt-8">
           <Palette className="h-5 w-5 text-slate-300" />
           <button
             onClick={() => { setTab("account"); setLangPickerOpen(true); }}
-            className="flex items-center gap-2 text-lg font-semibold text-slate-800"
+            className="flex items-center gap-2 text-lg font-semibold text-white"
           >
             <span className="text-xl">{LANGUAGE_FLAGS[language] || "🌍"}</span>
             <span className="capitalize">{language}</span>
             <ChevronDown className="h-4 w-4 text-slate-400" />
           </button>
           <button onClick={() => { setTab("account"); }} aria-label="Stats">
-            <BarChart3 className="h-5 w-5 text-slate-400 transition hover:text-slate-600" />
+            <BarChart3 className="h-5 w-5 text-slate-400 transition hover:text-slate-300" />
           </button>
         </div>
 
@@ -1097,16 +1097,16 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {tab === "learning" && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-3">
             {/* Compact header: streak · daily goal · stats */}
-            <div className="flex flex-shrink-0 items-center justify-between rounded-2xl border border-stone-200 bg-white px-4 py-2 shadow-sm">
+            <div className="flex flex-shrink-0 items-center justify-between rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-2 shadow-sm">
               <span className="relative flex h-8 w-8 items-center justify-center">
                 <span className="text-2xl leading-none">🔥</span>
                 <span className="absolute top-2.5 text-[10px] font-bold text-white">{streak}</span>
               </span>
               <div className="flex items-center gap-3 text-center">
                 {[
-                  { label: "NEW", value: toLearn, color: "text-violet-500" },
-                  { label: "LEARNING", value: practiced, color: "text-green-600" },
-                  { label: "LEARNED", value: learned, color: "text-amber-500" },
+                  { label: "NEW", value: toLearn, color: "text-violet-400" },
+                  { label: "LEARNING", value: practiced, color: "text-emerald-400" },
+                  { label: "LEARNED", value: learned, color: "text-amber-400" },
                 ].map((s) => (
                   <span key={s.label} className="flex flex-col">
                     <span className={`text-[9px] font-semibold tracking-wide ${s.color}`}>{s.label}</span>
@@ -1116,7 +1116,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               </div>
               <span className="flex flex-col items-center">
                 <span className="text-lg leading-none">🏕️</span>
-                <span className="text-[10px] font-semibold text-orange-600">{goalDone}/{DAILY_GOAL}</span>
+                <span className="text-[10px] font-semibold text-orange-400">{goalDone}/{DAILY_GOAL}</span>
               </span>
             </div>
 
@@ -1129,13 +1129,13 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             {flashDeck.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                 <Turtle mood={mood} size="text-6xl" />
-                <p className="font-medium text-slate-700">No cards yet</p>
+                <p className="font-medium text-slate-200">No cards yet</p>
                 <p className="px-6 text-sm text-slate-500">
                   Tap words in a video transcript or add them in the Journal — they become flashcards here.
                 </p>
                 <button
                   onClick={() => setTab("library")}
-                  className="mt-1 rounded-full bg-teal-600 px-5 py-2.5 font-semibold text-white shadow"
+                  className="mt-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-5 py-2.5 font-semibold text-white shadow"
                 >
                   Watch a video
                 </button>
@@ -1147,7 +1147,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <button
                     onClick={() => setCardIdx((i) => Math.max(0, i - 1))}
                     disabled={safeCardIdx === 0}
-                    className="rounded-xl border border-stone-200 bg-white px-4 py-1.5 text-lg font-bold text-slate-500 shadow-sm disabled:opacity-30"
+                    className="rounded-xl border border-white/10 bg-white/[0.07] px-4 py-1.5 text-lg font-bold text-slate-500 shadow-sm disabled:opacity-30"
                   >
                     ←
                   </button>
@@ -1157,7 +1157,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <button
                     onClick={() => setCardIdx((i) => Math.min(flashDeck.length - 1, i + 1))}
                     disabled={safeCardIdx >= flashDeck.length - 1}
-                    className="rounded-xl border border-stone-200 bg-white px-4 py-1.5 text-lg font-bold text-slate-500 shadow-sm disabled:opacity-30"
+                    className="rounded-xl border border-white/10 bg-white/[0.07] px-4 py-1.5 text-lg font-bold text-slate-500 shadow-sm disabled:opacity-30"
                   >
                     →
                   </button>
@@ -1218,15 +1218,15 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   setJournalSelected(null);
                 }}
                 aria-label="Back"
-                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/[0.07] hover:text-slate-200"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <span className="text-lg font-bold text-slate-800">📓 Journal</span>
+              <span className="text-lg font-bold text-white">📓 Journal</span>
               {journalMode === "list" && (
                 <button
                   onClick={() => { setJournalText(""); setJournalMode("compose"); }}
-                  className="ml-auto flex items-center gap-1 rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
+                  className="ml-auto flex items-center gap-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
                 >
                   <Plus className="h-3.5 w-3.5" /> New entry
                 </button>
@@ -1236,13 +1236,13 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             {journalMode === "list" && (
               <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pb-3">
                 {lessonEntries.length === 0 ? (
-                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-300 bg-white/60 px-4 py-8 text-center">
+                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-8 text-center">
                     <span className="text-3xl">📓</span>
-                    <p className="text-sm font-medium text-slate-700">No entries yet</p>
+                    <p className="text-sm font-medium text-slate-200">No entries yet</p>
                     <p className="text-xs text-slate-500">Write about your real life — it becomes a lesson you can use.</p>
                     <button
                       onClick={() => { setJournalText(""); setJournalMode("compose"); }}
-                      className="mt-1 rounded-full bg-teal-500 px-4 py-2 text-sm font-semibold text-white shadow"
+                      className="mt-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow"
                     >
                       + New entry
                     </button>
@@ -1255,11 +1255,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         if (e.lesson) { setJournalSelected(e); setJournalMode("lesson"); }
                         else { setJournalText(e.text || ""); setJournalMode("compose"); }
                       }}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-left shadow-sm transition hover:shadow-md"
+                      className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-3 text-left shadow-sm transition hover:shadow-md"
                     >
                       <span className="text-xl">{e.lesson ? "✨" : "✏️"}</span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-slate-800">{e.title || deriveTitle(e.text)}</span>
+                        <span className="block truncate text-sm font-medium text-white">{e.title || deriveTitle(e.text)}</span>
                         <span className="block text-xs text-slate-400">{e.date || ""}</span>
                       </span>
                       <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
@@ -1268,7 +1268,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 )}
                 {/* Newest backpack words */}
                 {(words as any[]).length > 0 && (
-                  <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-3 shadow-sm">
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">🎒 Newest words in your backpack</p>
                     <div className="flex flex-wrap gap-1.5">
                       {(words as any[])
@@ -1276,7 +1276,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         .sort((a, b) => new Date(b.created_date || 0).getTime() - new Date(a.created_date || 0).getTime())
                         .slice(0, 6)
                         .map((w) => (
-                          <span key={w.id} className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">
+                          <span key={w.id} className="rounded-full bg-cyan-500/15 px-2.5 py-1 text-xs font-medium text-cyan-200">
                             {w.phonetic || w.word} · {w.translation}
                           </span>
                         ))}
@@ -1293,7 +1293,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     <button
                       key={t.label}
                       onClick={() => setJournalText((txt) => (txt ? txt : t.starter))}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs text-slate-600 shadow-sm hover:border-teal-400"
+                      className="rounded-full border border-white/10 bg-white/[0.07] px-3 py-1 text-xs text-slate-300 shadow-sm hover:border-cyan-400/60"
                     >
                       {t.label}
                     </button>
@@ -1303,7 +1303,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <button
                     onClick={generateJournalLesson}
                     disabled={journalBusy || !journalText.trim()}
-                    className="ml-auto flex items-center gap-1 rounded-full bg-teal-500 px-3 py-1 text-xs font-semibold text-white shadow disabled:opacity-40"
+                    className="ml-auto flex items-center gap-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-3 py-1 text-xs font-semibold text-white shadow disabled:opacity-40"
                   >
                     {journalBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                     {journalBusy ? "Creating…" : "Lesson"}
@@ -1313,16 +1313,16 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   value={journalText}
                   onChange={(e) => setJournalText(e.target.value)}
                   placeholder="Write about your day in English or Hebrew…"
-                  className="mt-2 min-h-0 w-full flex-1 resize-none rounded-2xl border border-stone-200 bg-white p-4 text-sm text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-teal-500 focus:outline-none"
+                  className="mt-2 min-h-0 w-full flex-1 resize-none rounded-2xl border border-white/10 bg-white/[0.07] p-4 text-sm text-white shadow-sm placeholder:text-slate-500 focus:border-cyan-400/60 focus:outline-none"
                 />
 
                 {/* Sentence-proposal cloud: the turtle "thinks up" sentences the
                     learner can tap to add to the entry. */}
                 <div className="relative mt-4 flex-shrink-0">
                   {/* thought-bubble dots */}
-                  <span className="absolute -top-3 left-8 h-2.5 w-2.5 rounded-full bg-white shadow-sm" />
-                  <span className="absolute -top-1 left-12 h-3.5 w-3.5 rounded-full bg-white shadow-sm" />
-                  <div className="rounded-[1.75rem] border border-stone-200 bg-white px-4 py-3 shadow-sm">
+                  <span className="absolute -top-3 left-8 h-2.5 w-2.5 rounded-full bg-white/[0.07] shadow-sm" />
+                  <span className="absolute -top-1 left-12 h-3.5 w-3.5 rounded-full bg-white/[0.07] shadow-sm" />
+                  <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.07] px-4 py-3 shadow-sm">
                     <div className="flex items-center justify-between">
                       <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                         <span className="text-lg">🐢💭</span> Sentence ideas — tap to add
@@ -1331,7 +1331,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         onClick={proposeSentences}
                         disabled={proposalsLoading}
                         aria-label="New ideas"
-                        className="rounded-full px-2 py-1 text-sm text-slate-400 transition hover:bg-slate-50 hover:text-teal-600 disabled:opacity-40"
+                        className="rounded-full px-2 py-1 text-sm text-slate-400 transition hover:bg-white/10 hover:text-cyan-300 disabled:opacity-40"
                       >
                         {proposalsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "🔄"}
                       </button>
@@ -1342,7 +1342,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       ) : proposals.length === 0 ? (
                         <button
                           onClick={proposeSentences}
-                          className="w-full rounded-xl border border-dashed border-stone-300 py-2.5 text-xs text-slate-500 hover:border-teal-400 hover:text-teal-600"
+                          className="w-full rounded-xl border border-dashed border-white/15 py-2.5 text-xs text-slate-500 hover:border-cyan-400/60 hover:text-cyan-300"
                         >
                           ☁️ Get sentence ideas
                         </button>
@@ -1352,14 +1352,14 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                           return (
                             <div
                               key={`${i}_${s.slice(0, 12)}`}
-                              className="rounded-xl bg-teal-50 transition hover:bg-teal-100"
+                              className="rounded-xl bg-cyan-500/10 transition hover:bg-cyan-500/20"
                             >
                               <div className="flex w-full items-center gap-2 px-3 py-2">
                                 <button
                                   onClick={() => addProposal(s)}
-                                  className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs font-medium text-teal-900"
+                                  className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs font-medium text-cyan-100"
                                 >
-                                  <Plus className="h-3.5 w-3.5 flex-shrink-0 text-teal-600" />
+                                  <Plus className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" />
                                   <span className="min-w-0 flex-1">{s}</span>
                                 </button>
                                 {/* Translate this English sentence to the target language */}
@@ -1368,17 +1368,17 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                   disabled={tr?.loading}
                                   aria-label="Translate"
                                   title={`Translate to ${languageLabel(language)}`}
-                                  className="flex-shrink-0 rounded-lg px-1.5 py-0.5 text-sm transition hover:bg-white/70 disabled:opacity-50"
+                                  className="flex-shrink-0 rounded-lg px-1.5 py-0.5 text-sm transition hover:bg-white/10 disabled:opacity-50"
                                 >
-                                  {tr?.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-teal-600" /> : "🔤"}
+                                  {tr?.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-300" /> : "🔤"}
                                 </button>
                               </div>
                               {tr?.text && (
-                                <div className="border-t border-teal-100 px-3 py-1.5">
-                                  <p dir={isRTLText(tr.text) ? "rtl" : "ltr"} className={`text-sm font-semibold text-teal-900 ${isRTLText(tr.text) ? "text-right" : ""}`}>
+                                <div className="border-t border-white/10 px-3 py-1.5">
+                                  <p dir={isRTLText(tr.text) ? "rtl" : "ltr"} className={`text-sm font-semibold text-cyan-100 ${isRTLText(tr.text) ? "text-right" : ""}`}>
                                     {tr.text}
                                   </p>
-                                  {tr.translit && <p className="text-[11px] italic text-teal-700/80">{tr.translit}</p>}
+                                  {tr.translit && <p className="text-[11px] italic text-cyan-300/80">{tr.translit}</p>}
                                 </div>
                               )}
                             </div>
@@ -1417,7 +1417,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <>
                 <div className="flex flex-shrink-0 flex-col items-center text-center">
                   <Turtle mood={mood} size="text-5xl" />
-                  <h2 className="mt-2 text-lg font-bold text-slate-800">Practice</h2>
+                  <h2 className="mt-2 text-lg font-bold text-white">Practice</h2>
                   <p className="mt-1 px-4 text-sm text-slate-500">
                     AI questions and exercises built from the newest words in your cards.
                   </p>
@@ -1425,7 +1425,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={startQuiz}
-                  className="mt-5 w-full flex-shrink-0 rounded-full bg-gradient-to-b from-green-400 to-green-500 py-3 text-lg font-semibold text-white shadow-lg shadow-green-500/30"
+                  className="mt-5 w-full flex-shrink-0 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-500 py-3 text-lg font-semibold text-white shadow-lg shadow-cyan-500/30"
                 >
                   Start exercises
                 </motion.button>
@@ -1433,11 +1433,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 {/* Journal lives inside Practice — opens in-shell */}
                 <button
                   onClick={() => setJournalMode("list")}
-                  className="mt-4 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-4 text-left shadow-sm transition hover:shadow-md"
+                  className="mt-4 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-4 text-left shadow-sm transition hover:shadow-md"
                 >
                   <span className="text-2xl">📓</span>
                   <span className="flex-1">
-                    <span className="block font-medium text-slate-800">Journal</span>
+                    <span className="block font-medium text-white">Journal</span>
                     <span className="block text-xs text-slate-500">Write entries and turn them into lessons</span>
                   </span>
                   <ChevronRight className="h-4 w-4 text-slate-400" />
@@ -1445,11 +1445,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
 
                 <button
                   onClick={() => router.push("/practice")}
-                  className="mt-3 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-4 text-left shadow-sm transition hover:shadow-md"
+                  className="mt-3 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-4 text-left shadow-sm transition hover:shadow-md"
                 >
                   <span className="text-2xl">🗣️</span>
                   <span className="flex-1">
-                    <span className="block font-medium text-slate-800">Chat &amp; speaking</span>
+                    <span className="block font-medium text-white">Chat &amp; speaking</span>
                     <span className="block text-xs text-slate-500">Talk with the AI assistant</span>
                   </span>
                   <ChevronRight className="h-4 w-4 text-slate-400" />
@@ -1464,7 +1464,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             ) : quizDone ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                 <Turtle mood={quizScore === quiz.length ? "cheer" : "happy"} size="text-6xl" />
-                <h2 className="text-2xl font-bold text-slate-800">
+                <h2 className="text-2xl font-bold text-white">
                   {quizScore} / {quiz.length}
                 </h2>
                 <p className="text-sm text-slate-500">
@@ -1474,7 +1474,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <button onClick={startQuiz} className="rounded-full bg-green-500 px-5 py-2.5 font-semibold text-white shadow">
                     Practice again
                   </button>
-                  <button onClick={() => { setQuiz([]); setQuizDone(false); }} className="rounded-full border border-stone-300 bg-white px-5 py-2.5 font-semibold text-slate-600">
+                  <button onClick={() => { setQuiz([]); setQuizDone(false); }} className="rounded-full border border-white/15 bg-white/[0.07] px-5 py-2.5 font-semibold text-slate-300">
                     Done
                   </button>
                 </div>
@@ -1489,14 +1489,14 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     <X className="h-4 w-4 text-slate-400" />
                   </button>
                 </div>
-                <div className="mt-1 h-1.5 flex-shrink-0 overflow-hidden rounded-full bg-stone-200">
+                <div className="mt-1 h-1.5 flex-shrink-0 overflow-hidden rounded-full bg-white/10">
                   <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${((quizIdx + (quizAnswer !== null ? 1 : 0)) / quiz.length) * 100}%` }} />
                 </div>
 
                 <div className="mt-4 flex flex-shrink-0 items-start gap-3">
                   <Turtle mood={mood} size="text-4xl" />
-                  <div className="relative flex-1 rounded-xl border border-stone-200 bg-white p-3 shadow-sm">
-                    <p className="text-sm font-medium text-slate-800">{quiz[quizIdx].prompt}</p>
+                  <div className="relative flex-1 rounded-xl border border-white/10 bg-white/[0.07] p-3 shadow-sm">
+                    <p className="text-sm font-medium text-white">{quiz[quizIdx].prompt}</p>
                   </div>
                 </div>
 
@@ -1504,11 +1504,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   {quiz[quizIdx].options.map((opt: string, i: number) => {
                     const isCorrect = i === quiz[quizIdx].correct_index;
                     const chosen = quizAnswer === i;
-                    let cls = "border-stone-200 bg-white text-slate-800 hover:border-teal-500";
+                    let cls = "border-white/10 bg-white/[0.07] text-white hover:border-cyan-400/60";
                     if (quizAnswer !== null) {
-                      if (isCorrect) cls = "border-green-500 bg-green-50 text-green-700";
-                      else if (chosen) cls = "border-red-400 bg-red-50 text-red-600";
-                      else cls = "border-stone-200 bg-white text-slate-400";
+                      if (isCorrect) cls = "border-emerald-400 bg-emerald-500/15 text-emerald-300";
+                      else if (chosen) cls = "border-red-400 bg-red-500/15 text-red-300";
+                      else cls = "border-white/10 bg-white/5 text-slate-500";
                     }
                     return (
                       <button
@@ -1526,7 +1526,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       {quiz[quizIdx].explanation && (
                         <p className="mb-2 text-xs text-slate-500">{quiz[quizIdx].explanation}</p>
                       )}
-                      <button onClick={nextQuiz} className="w-full rounded-full bg-teal-600 py-3 font-semibold text-white shadow">
+                      <button onClick={nextQuiz} className="w-full rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 font-semibold text-white shadow">
                         {quizIdx + 1 >= quiz.length ? "Finish" : "Next"}
                       </button>
                     </div>
@@ -1545,11 +1545,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <button
                 onClick={closeShellVideo}
                 aria-label="Back"
-                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/[0.07] hover:text-slate-200"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">{shellVideo.title}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-bold text-white">{shellVideo.title}</span>
             </div>
 
             {/* Player */}
@@ -1562,7 +1562,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <button
                 onClick={toggleShellPlay}
                 aria-label={shellPlaying ? "Pause" : "Play"}
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-stone-200 bg-white text-lg shadow-lg"
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.07] text-lg shadow-lg"
               >
                 {shellPlaying ? "⏸️" : "▶️"}
               </button>
@@ -1570,7 +1570,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onClick={toggleShellSlow}
                 aria-label="Slow mode"
                 className={`flex h-11 w-11 items-center justify-center rounded-full border text-lg shadow-lg transition ${
-                  shellSlow ? "border-teal-500 bg-teal-50" : "border-stone-200 bg-white"
+                  shellSlow ? "border-cyan-400/60 bg-cyan-500/15" : "border-white/10 bg-white/[0.07]"
                 }`}
               >
                 🐢
@@ -1583,8 +1583,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onClick={() => setShellShowTranslit((v) => !v)}
                 className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
                   shellShowTranslit
-                    ? "border-teal-500 bg-teal-50 text-teal-700"
-                    : "border-stone-200 bg-white text-slate-400"
+                    ? "border-cyan-400/60 bg-cyan-500/15 text-cyan-300"
+                    : "border-white/10 bg-white/5 text-slate-500"
                 }`}
               >
                 {shellShowTranslit ? "🙉" : "🙈"} abc
@@ -1593,8 +1593,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onClick={() => setShellShowEnglish((v) => !v)}
                 className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
                   shellShowEnglish
-                    ? "border-teal-500 bg-teal-50 text-teal-700"
-                    : "border-stone-200 bg-white text-slate-400"
+                    ? "border-cyan-400/60 bg-cyan-500/15 text-cyan-300"
+                    : "border-white/10 bg-white/5 text-slate-500"
                 }`}
               >
                 {shellShowEnglish ? "🙉" : "🙈"} EN
@@ -1605,7 +1605,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
               {shellSegsLoading ? (
                 <div className="flex flex-col items-center gap-2 py-10">
-                  <Loader2 className="h-6 w-6 animate-spin text-teal-500" />
+                  <Loader2 className="h-6 w-6 animate-spin text-cyan-400" />
                   <p className="text-xs text-slate-500">Transcribing the audio… this can take a minute.</p>
                 </div>
               ) : shellSegments.length === 0 ? (
@@ -1631,15 +1631,15 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         onClick={() => seekShellTo(s.start ?? 0)}
                         className={`flex w-full cursor-pointer items-start gap-2 rounded-xl px-3 py-2.5 text-left transition ${
                           active
-                            ? "bg-teal-50 shadow-sm ring-1 ring-teal-300"
-                            : "hover:bg-white/60"
+                            ? "bg-cyan-500/10 shadow-sm ring-1 ring-cyan-400/50"
+                            : "hover:bg-white/5"
                         }`}
                       >
                         <span className="min-w-0 flex-1">
                           <span
                             dir={rtl ? "rtl" : "ltr"}
                             className={`block text-[15px] leading-relaxed ${rtl ? "text-right" : ""} ${
-                              active ? "font-semibold text-slate-900" : "text-slate-700"
+                              active ? "font-semibold text-white" : "text-slate-200"
                             }`}
                           >
                             {/* Tap a word → popup with sound / edit / backpack */}
@@ -1651,7 +1651,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                   <span
                                     onClick={(e) => { e.stopPropagation(); tapTranscriptWord(key, tok, main); }}
                                     className={`cursor-pointer rounded px-0.5 transition ${
-                                      open ? "bg-teal-100 text-teal-900" : "hover:bg-teal-50"
+                                      open ? "bg-cyan-400/30 text-cyan-100" : "hover:bg-cyan-400/10"
                                     }`}
                                   >
                                     {tok}
@@ -1660,7 +1660,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                     <span
                                       dir="ltr"
                                       onClick={(e) => e.stopPropagation()}
-                                      className="absolute bottom-full left-1/2 z-30 mb-1.5 block w-48 -translate-x-1/2 rounded-2xl border border-stone-200 bg-white p-2.5 text-left shadow-xl"
+                                      className="absolute bottom-full left-1/2 z-30 mb-1.5 block w-48 -translate-x-1/2 rounded-2xl border border-white/15 bg-[#1a1f4b] p-2.5 text-left shadow-2xl"
                                     >
                                       {wordPopup.editing ? (
                                         <span className="block space-y-1.5">
@@ -1668,38 +1668,38 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                             value={wordPopup.clean}
                                             onChange={(e) => setWordPopup((p: any) => ({ ...p, clean: e.target.value }))}
                                             dir={rtl ? "rtl" : "ltr"}
-                                            className="w-full rounded-lg border border-stone-200 px-2 py-1 text-sm font-semibold text-slate-800 focus:border-teal-500 focus:outline-none"
+                                            className="w-full rounded-lg border border-white/10 px-2 py-1 text-sm font-semibold text-white focus:border-cyan-400/60 focus:outline-none"
                                           />
                                           <input
                                             value={wordPopup.translation}
                                             onChange={(e) => setWordPopup((p: any) => ({ ...p, translation: e.target.value }))}
                                             placeholder="Meaning"
-                                            className="w-full rounded-lg border border-stone-200 px-2 py-1 text-xs text-slate-600 focus:border-teal-500 focus:outline-none"
+                                            className="w-full rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 focus:border-cyan-400/60 focus:outline-none"
                                           />
                                         </span>
                                       ) : (
                                         <span className="block">
-                                          <span dir={rtl ? "rtl" : "ltr"} className="block text-sm font-bold text-slate-800">
+                                          <span dir={rtl ? "rtl" : "ltr"} className="block text-sm font-bold text-white">
                                             {wordPopup.clean}
                                           </span>
                                           {wordPopup.loading ? (
                                             <span className="block text-xs text-slate-400">translating…</span>
                                           ) : (
                                             <>
-                                              {wordPopup.phonetic && <span className="block text-[11px] text-teal-600">{wordPopup.phonetic}</span>}
+                                              {wordPopup.phonetic && <span className="block text-[11px] text-cyan-300">{wordPopup.phonetic}</span>}
                                               <span className="block text-xs text-slate-500">{wordPopup.translation || "—"}</span>
                                             </>
                                           )}
                                         </span>
                                       )}
                                       <span className="mt-2 flex items-center justify-between">
-                                        <button onClick={speakPopupWord} aria-label="Listen" className="rounded-lg p-1 text-base hover:bg-slate-50">
+                                        <button onClick={speakPopupWord} aria-label="Listen" className="rounded-lg p-1 text-base hover:bg-white/10">
                                           🔊
                                         </button>
                                         <button
                                           onClick={() => setWordPopup((p: any) => ({ ...p, editing: !p.editing }))}
                                           aria-label="Edit"
-                                          className={`rounded-lg p-1 text-base hover:bg-slate-50 ${wordPopup.editing ? "bg-stone-100" : ""}`}
+                                          className={`rounded-lg p-1 text-base hover:bg-white/10 ${wordPopup.editing ? "bg-white/10" : ""}`}
                                         >
                                           ✏️
                                         </button>
@@ -1707,7 +1707,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                           onClick={savePopupWord}
                                           aria-label="Add to backpack"
                                           disabled={wordPopup.saving}
-                                          className="relative rounded-lg p-1 text-base hover:bg-slate-50 disabled:opacity-50"
+                                          className="relative rounded-lg p-1 text-base hover:bg-white/10 disabled:opacity-50"
                                         >
                                           🎒
                                           {wordPopup.added && (
@@ -1716,15 +1716,15 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                             </span>
                                           )}
                                           {wordPopup.saving && (
-                                            <Loader2 className="absolute -right-0.5 -top-0.5 h-3 w-3 animate-spin text-teal-500" />
+                                            <Loader2 className="absolute -right-0.5 -top-0.5 h-3 w-3 animate-spin text-cyan-400" />
                                           )}
                                         </button>
-                                        <button onClick={() => setWordPopup(null)} aria-label="Close" className="rounded-lg p-1 text-xs text-slate-400 hover:bg-slate-50">
+                                        <button onClick={() => setWordPopup(null)} aria-label="Close" className="rounded-lg p-1 text-xs text-slate-400 hover:bg-white/10">
                                           ✕
                                         </button>
                                       </span>
                                       {/* bubble tail */}
-                                      <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-stone-200 bg-white" />
+                                      <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-white/15 bg-[#1a1f4b]" />
                                     </span>
                                   )}
                                 </span>
@@ -1732,7 +1732,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                             }).reduce((acc: any[], el: any, idx: number) => (idx === 0 ? [el] : [...acc, " ", el]), [])}
                           </span>
                           {shellShowTranslit && translit && (
-                            <span dir="ltr" className={`block text-xs italic text-teal-700/80 ${rtl ? "text-right" : ""}`}>{translit}</span>
+                            <span dir="ltr" className={`block text-xs italic text-cyan-300/80 ${rtl ? "text-right" : ""}`}>{translit}</span>
                           )}
                           {shellShowEnglish && s.english && (
                             <span className={`block text-xs text-slate-400 ${rtl ? "text-right" : ""}`}>{s.english}</span>
@@ -1754,38 +1754,38 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <button
                 onClick={() => setLibView("grid")}
                 aria-label="Back"
-                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/[0.07] hover:text-slate-200"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <span className="flex-1 text-center text-base font-bold text-slate-800">Publish Video</span>
+              <span className="flex-1 text-center text-base font-bold text-white">Publish Video</span>
               <span className="w-7" />
             </div>
 
             {/* Language */}
-            <div className="mt-3 flex-shrink-0 rounded-xl border border-stone-200 bg-white px-4 py-2.5 shadow-sm">
+            <div className="mt-3 flex-shrink-0 rounded-xl border border-white/10 bg-white/[0.07] px-4 py-2.5 shadow-sm">
               <p className="text-[11px] font-medium text-slate-400">Language</p>
               <select
                 value={searchLang}
                 onChange={(e) => setLibLang(e.target.value)}
-                className="w-full bg-transparent text-base font-semibold capitalize text-slate-800 focus:outline-none"
+                className="w-full bg-transparent text-base font-semibold capitalize text-white focus:outline-none"
               >
                 {Object.entries(LANGUAGE_FLAGS).map(([id, flag]) => (
-                  <option key={id} value={id} className="capitalize">{flag} {id}</option>
+                  <option key={id} value={id} className="bg-[#151a45] capitalize text-white">{flag} {id}</option>
                 ))}
               </select>
             </div>
 
             {/* Search box */}
-            <div className="mt-3 flex flex-shrink-0 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 shadow-sm">
+            <div className="mt-3 flex flex-shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.07] px-4 py-2.5 shadow-sm">
               <input
                 value={libSearch}
                 onChange={(e) => setLibSearch(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") runLibSearch(); }}
                 placeholder="Search on YouTube… or paste a link"
-                className="min-w-0 flex-1 bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-400 focus:outline-none"
               />
-              <button onClick={() => runLibSearch()} aria-label="Search" className="flex-shrink-0 text-teal-600">
+              <button onClick={() => runLibSearch()} aria-label="Search" className="flex-shrink-0 text-cyan-300">
                 {libSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : "🔍"}
               </button>
             </div>
@@ -1796,7 +1796,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 <button
                   key={chip}
                   onClick={() => runLibSearch(chip)}
-                  className="flex-shrink-0 rounded-full border border-stone-200 bg-white px-3.5 py-1.5 text-sm text-slate-700 shadow-sm transition hover:border-teal-500"
+                  className="flex-shrink-0 rounded-full border border-white/10 bg-white/[0.07] px-3.5 py-1.5 text-sm text-slate-200 shadow-sm transition hover:border-cyan-400/60"
                 >
                   {chip}
                 </button>
@@ -1807,7 +1807,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             <div className="mt-2 min-h-0 flex-1 overflow-y-auto pb-3">
               {libSearching ? (
                 <div className="flex flex-col items-center gap-2 py-10">
-                  <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
+                  <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
                   <p className="text-xs text-slate-500">Searching YouTube…</p>
                 </div>
               ) : libResults.length === 0 ? (
@@ -1821,9 +1821,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     <button
                       key={r.youtube_id}
                       onClick={() => openPublish(r)}
-                      className="flex w-full items-stretch gap-3 overflow-hidden rounded-2xl border border-stone-200 bg-white p-2 text-left shadow-sm transition hover:shadow-md"
+                      className="flex w-full items-stretch gap-3 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] p-2 text-left shadow-sm transition hover:shadow-md"
                     >
-                      <span className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-xl bg-stone-200">
+                      <span className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-xl bg-white/10">
                         <img
                           src={`https://i.ytimg.com/vi/${r.youtube_id}/hqdefault.jpg`}
                           alt=""
@@ -1837,7 +1837,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         )}
                       </span>
                       <span className="min-w-0 flex-1 py-0.5">
-                        <span className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800">{r.title}</span>
+                        <span className="line-clamp-2 text-sm font-semibold leading-snug text-white">{r.title}</span>
                         <span className="mt-1 flex flex-wrap items-center gap-1.5">
                           <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-600">Auto transcript</span>
                           {r.views > 0 && (
@@ -1863,11 +1863,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <button
                 onClick={() => setLibView(libResults.length ? "search" : "grid")}
                 aria-label="Back"
-                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/[0.07] hover:text-slate-200"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <span className="flex-1 text-center text-base font-bold text-slate-800">Publish Video</span>
+              <span className="flex-1 text-center text-base font-bold text-white">Publish Video</span>
               <span className="w-7" />
             </div>
 
@@ -1883,19 +1883,19 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-3">
-              <p className="text-center text-base font-bold text-slate-800">{libPick.title}</p>
+              <p className="text-center text-base font-bold text-white">{libPick.title}</p>
               <p className="mt-1 text-center text-xs text-slate-400">A transcript is generated automatically on first watch.</p>
 
               {/* Level */}
-              <div className="mt-4 rounded-xl border border-stone-200 bg-white px-4 py-2.5 shadow-sm">
+              <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.07] px-4 py-2.5 shadow-sm">
                 <p className="text-[11px] font-medium text-slate-400">Level</p>
                 <select
                   value={libLevel}
                   onChange={(e) => setLibLevel(e.target.value)}
-                  className="w-full bg-transparent text-base font-semibold text-slate-800 focus:outline-none"
+                  className="w-full bg-transparent text-base font-semibold text-white focus:outline-none"
                 >
                   {["Beginner", "Intermediate", "Advanced"].map((d) => (
-                    <option key={d} value={d}>{d}</option>
+                    <option key={d} value={d} className="bg-[#151a45] text-white">{d}</option>
                   ))}
                 </select>
               </div>
@@ -1911,7 +1911,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         key={t}
                         onClick={() => setLibTopics((cur) => (on ? cur.filter((x) => x !== t) : [...cur, t]))}
                         className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
-                          on ? "border-teal-600 bg-teal-50 text-teal-700" : "border-stone-200 bg-white text-slate-500 hover:border-teal-400"
+                          on ? "border-cyan-400/60 bg-cyan-500/15 text-cyan-300" : "border-white/10 bg-white/[0.07] text-slate-500 hover:border-cyan-400/60"
                         }`}
                       >
                         {t}
@@ -1924,7 +1924,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <button
                 onClick={savePublish}
                 disabled={libSaving}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-b from-teal-500 to-teal-600 py-3.5 text-lg font-semibold tracking-wide text-white shadow-lg shadow-teal-600/30 disabled:opacity-50"
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 via-purple-500 to-indigo-500 py-3.5 text-lg font-semibold tracking-wide text-white shadow-lg shadow-purple-600/40 disabled:opacity-50"
               >
                 {libSaving && <Loader2 className="h-5 w-5 animate-spin" />}
                 {libSaving ? "Saving…" : "SAVE"}
@@ -1937,17 +1937,17 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {tab === "library" && !shellVideo && libView === "grid" && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
             <div className="flex flex-shrink-0 items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">📚 Library</h2>
+              <h2 className="text-lg font-bold text-white">📚 Library</h2>
               <button
                 onClick={() => { setLibSearch(""); setLibResults([]); setLibLang(""); setLibView("search"); }}
-                className="rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
+                className="rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow"
               >
                 + Add video
               </button>
             </div>
 
             {/* All videos / My videos */}
-            <div className="mt-3 flex flex-shrink-0 gap-1 rounded-full border border-stone-200 bg-white p-1 shadow-sm">
+            <div className="mt-3 flex flex-shrink-0 gap-1 rounded-full border border-white/10 bg-white/[0.07] p-1 shadow-sm">
               {[
                 { key: "all", label: "All videos" },
                 { key: "mine", label: "My Videos" },
@@ -1956,7 +1956,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   key={f.key}
                   onClick={() => setLibFilter(f.key as any)}
                   className={`flex-1 rounded-full py-1.5 text-xs font-semibold transition ${
-                    libFilter === f.key ? "bg-teal-600 text-white shadow" : "text-slate-500 hover:text-slate-700"
+                    libFilter === f.key ? "bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-200"
                   }`}
                 >
                   {f.label}
@@ -1969,15 +1969,15 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 const visible = libFilter === "mine" ? shellVideos.filter((v: any) => v._mine) : shellVideos;
                 if (visible.length === 0) {
                   return (
-                    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-stone-300 bg-white/60 px-4 py-10 text-center">
+                    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-10 text-center">
                       <span className="text-3xl">📺</span>
-                      <p className="text-sm font-medium text-slate-700">
+                      <p className="text-sm font-medium text-slate-200">
                         {libFilter === "mine" ? "You haven't added any videos yet" : "No videos yet"}
                       </p>
                       <p className="text-xs text-slate-500">Search YouTube and publish a video to start learning from real content.</p>
                       <button
                         onClick={() => { setLibSearch(""); setLibResults([]); setLibView("search"); }}
-                        className="mt-1 rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow"
+                        className="mt-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow"
                       >
                         + Add video
                       </button>
@@ -1993,19 +1993,19 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         <button
                           key={`${v._mine ? "mine" : "cat"}_${v.id}`}
                           onClick={() => openShellVideo(v)}
-                          className="overflow-hidden rounded-2xl border border-stone-200 bg-white text-left shadow-sm transition hover:shadow-md"
+                          className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.07] text-left shadow-sm transition hover:shadow-md"
                         >
-                          <div className="aspect-video w-full bg-stone-200">
+                          <div className="aspect-video w-full bg-white/10">
                             {thumb && (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={thumb} alt={v.title} className="h-full w-full object-cover" onError={(e: any) => { e.target.style.display = "none"; }} />
                             )}
                           </div>
                           <div className="p-2.5">
-                            <p className="line-clamp-2 text-xs font-semibold leading-snug text-slate-800">{v.title}</p>
+                            <p className="line-clamp-2 text-xs font-semibold leading-snug text-white">{v.title}</p>
                             <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                              {v.difficulty_level && <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.difficulty_level}</span>}
-                              {v.duration_minutes && <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.duration_minutes} min</span>}
+                              {v.difficulty_level && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.difficulty_level}</span>}
+                              {v.duration_minutes && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.duration_minutes} min</span>}
                               {v._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">My video</span>}
                             </div>
                           </div>
@@ -2024,32 +2024,32 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-6">
             <div className="flex flex-shrink-0 flex-col items-center text-center">
               <Turtle mood={mood} size="text-5xl" />
-              <p className="mt-2 font-semibold text-slate-800">{currentUser?.full_name || currentUser?.email}</p>
+              <p className="mt-2 font-semibold text-white">{currentUser?.full_name || currentUser?.email}</p>
               <p className="text-xs text-slate-400">{currentUser?.email}</p>
             </div>
             <div className="mt-5 space-y-2.5 overflow-y-auto pb-3">
               {/* Learning language — expandable picker (was the sidebar switcher) */}
-              <div className="rounded-2xl border border-stone-200 bg-white shadow-sm">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.07] shadow-sm">
                 <button
                   onClick={() => setLangPickerOpen((o) => !o)}
                   className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
                 >
                   <span className="text-2xl">{LANGUAGE_FLAGS[language] || "🌍"}</span>
                   <span className="flex-1">
-                    <span className="block font-medium capitalize text-slate-800">{language}</span>
+                    <span className="block font-medium capitalize text-white">{language}</span>
                     <span className="block text-xs text-slate-500">Learning language</span>
                   </span>
                   <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${langPickerOpen ? "rotate-180" : ""}`} />
                 </button>
                 {langPickerOpen && (
-                  <div className="border-t border-stone-100 px-2 py-2">
+                  <div className="border-t border-white/10 px-2 py-2">
                     {Object.entries(LANGUAGE_FLAGS).map(([id, flag]) => (
                       <button
                         key={id}
                         onClick={() => changeLanguageMutation.mutate(id)}
                         disabled={changeLanguageMutation.isPending}
-                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-slate-50 ${
-                          id === language ? "font-semibold text-teal-600" : "text-slate-700"
+                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-white/10 ${
+                          id === language ? "font-semibold text-cyan-300" : "text-slate-200"
                         }`}
                       >
                         <span className="text-lg">{flag}</span>
@@ -2072,11 +2072,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 <button
                   key={item.label}
                   onClick={() => router.push(item.href)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3.5 text-left shadow-sm transition hover:shadow-md"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-3.5 text-left shadow-sm transition hover:shadow-md"
                 >
                   <span className="text-2xl">{item.emoji}</span>
                   <span className="flex-1">
-                    <span className="block font-medium text-slate-800">{item.label}</span>
+                    <span className="block font-medium text-white">{item.label}</span>
                     <span className="block text-xs text-slate-500">{item.desc}</span>
                   </span>
                   <ChevronRight className="h-4 w-4 text-slate-400" />
@@ -2084,17 +2084,17 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               ))}
               <button
                 onClick={() => base44.auth.logout()}
-                className="flex w-full items-center gap-3 rounded-2xl border border-red-100 bg-white px-4 py-3.5 text-left shadow-sm transition hover:bg-red-50"
+                className="flex w-full items-center gap-3 rounded-2xl border border-red-500/20 bg-white/[0.07] px-4 py-3.5 text-left shadow-sm transition hover:bg-red-500/10"
               >
                 <span className="text-2xl">🚪</span>
-                <span className="flex-1 font-medium text-red-500">Sign out</span>
+                <span className="flex-1 font-medium text-red-400">Sign out</span>
               </button>
             </div>
           </div>
         )}
 
         {/* ================= BOTTOM MENU (pinned) ================= */}
-        <div className="flex flex-shrink-0 items-center justify-around border-t border-stone-200 bg-white px-2 py-2">
+        <div className="flex flex-shrink-0 items-center justify-around border-t border-white/10 bg-black/30 px-2 py-2">
           {[
             { key: "learning", emoji: "🎒", label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
             { key: "practice", emoji: "💬", label: "PRACTICE", onTap: () => { closeShellVideo(); setTab("practice"); setJournalMode("off"); } },
@@ -2105,7 +2105,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               key={t.key}
               onClick={t.onTap}
               className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[10px] font-semibold tracking-wide ${
-                tab === t.key ? "text-teal-700" : "text-slate-400 hover:text-slate-600"
+                tab === t.key ? "text-cyan-300" : "text-slate-400 hover:text-slate-300"
               }`}
             >
               <span className="text-xl">{t.emoji}</span>
@@ -2115,7 +2115,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         </div>
         </div>
         {/* Home indicator */}
-        <div className="mx-auto mt-2 h-1 w-28 rounded-full bg-slate-700" />
+        <div className="mx-auto mt-2 h-1 w-28 rounded-full bg-indigo-400/40" />
       </div>
     </div>
   );
