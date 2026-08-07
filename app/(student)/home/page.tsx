@@ -24,7 +24,15 @@ import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
 import WordCard from "@/components/backpack/WordCard";
 import PhotoWordCapture from "@/components/home/PhotoWordCapture";
-import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
+import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/transcription";
+
+// The app teaches no Arabic — any Arabic script in a transcript is corruption
+// left over from YouTube's wrong-language caption tracks (e.g. "[موسيقى]").
+const ARABIC_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]+/g;
+const countArabic = (t: string) => (t.match(ARABIC_RE) || []).join("").length;
+const countHebrew = (t: string) => (t.match(/[֐-׿]/g) || []).join("").length;
+const scrubSegmentText = (t: any) =>
+  stripCaptionNoise(String(t ?? "")).replace(ARABIC_RE, " ").replace(/\s+/g, " ").trim();
 import { generateLessonAudio } from "@/lib/audio/lessonAudio";
 
 // Strip punctuation from a tapped transcript token, keeping native letters.
@@ -710,33 +718,57 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
   // -------------------------------------------------------------------------
   const openShellVideo = async (v: any) => {
     setShellVideo(v);
-    setShellSegments(Array.isArray(v.processed_transcript) ? v.processed_transcript : []);
     setShellPlaying(false);
     setShellSlow(false);
     setShellTime(0);
 
-    // No saved transcript → transcribe the audio now (and persist it when we
-    // own the row, so next open is instant).
-    if (!v.processed_transcript?.length && v.video_id) {
+    // Scrub the stored transcript: drop caption-noise markers and ALL Arabic
+    // script (legacy wrong-language caption data — the app teaches no Arabic).
+    // A majority-Arabic transcript is beyond repair → discard and re-transcribe.
+    const stored: any[] = Array.isArray(v.processed_transcript) ? v.processed_transcript : [];
+    const joined = stored.map((s) => `${s.hebrew || ""} ${s.transliteration || ""} ${s.text || ""}`).join(" ");
+    const corrupt = countArabic(joined) > countHebrew(joined) && countArabic(joined) > 20;
+    const cleaned = corrupt
+      ? []
+      : stored
+          .map((s) => ({
+            ...s,
+            text: scrubSegmentText(s.text),
+            hebrew: s.hebrew ? scrubSegmentText(s.hebrew) : s.hebrew,
+            transliteration: s.transliteration ? scrubSegmentText(s.transliteration) : s.transliteration,
+          }))
+          .filter((s) => (s.hebrew || s.transliteration || s.text || "").trim().length > 0);
+    setShellSegments(cleaned);
+
+    const writeEntity = v._mine
+      ? base44.entities.UserSavedVideo
+      : currentUser?.role === "admin"
+      ? base44.entities.MediaLibrary
+      : null;
+
+    // Persist the scrub when it actually removed something (self-healing —
+    // the Arabic never comes back for the next viewer).
+    if (!corrupt && cleaned.length > 0 && writeEntity && JSON.stringify(cleaned) !== JSON.stringify(stored)) {
+      writeEntity.update(v.id, { processed_transcript: cleaned }).catch(() => {});
+    }
+
+    // No usable transcript (missing or corrupt) → transcribe the audio now
+    // (and persist when we own the row, so next open is instant).
+    if (cleaned.length === 0 && v.video_id) {
       setShellSegsLoading(true);
       try {
         const data: any = await transcribeMediaSource(youtubeSource(v.video_id), { language: v.language || language });
-        const segs = (data?.transcript || []).map((s: any) => ({
-          text: s.text,
-          transliteration: s.text,
-          english: "",
-          start: s.start,
-        }));
+        const segs = (data?.transcript || [])
+          .map((s: any) => ({
+            text: scrubSegmentText(s.text),
+            transliteration: scrubSegmentText(s.text),
+            english: "",
+            start: s.start,
+          }))
+          .filter((s: any) => s.text.length > 0);
         setShellSegments(segs);
-        if (segs.length > 0) {
-          const entity = v._mine
-            ? base44.entities.UserSavedVideo
-            : currentUser?.role === "admin"
-            ? base44.entities.MediaLibrary
-            : null;
-          if (entity) {
-            entity.update(v.id, { processed_transcript: segs }).catch(() => {});
-          }
+        if (segs.length > 0 && writeEntity) {
+          writeEntity.update(v.id, { processed_transcript: segs }).catch(() => {});
         }
       } catch (e) {
         console.error(e);
