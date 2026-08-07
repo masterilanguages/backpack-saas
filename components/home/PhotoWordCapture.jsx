@@ -95,14 +95,14 @@ export default function PhotoWordCapture({ language = "hebrew" }) {
       <button
         onClick={() => inputRef.current?.click()}
         disabled={scanning}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-2.5 text-sm font-semibold text-slate-200 shadow-sm transition hover:border-cyan-400/60 hover:text-cyan-300 disabled:opacity-60"
+        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-100 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-md shadow-indigo-100/70 transition hover:border-indigo-400 hover:text-indigo-600 disabled:opacity-60"
       >
-        {scanning ? <Loader2 className="h-4 w-4 animate-spin text-cyan-300" /> : <Camera className="h-4 w-4 text-cyan-300" />}
+        {scanning ? <Loader2 className="h-4 w-4 animate-spin text-indigo-500" /> : <Camera className="h-4 w-4 text-indigo-500" />}
         {scanning ? "Scanning your photo…" : "📷 Scan handwritten words"}
       </button>
 
       {captured.length > 0 && (
-        <div className="mt-2 rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-2 shadow-sm">
+        <div className="mt-2 rounded-2xl border border-indigo-100 bg-white px-3 py-2 shadow-md shadow-indigo-100/70">
           <p className="mb-1.5 text-[11px] font-semibold text-slate-400">
             Captured — review &amp; rate them in your Backpack:
           </p>
@@ -111,7 +111,7 @@ export default function PhotoWordCapture({ language = "hebrew" }) {
               <span
                 key={w}
                 dir={isRTLText(w) ? "rtl" : "ltr"}
-                className="rounded-full bg-cyan-500/15 px-2.5 py-1 text-xs font-medium text-cyan-200"
+                className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700"
               >
                 {w}
               </span>
