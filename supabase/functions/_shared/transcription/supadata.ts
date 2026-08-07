@@ -132,19 +132,16 @@ export const supadataProvider: TranscriptionProvider = {
     const genBudget = opts.budgetMs ?? 135_000;
     const firstBudget = Math.min(75_000, genBudget);
 
-    // Audio ASR only — captions are never used, even when they exist. The
-    // language hint pins the ASR to the video's target language so auto-detect
-    // can't wander off (e.g. to a translated French track).
-    let generated = await fetchSupadata(
-      apiKey,
-      videoId,
-      reqCode ? { mode: "generate", lang: reqCode } : { mode: "generate" },
-      firstBudget,
-    );
+    // Audio ASR only — captions are never used, even when they exist.
+    // IMPORTANT: `lang` must NOT be sent with mode=generate — Supadata rejects
+    // the combination with a 400 "Invalid Request" (verified live). The ASR
+    // auto-detects the spoken language; wrong-language output is caught by the
+    // script check below instead of an upfront pin.
+    let generated = await fetchSupadata(apiKey, videoId, { mode: "generate" }, firstBudget);
     steps.push("audio_generate");
     let content: any[] = Array.isArray(generated?.content) ? generated.content : [];
 
-    // Wrong writing system → one forced retry, then fail honestly. Never
+    // Wrong writing system → one fresh retry, then fail honestly. Never
     // return text in a language the learner didn't ask for.
     if (content.length > 0 && reqCode) {
       const sample = content.slice(0, 40).map((s: any) => s?.text || "").join(" ");
@@ -153,7 +150,7 @@ export const supadataProvider: TranscriptionProvider = {
         const retry = await fetchSupadata(
           apiKey,
           videoId,
-          { mode: "generate", lang: reqCode },
+          { mode: "generate" },
           Math.max(20_000, genBudget - firstBudget),
         );
         steps.push("audio_generate_retry");
