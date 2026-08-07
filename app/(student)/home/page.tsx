@@ -1569,20 +1569,18 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         ? s.transliteration
                         : null;
                     return (
+                      // Tap the sentence to play from there (words still open
+                      // their popup); the line being spoken is highlighted.
                       <div
                         key={i}
                         ref={active ? (activeLineRef as any) : null}
-                        className={`flex w-full items-start gap-2 rounded-xl px-3 py-2.5 text-left transition ${
-                          active ? "bg-white shadow-sm" : "hover:bg-white/60"
+                        onClick={() => seekShellTo(s.start ?? 0)}
+                        className={`flex w-full cursor-pointer items-start gap-2 rounded-xl px-3 py-2.5 text-left transition ${
+                          active
+                            ? "bg-teal-50 shadow-sm ring-1 ring-teal-300"
+                            : "hover:bg-white/60"
                         }`}
                       >
-                        <button
-                          onClick={() => seekShellTo(s.start ?? 0)}
-                          aria-label="Play from here"
-                          className={`mt-0.5 flex-shrink-0 text-sm ${active ? "text-teal-600" : "text-teal-300"}`}
-                        >
-                          🔊
-                        </button>
                         <span className="min-w-0 flex-1">
                           <span
                             dir={rtl ? "rtl" : "ltr"}
