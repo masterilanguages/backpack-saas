@@ -246,12 +246,28 @@ export default function WordCard({
           )}
         </div>
         {word.image_url && !imgFailed ? (
-          <img
-            src={word.image_url}
-            alt={word.phonetic}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', position: 'absolute', top: 0, left: 0 }}
-            onError={() => setImgFailed(true)}
-          />
+          <>
+            <img
+              src={word.image_url}
+              alt={word.phonetic}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', position: 'absolute', top: 0, left: 0 }}
+              onError={() => setImgFailed(true)}
+            />
+            {/* Regenerate the image: with typed specs in the designer input it
+                recreates from those specs, otherwise a fresh auto mnemonic. */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isGeneratingImage || regeneratingImage) return;
+                if (customDesc.trim()) generateCustomMnemonic();
+                else suggestMnemonicForWord(word);
+              }}
+              title={customDesc.trim() ? "Regenerate from your description" : "Regenerate image"}
+              className="absolute bottom-1.5 left-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/70 text-sm backdrop-blur-sm transition hover:bg-slate-900/90"
+            >
+              {(isGeneratingImage || regeneratingImage) ? <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-400" /> : '🔄'}
+            </button>
+          </>
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-teal-500/15 via-teal-400/5 to-slate-800 flex flex-col items-center justify-center text-center px-4 gap-2">
             {(isGeneratingImage || regeneratingImage) ? (
@@ -339,9 +355,10 @@ export default function WordCard({
           />
           <button
             onClick={generateCustomMnemonic}
-            disabled={!customDesc.trim()}
-            className="px-1.5 py-1 bg-teal-500 text-white rounded text-[9px] font-bold hover:bg-teal-400 disabled:opacity-40 flex-shrink-0"
-          >✓</button>
+            disabled={!customDesc.trim() || regeneratingImage}
+            title="Create the image from your description"
+            className="px-1.5 py-1 bg-teal-500 text-white rounded text-[10px] font-bold hover:bg-teal-400 disabled:opacity-40 flex-shrink-0"
+          >{regeneratingImage ? <Loader2 className="w-3 h-3 animate-spin" /> : '🔄'}</button>
           <button onClick={() => setShowCustomMnemonic(false)} className="text-slate-500 hover:text-slate-300 flex-shrink-0"><X className="w-3 h-3" /></button>
         </div>
       ) : null}
