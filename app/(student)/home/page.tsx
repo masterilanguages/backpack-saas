@@ -1096,35 +1096,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {/* ================= BACKPACK (cards one by one) ================= */}
         {tab === "learning" && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-3">
-            {/* Compact header: streak · daily goal · stats */}
-            <div className="flex flex-shrink-0 items-center justify-between rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-2 shadow-sm">
-              <span className="relative flex h-8 w-8 items-center justify-center">
-                <span className="text-2xl leading-none">🔥</span>
-                <span className="absolute top-2.5 text-[10px] font-bold text-white">{streak}</span>
-              </span>
-              <div className="flex items-center gap-3 text-center">
-                {[
-                  { label: "NEW", value: toLearn, color: "text-violet-400" },
-                  { label: "LEARNING", value: practiced, color: "text-emerald-400" },
-                  { label: "LEARNED", value: learned, color: "text-amber-400" },
-                ].map((s) => (
-                  <span key={s.label} className="flex flex-col">
-                    <span className={`text-[9px] font-semibold tracking-wide ${s.color}`}>{s.label}</span>
-                    <span className={`text-lg font-bold leading-tight ${s.color}`}>{s.value}</span>
-                  </span>
-                ))}
-              </div>
-              <span className="flex flex-col items-center">
-                <span className="text-lg leading-none">🏕️</span>
-                <span className="text-[10px] font-semibold text-orange-400">{goalDone}/{DAILY_GOAL}</span>
-              </span>
-            </div>
-
             {/* Photograph handwritten vocab → words land in the Backpack's
                 pending-review flow */}
-            <div className="mt-2">
-              <PhotoWordCapture language={language} />
-            </div>
+            <PhotoWordCapture language={language} />
 
             {flashDeck.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
