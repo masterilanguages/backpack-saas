@@ -141,24 +141,30 @@ export const supadataProvider: TranscriptionProvider = {
     steps.push("audio_generate");
     let content: any[] = Array.isArray(generated?.content) ? generated.content : [];
 
-    // Wrong writing system → one fresh retry, then fail honestly. Never
-    // return text in a language the learner didn't ask for.
+    // Wrong writing system (e.g. YouTube served a FRENCH auto-dub track to
+    // the ASR — Supadata caches its generate result per video, so a retry
+    // cannot fix it). LAST RESORT: the video's native caption track in the
+    // REQUESTED language, accepted only if its script actually matches.
+    // Audio-first stays the rule; a validated same-language caption beats
+    // returning nothing at all.
+    let source_id = "supadata_ai";
     if (content.length > 0 && reqCode) {
       const sample = content.slice(0, 40).map((s: any) => s?.text || "").join(" ");
       if (!matchesRequestedScript(sample, reqCode)) {
         steps.push(`wrong_language:${normLang(generated?.lang) || "unknown"}`);
-        const retry = await fetchSupadata(
+        const captions = await fetchSupadata(
           apiKey,
           videoId,
-          { mode: "generate" },
+          { mode: "native", lang: reqCode },
           Math.max(20_000, genBudget - firstBudget),
         );
-        steps.push("audio_generate_retry");
-        const retryContent: any[] = Array.isArray(retry?.content) ? retry.content : [];
-        const retrySample = retryContent.slice(0, 40).map((s: any) => s?.text || "").join(" ");
-        if (retryContent.length > 0 && matchesRequestedScript(retrySample, reqCode)) {
-          generated = retry;
-          content = retryContent;
+        steps.push("native_captions_fallback");
+        const capContent: any[] = Array.isArray(captions?.content) ? captions.content : [];
+        const capSample = capContent.slice(0, 40).map((s: any) => s?.text || "").join(" ");
+        if (capContent.length > 0 && matchesRequestedScript(capSample, reqCode)) {
+          generated = captions;
+          content = capContent;
+          source_id = "youtube_captions_validated";
         } else {
           steps.push("wrong_language_unrecoverable");
           return {
@@ -191,7 +197,7 @@ export const supadataProvider: TranscriptionProvider = {
       transcript,
       language: reqCode || returnedLang || "unknown",
       availableLanguages: generated?.availableLangs || [],
-      source: "supadata_ai",
+      source: source_id,
       steps,
     };
   },
