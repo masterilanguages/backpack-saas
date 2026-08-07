@@ -161,7 +161,12 @@ export default function Home() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [tab, setTab] = useState<"learning" | "practice" | "library" | "account">("learning");
+  const [tab, setTab] = useState<"learning" | "practice" | "path" | "library" | "account">("learning");
+  // Videos the user has opened on this device — drives the Path's progress.
+  const [watchedIds, setWatchedIds] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try { return new Set(JSON.parse(localStorage.getItem("watchedShellVideos") || "[]")); } catch { return new Set(); }
+  });
   const [mood, setMood] = useState<Mood>("idle");
 
   // In-shell journal (lives inside the Practice tab)
@@ -745,6 +750,14 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
   // -------------------------------------------------------------------------
   const openShellVideo = async (v: any) => {
     setShellVideo(v);
+    if (v.video_id) {
+      setWatchedIds((prev) => {
+        const next = new Set(prev);
+        next.add(v.video_id);
+        try { localStorage.setItem("watchedShellVideos", JSON.stringify([...next])); } catch {}
+        return next;
+      });
+    }
     setShellPlaying(false);
     setShellSlow(false);
     setShellTime(0);
@@ -1517,7 +1530,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         )}
 
         {/* ================= LIBRARY / VIDEO PLAYER ================= */}
-        {tab === "library" && shellVideo && (
+        {(tab === "library" || tab === "path") && shellVideo && (
           <div className="flex min-h-0 flex-1 flex-col">
             {/* Header */}
             <div className="flex flex-shrink-0 items-center gap-2 px-4 pt-2 pb-2">
@@ -1720,6 +1733,85 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ================= PATH — video journey, Mondly-style ================= */}
+        {tab === "path" && !shellVideo && (
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
+            <div className="flex flex-shrink-0 items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800">🛤️ Your path</h2>
+              <span className="text-xs font-semibold text-indigo-500">
+                {shellVideos.filter((v: any) => watchedIds.has(v.video_id)).length} / {shellVideos.length}
+              </span>
+            </div>
+            <div className="relative mt-3 min-h-0 flex-1 overflow-y-auto pb-6">
+              {shellVideos.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-indigo-200 bg-white/60 px-4 py-10 text-center">
+                  <span className="text-3xl">🛤️</span>
+                  <p className="text-sm font-medium text-slate-700">Your path is empty</p>
+                  <p className="text-xs text-slate-500">Publish videos in the Library — each one becomes a step on your path.</p>
+                </div>
+              ) : (
+                <div className="relative">
+                  {/* The winding ribbon */}
+                  <div className="pointer-events-none absolute bottom-2 left-1/2 top-2 w-4 -translate-x-1/2 rounded-full bg-gradient-to-b from-fuchsia-400/50 via-purple-400/50 to-indigo-400/50 blur-[1px]" />
+                  <div className="space-y-7 py-2">
+                    {(() => {
+                      const firstUnwatched = shellVideos.findIndex((v: any) => !watchedIds.has(v.video_id));
+                      return shellVideos.map((v: any, i: number) => {
+                        const vid = v.video_id || "";
+                        const thumb = v.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : "");
+                        const watched = watchedIds.has(vid);
+                        const isNext = i === firstUnwatched;
+                        const left = i % 2 === 0;
+                        return (
+                          <div key={`${v._mine ? "m" : "c"}_${v.id}`} className={`relative flex items-center gap-3 ${left ? "" : "flex-row-reverse"}`}>
+                            {/* Node: the video thumbnail on its little platform */}
+                            <button
+                              onClick={() => openShellVideo(v)}
+                              className={`relative w-36 flex-shrink-0 overflow-hidden rounded-2xl bg-white shadow-lg transition hover:scale-[1.03] ${
+                                isNext
+                                  ? "ring-4 ring-fuchsia-400/70 shadow-fuchsia-300/50"
+                                  : watched
+                                  ? "ring-2 ring-emerald-400/80 shadow-indigo-200/60"
+                                  : "ring-1 ring-indigo-100 opacity-90 shadow-indigo-200/60"
+                              }`}
+                            >
+                              <span className="block aspect-video w-full bg-indigo-100">
+                                {thumb && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={thumb} alt={v.title} className="h-full w-full object-cover" onError={(e: any) => { e.target.style.display = "none"; }} />
+                                )}
+                              </span>
+                              {watched && (
+                                <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[11px] font-bold text-white shadow">✓</span>
+                              )}
+                            </button>
+                            {/* Label + CONTINUE on the next step */}
+                            <div className={`min-w-0 flex-1 ${left ? "" : "text-right"}`}>
+                              <p className={`line-clamp-2 text-sm font-bold leading-snug ${isNext ? "text-slate-900" : "text-slate-600"}`}>{v.title}</p>
+                              <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${left ? "" : "justify-end"}`}>
+                                {v.difficulty_level && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-500">{v.difficulty_level}</span>}
+                                {v.duration_minutes && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-500">{v.duration_minutes} min</span>}
+                              </div>
+                              {isNext && (
+                                <button
+                                  onClick={() => openShellVideo(v)}
+                                  className="mt-2 rounded-full bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-md shadow-fuchsia-300/60"
+                                >
+                                  {watchedIds.size === 0 ? "Start" : "Continue"}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
                 </div>
               )}
             </div>
@@ -2041,6 +2133,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               </div>
 
               {[
+                // Practice & Journal moved here when the PATH tab took their slot.
+                { emoji: "💬", label: "Practice", desc: "AI exercises from your newest cards", action: () => { setTab("practice"); setJournalMode("off"); } },
+                { emoji: "📓", label: "Journal", desc: "Write entries and turn them into lessons", action: () => { setTab("practice"); setJournalMode("list"); } },
                 { emoji: "📈", label: "Progress", desc: "Streaks, words and study time", href: "/progress" },
                 { emoji: "🗓️", label: "Schedule", desc: "Your sessions and daily tasks", href: "/learn/lessons/days" },
                 { emoji: "⚙️", label: "Settings", desc: "Account and preferences", href: "/settings" },
@@ -2050,7 +2145,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               ].map((item) => (
                 <button
                   key={item.label}
-                  onClick={() => router.push(item.href)}
+                  onClick={() => ((item as any).action ? (item as any).action() : router.push((item as any).href))}
                   className="flex w-full items-center gap-3 rounded-2xl border border-indigo-100 bg-white px-4 py-3.5 text-left shadow-md shadow-indigo-100/70 transition hover:shadow-md"
                 >
                   <span className="text-2xl">{item.emoji}</span>
@@ -2076,7 +2171,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         <div className="flex flex-shrink-0 items-center justify-around border-t border-indigo-100 bg-white px-2 py-2">
           {[
             { key: "learning", emoji: "🎒", label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
-            { key: "practice", emoji: "💬", label: "PRACTICE", onTap: () => { closeShellVideo(); setTab("practice"); setJournalMode("off"); } },
+            { key: "path", emoji: "🛤️", label: "PATH", onTap: () => { closeShellVideo(); setTab("path"); } },
             { key: "library", emoji: "📚", label: "LIBRARY", onTap: () => { closeShellVideo(); setLibView("grid"); setTab("library"); } },
             { key: "account", emoji: "👤", label: "ACCOUNT", onTap: () => { closeShellVideo(); setTab("account"); } },
           ].map((t) => (
