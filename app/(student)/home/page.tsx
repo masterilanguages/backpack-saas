@@ -23,6 +23,7 @@ import { mnemonicImagePrompt } from "@/lib/imageStyle";
 import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
 import WordCard from "@/components/backpack/WordCard";
+import PhotoWordCapture from "@/components/home/PhotoWordCapture";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 import { generateLessonAudio } from "@/lib/audio/lessonAudio";
 
@@ -1055,6 +1056,12 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 <span className="text-lg leading-none">🏕️</span>
                 <span className="text-[10px] font-semibold text-orange-600">{goalDone}/{DAILY_GOAL}</span>
               </span>
+            </div>
+
+            {/* Photograph handwritten vocab → words land in the Backpack's
+                pending-review flow */}
+            <div className="mt-2">
+              <PhotoWordCapture language={language} />
             </div>
 
             {flashDeck.length === 0 ? (
