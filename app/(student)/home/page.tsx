@@ -764,10 +764,16 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
 
     // Scrub the stored transcript: drop caption-noise markers and ALL Arabic
     // script (legacy wrong-language caption data — the app teaches no Arabic).
-    // A majority-Arabic transcript is beyond repair → discard and re-transcribe.
+    // Beyond-repair transcripts are discarded and re-transcribed:
+    //  - majority-Arabic (old wrong caption tracks), or
+    //  - a Hebrew video whose transcript has essentially no Hebrew script
+    //    (e.g. a translated FRENCH track that slipped in upstream).
     const stored: any[] = Array.isArray(v.processed_transcript) ? v.processed_transcript : [];
     const joined = stored.map((s) => `${s.hebrew || ""} ${s.transliteration || ""} ${s.text || ""}`).join(" ");
-    const corrupt = countArabic(joined) > countHebrew(joined) && countArabic(joined) > 20;
+    const vidLangIsHebrew = (v.language || language) === "hebrew";
+    const corrupt =
+      (countArabic(joined) > countHebrew(joined) && countArabic(joined) > 20) ||
+      (vidLangIsHebrew && joined.replace(/\s/g, "").length > 200 && countHebrew(joined) < 20);
     const cleaned = corrupt
       ? []
       : stored

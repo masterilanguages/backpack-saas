@@ -90,6 +90,24 @@ async function fetchSupadata(
   return payload;
 }
 
+// Does the transcript's writing system match the requested language?
+// Hebrew must come back in Hebrew script; the app's other languages
+// (en/es/fr/pt/it) must come back in Latin script. Catches the failure mode
+// where the ASR (or an upstream translated track) returns e.g. FRENCH text
+// for a Hebrew video — wrong-language output must never be accepted.
+function matchesRequestedScript(sample: string, reqCode: string): boolean {
+  if (!reqCode) return true;
+  let hebrew = 0, latin = 0, arabic = 0;
+  for (const ch of sample) {
+    const c = ch.codePointAt(0)!;
+    if (c >= 0x0590 && c <= 0x05ff) hebrew++;
+    else if ((c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) || (c >= 0x00c0 && c <= 0x024f)) latin++;
+    else if ((c >= 0x0600 && c <= 0x06ff) || (c >= 0x0750 && c <= 0x077f)) arabic++;
+  }
+  if (reqCode === "he") return hebrew >= latin && hebrew > arabic;
+  return latin >= hebrew && latin > arabic;
+}
+
 export const supadataProvider: TranscriptionProvider = {
   id: "supadata",
 
@@ -112,13 +130,52 @@ export const supadataProvider: TranscriptionProvider = {
     // Whole budget goes to audio generation — there is deliberately no caption
     // fallback. Keeps the worst case under Supabase's ~150s edge wall-clock.
     const genBudget = opts.budgetMs ?? 135_000;
+    const firstBudget = Math.min(75_000, genBudget);
 
-    // Audio ASR only — captions are never used, even when they exist.
-    const generated = await fetchSupadata(apiKey, videoId, { mode: "generate" }, genBudget);
+    // Audio ASR only — captions are never used, even when they exist. The
+    // language hint pins the ASR to the video's target language so auto-detect
+    // can't wander off (e.g. to a translated French track).
+    let generated = await fetchSupadata(
+      apiKey,
+      videoId,
+      reqCode ? { mode: "generate", lang: reqCode } : { mode: "generate" },
+      firstBudget,
+    );
     steps.push("audio_generate");
-    const content: any[] = Array.isArray(generated?.content) ? generated.content : [];
-    const returnedLang = normLang(generated?.lang);
+    let content: any[] = Array.isArray(generated?.content) ? generated.content : [];
 
+    // Wrong writing system → one forced retry, then fail honestly. Never
+    // return text in a language the learner didn't ask for.
+    if (content.length > 0 && reqCode) {
+      const sample = content.slice(0, 40).map((s: any) => s?.text || "").join(" ");
+      if (!matchesRequestedScript(sample, reqCode)) {
+        steps.push(`wrong_language:${normLang(generated?.lang) || "unknown"}`);
+        const retry = await fetchSupadata(
+          apiKey,
+          videoId,
+          { mode: "generate", lang: reqCode },
+          Math.max(20_000, genBudget - firstBudget),
+        );
+        steps.push("audio_generate_retry");
+        const retryContent: any[] = Array.isArray(retry?.content) ? retry.content : [];
+        const retrySample = retryContent.slice(0, 40).map((s: any) => s?.text || "").join(" ");
+        if (retryContent.length > 0 && matchesRequestedScript(retrySample, reqCode)) {
+          generated = retry;
+          content = retryContent;
+        } else {
+          steps.push("wrong_language_unrecoverable");
+          return {
+            transcript: [],
+            language: reqCode,
+            source: "none",
+            steps,
+            error: "The transcription came back in the wrong language — try again in a minute.",
+          };
+        }
+      }
+    }
+
+    const returnedLang = normLang(generated?.lang);
     const transcript = toSegments(content);
     if (transcript.length === 0) {
       steps.push(`audio_generate_failed:${generated?.error || "empty"}`);
@@ -135,7 +192,7 @@ export const supadataProvider: TranscriptionProvider = {
     steps.push("complete");
     return {
       transcript,
-      language: returnedLang || reqCode || "unknown",
+      language: reqCode || returnedLang || "unknown",
       availableLanguages: generated?.availableLangs || [],
       source: "supadata_ai",
       steps,
