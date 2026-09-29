@@ -83,72 +83,116 @@ const REVIEW_STYLE = {
   rejected: { color: '#f87171', ring: 'rgba(248,113,113,0.55)', label: 'Needs review', Icon: X },
 };
 
-// Backpack card: up to 3 usage examples, each stacked as phonetic (top, blue),
-// native script (every word tappable → "= meaning · + Add"), English (grey).
-// Inline styles: Tailwind doesn't scan .jsx.
-function UsageExamples({ examples, loading, lang, showEnglish, onAddToBackpack, target }) {
+// Backpack card: the sentence from the video + up to 3 usage examples, ONE at a
+// time (swipe or ‹ › / dots) so the card fits the screen without scrolling.
+// Each slide is three single lines: phonetic (top, blue) · native script (every
+// word tappable → "= meaning · + Add") · English (grey). Long lines shrink
+// their font instead of wrapping. Inline styles: Tailwind doesn't scan .jsx.
+function UsageExamples({ examples, videoSentence, loading, lang, showEnglish, onAddToBackpack, target }) {
   const stem = String(target || '').replace(/[֑-ׇ]/g, '').replace(/^[הוכלבמש]/, '');
-  const [active, setActive] = useState(null); // "exampleIndex:wordIndex"
-  if (loading && !examples?.length) {
-    return (
+  const [slide, setSlide] = useState(0);
+  const [active, setActive] = useState(null); // word index on the current slide
+  const touchX = useRef(null);
+
+  const slides = [
+    ...(videoSentence ? [{ from_video: true, hebrew_sentence: videoSentence }] : []),
+    ...(Array.isArray(examples) ? examples : []),
+  ];
+  if (!slides.length) {
+    return loading ? (
       <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 0', fontSize: 12, color: '#94a3b8' }}>
         <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> Writing examples…
       </div>
-    );
+    ) : null;
   }
-  if (!examples?.length) return null;
+  const i = Math.min(slide, slides.length - 1);
+  const ex = slides[i];
+  const go = (n) => { setActive(null); setSlide((n + slides.length) % slides.length); };
+  const sentence = ex.hebrew_sentence || '';
+  const rtl = isRTLText(sentence);
+  const words = Array.isArray(ex.words) && ex.words.length ? ex.words : null;
+  const picked = words && active != null ? words[active] : null;
+  const fit = (text, max, k) => `max(10px, min(${max}px, calc(100cqw / ${(String(text || '').replace(/[֑-ׇ]/g, '').length + 2) * k})))`;
+  const line = { whiteSpace: 'nowrap', overflow: 'hidden' };
+
   return (
-    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }} onClick={(e) => e.stopPropagation()}>
-      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', paddingLeft: 2 }}>Examples</div>
-      {examples.map((ex, i) => {
-        const rtl = isRTLText(ex.hebrew_sentence || '');
-        const words = Array.isArray(ex.words) && ex.words.length ? ex.words : null;
-        const [ai, wi] = (active || '').split(':').map(Number);
-        const picked = active && ai === i && words ? words[wi] : null;
-        return (
-          <div key={i} style={{ borderRadius: 12, background: 'linear-gradient(180deg,#f5f7ff,#eef2ff)', border: '1px solid #e0e7ff', padding: '4px 10px' }}>
-            {needsTransliteration(lang) && (
-              <div style={{ fontSize: 12, fontStyle: 'italic', color: '#4f46e5', lineHeight: 1.3 }}>{ex.transliteration}</div>
-            )}
-            <div dir={rtl ? 'rtl' : 'ltr'} style={{ fontSize: 15, color: '#0f172a', lineHeight: 1.35, textAlign: rtl ? 'right' : 'left' }}>
-              {words
-                ? words.map((w, j) => (
-                    <span key={j}>
-                      <span
-                        onClick={() => setActive(active === `${i}:${j}` ? null : `${i}:${j}`)}
-                        style={{
-                          cursor: 'pointer', borderRadius: 4, padding: '0 2px',
-                          borderBottom: '1px dotted #a5b4fc',
-                          background: active === `${i}:${j}` ? '#e0e7ff' : 'transparent',
-                          ...(stem && String(w.hebrew || '').replace(/[֑-ׇ]/g, '').includes(stem) ? { color: '#4f46e5', fontWeight: 700 } : {}),
-                        }}
-                      >
-                        {w.hebrew}
-                      </span>
-                      {j < words.length - 1 ? ' ' : ''}
-                    </span>
-                  ))
-                : ex.hebrew_sentence}
-            </div>
-            {showEnglish !== false && ex.english && (
-              <div style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.25 }}>{ex.english}</div>
-            )}
-            {picked && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, padding: '4px 8px', borderRadius: 10, background: '#fff', border: '1px solid #c7d2fe', fontSize: 12 }}>
-                <span style={{ fontWeight: 700, color: '#4338ca' }}>{picked.word}</span>
-                {picked.meaning && <span style={{ color: '#64748b', flex: 1 }}>= {picked.meaning}</span>}
-                <button
-                  onClick={() => { onAddToBackpack(picked.word, picked.meaning, picked.hebrew); setActive(null); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 3, background: '#6366f1', color: '#fff', border: 0, borderRadius: 8, padding: '3px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-                >
-                  <Plus style={{ width: 12, height: 12 }} /> Add
-                </button>
-                <button onClick={() => setActive(null)} style={{ background: 'none', border: 0, color: '#94a3b8', cursor: 'pointer' }}><X style={{ width: 13, height: 13 }} /></button>
-              </div>
-            )}
+    <div
+      style={{ width: '100%' }}
+      onClick={(e) => e.stopPropagation()}
+      onTouchStart={(e) => { touchX.current = e.touches[0].clientX; }}
+      onTouchEnd={(e) => {
+        const dx = e.changedTouches[0].clientX - (touchX.current ?? e.changedTouches[0].clientX);
+        if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1));
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px 3px' }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase' }}>
+          {ex.from_video ? '📺 From the video' : `Example ${videoSentence ? i : i + 1}`}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={() => generateLessonAudio({ text: sentence, language: lang }).play()}
+            title="Listen"
+            style={{ background: 'none', border: 0, cursor: 'pointer', fontSize: 13 }}
+          >🔊</button>
+          {slides.length > 1 && (
+            <>
+              <button onClick={() => go(i - 1)} style={{ background: '#eef2ff', border: 0, borderRadius: 999, width: 22, height: 22, color: '#4f46e5', cursor: 'pointer', fontWeight: 700 }}>‹</button>
+              <button onClick={() => go(i + 1)} style={{ background: '#eef2ff', border: 0, borderRadius: 999, width: 22, height: 22, color: '#4f46e5', cursor: 'pointer', fontWeight: 700 }}>›</button>
+            </>
+          )}
+        </span>
+      </div>
+      <div style={{ borderRadius: 14, background: 'linear-gradient(180deg,#f5f7ff,#eef2ff)', border: '1px solid #e0e7ff', padding: '6px 11px', containerType: 'inline-size' }}>
+        {needsTransliteration(lang) && (
+          <div style={{ ...line, fontStyle: 'italic', color: '#4f46e5', lineHeight: 1.35, fontSize: fit(ex.transliteration, 12.5, 0.5) }}>
+            {ex.transliteration || ' '}
           </div>
-        );
-      })}
+        )}
+        <div dir={rtl ? 'rtl' : 'ltr'} style={{ ...line, color: '#0f172a', lineHeight: 1.4, textAlign: rtl ? 'right' : 'left', fontSize: fit(sentence, 16, 0.62) }}>
+          {words
+            ? words.map((w, j) => (
+                <span key={j}>
+                  <span
+                    onClick={() => setActive(active === j ? null : j)}
+                    style={{
+                      cursor: 'pointer', borderRadius: 4, padding: '0 2px',
+                      borderBottom: '1px dotted #a5b4fc',
+                      background: active === j ? '#e0e7ff' : 'transparent',
+                      ...(stem && String(w.hebrew || '').replace(/[֑-ׇ]/g, '').includes(stem) ? { color: '#4f46e5', fontWeight: 700 } : {}),
+                    }}
+                  >
+                    {w.hebrew}
+                  </span>
+                  {j < words.length - 1 ? ' ' : ''}
+                </span>
+              ))
+            : sentence}
+        </div>
+        {showEnglish !== false && (
+          <div style={{ ...line, color: '#94a3b8', lineHeight: 1.3, fontSize: fit(ex.english, 11, 0.5) }}>{ex.english || ' '}</div>
+        )}
+        {picked && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, padding: '4px 8px', borderRadius: 10, background: '#fff', border: '1px solid #c7d2fe', fontSize: 12 }}>
+            <span style={{ fontWeight: 700, color: '#4338ca' }}>{picked.word}</span>
+            {picked.meaning && <span style={{ color: '#64748b', flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>= {picked.meaning}</span>}
+            <button
+              onClick={() => { onAddToBackpack(picked.word, picked.meaning, picked.hebrew); setActive(null); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 3, background: '#6366f1', color: '#fff', border: 0, borderRadius: 8, padding: '3px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+            >
+              <Plus style={{ width: 12, height: 12 }} /> Add
+            </button>
+            <button onClick={() => setActive(null)} style={{ background: 'none', border: 0, color: '#94a3b8', cursor: 'pointer' }}><X style={{ width: 13, height: 13 }} /></button>
+          </div>
+        )}
+      </div>
+      {slides.length > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 5 }}>
+          {slides.map((_, j) => (
+            <span key={j} onClick={() => go(j)} style={{ cursor: 'pointer', width: j === i ? 14 : 6, height: 6, borderRadius: 3, background: j === i ? '#6366f1' : '#c7d2fe', transition: 'width .15s' }} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -500,15 +544,13 @@ export default function WordCard({
               👆 tap to reveal meaning
             </div>
           )}
-          {(word.is_verb || /^l/i.test(word.phonetic || '')) && (
-            <div style={{ fontSize: 11, color: '#0f766e', marginTop: 4 }}>verb · ∞ {word.word || word.phonetic}</div>
-          )}
         </div>
 
         {/* 3 usage examples under the word (phonetic on top) */}
         <div style={{ width: '100%', marginTop: 8, flexShrink: 0 }}>
           <UsageExamples
             examples={Array.isArray(word.usage_examples) ? word.usage_examples : null}
+            videoSentence={hasSentence ? word.example_sentence : null}
             loading={generatingExamples}
             lang={lang}
             showEnglish
@@ -543,21 +585,6 @@ export default function WordCard({
 
         <div style={{ flex: 1, minHeight: 8 }} />
 
-        {/* Sentence the word was captured from, with listen */}
-        {hasSentence && (
-          <div onClick={e => e.stopPropagation()} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 14, padding: '8px 12px', flexShrink: 0 }}>
-            <button
-              onClick={() => generateLessonAudio({ text: word.example_sentence, language: lang }).play()}
-              title="Listen to sentence"
-              style={{ background: 'none', border: 0, cursor: 'pointer', fontSize: 15 }}
-            >
-              🔊
-            </button>
-            <p dir={isRTLText(word.example_sentence) ? 'rtl' : 'ltr'} style={{ flex: 1, fontSize: 15, lineHeight: 1.4, color: '#1e293b', textAlign: isRTLText(word.example_sentence) ? 'right' : 'left' }}>
-              {word.example_sentence}
-            </p>
-          </div>
-        )}
         {(generatingSentence[word.id] || cardSentences[word.id]) && (
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', marginTop: 6, background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 14, padding: '8px 12px', flexShrink: 0, color: '#1e293b' }}>
             {generatingSentence[word.id] ? (

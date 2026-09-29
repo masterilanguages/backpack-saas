@@ -588,8 +588,13 @@ Return JSON with:
     setDeckKey(null);
   }, [language]);
 
+  // Words still waiting for the Learn/Skip decision, or skipped, aren't studied.
+  const inStudy = (w: any) => w.learn_status !== "new" && w.learn_status !== "skipped";
+  const newWords = useMemo(() => (words as any[]).filter((w) => w.learn_status === "new"), [words]);
+  const [triageOpen, setTriageOpen] = useState(false);
+
   const backpackDecks = useMemo(() => {
-    const visible = (words as any[]).filter((w) => !dismissedCards.has(w.id));
+    const visible = (words as any[]).filter((w) => !dismissedCards.has(w.id) && inStudy(w));
     const byVideo = new Map<string, { key: string; videoId: string; title: string; words: any[]; latest: string }>();
     const other: any[] = [];
     for (const w of visible) {
@@ -618,6 +623,7 @@ Return JSON with:
     const visible = (words as any[]).filter(
       (w) =>
         !dismissedCards.has(w.id) &&
+        inStudy(w) &&
         (deckKey === null || deckKey === "all"
           ? true
           : deckKey === "other"
@@ -1016,6 +1022,26 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     setChapterResult({ title: v.title || "", before: existing.baseline_score, after: score });
   };
 
+  // Backpack Words · Select: Learn → the word joins study and Masteri builds its
+  // memory (mnemonic image + explanation); Skip → it's set aside.
+  const decideWord = async (w: any, learn: boolean, priority: number | null) => {
+    try {
+      await base44.entities.Word.update(w.id, {
+        learn_status: learn ? "learning" : "skipped",
+        learn_decided_at: new Date().toISOString(),
+        ...(learn && priority ? { priority } : {}),
+      });
+      queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
+      if (learn && !w.image_url) {
+        autoImageTried.current.add(w.id);
+        suggestMnemonicForWord(w);
+      }
+    } catch (e) {
+      console.error("[backpack] learn/skip failed", e);
+      toast.error("Couldn't save — please try again.");
+    }
+  };
+
   const openShellVideo = async (v: any) => {
     setShellVideo(v);
     shellVideoIdRef.current = v.id;
@@ -1178,9 +1204,18 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
       container.innerHTML = "";
       shellPlayerRef.current = new YT.Player("shell-yt-player", {
         videoId: shellVideo.video_id,
-        playerVars: { enablejsapi: 1, autoplay: 0, controls: 1, rel: 0 },
+        // Sentence passes (steps 2–3): no YouTube controls or captions — the
+        // app plays sentence by sentence and covers the paused frame itself.
+        playerVars: discovery
+          ? { enablejsapi: 1, autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0, iv_load_policy: 3, cc_load_policy: 0, playsinline: 1 }
+          : { enablejsapi: 1, autoplay: 0, controls: 1, rel: 0 },
         events: {
-          onStateChange: (event: any) => setShellPlaying(event.data === 1),
+          onReady: (event: any) => { if (discovery) hideCaptions(event.target); },
+          onApiChange: (event: any) => { if (discovery) hideCaptions(event.target); },
+          onStateChange: (event: any) => {
+            setShellPlaying(event.data === 1);
+            if (discovery && event.data === 1) hideCaptions(event.target);
+          },
         },
       });
     });
@@ -1280,11 +1315,13 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discovery, passKind, discIdx, discSegments.length]);
 
-  const revealDiscTranslation = async () => {
-    setDiscRevealed(true);
-    if (passKind === "discovery") playDiscSentence(); // step 2: replay once more with the translation
-    const seg = discSeg;
-    if (!seg || (seg.english && seg.transliteration) || discTranslations[discIdx]) return;
+  // The phonetic line is always shown on top, so fetch translation + phonetic
+  // up front when the transcript lacks them (the English stays hidden until
+  // "Show translation").
+  const fillDiscTranslation = async (i: number) => {
+    const seg = discSegments[i];
+    const hasPhonetic = seg?.transliteration && !isRTLText(seg.transliteration);
+    if (!seg || (seg.english && hasPhonetic) || discTranslations[i]) return;
     const main = seg.hebrew || seg.text || seg.transliteration || "";
     setDiscTranslating(true);
     try {
@@ -1292,9 +1329,17 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
         prompt: `Translate this ${languageLabel(vidLang)} sentence into natural English and give its Latin-letter transliteration: "${main}". Return JSON with: english, phonetic.`,
         response_json_schema: { type: "object", properties: { english: { type: "string" }, phonetic: { type: "string" } } },
       });
-      setDiscTranslations((prev) => ({ ...prev, [discIdx]: { english: r?.english || "", phonetic: r?.phonetic || "" } }));
+      setDiscTranslations((prev) => ({ ...prev, [i]: { english: r?.english || "", phonetic: r?.phonetic || "" } }));
     } catch {}
     setDiscTranslating(false);
+  };
+  useEffect(() => {
+    if (discovery && discSeg) fillDiscTranslation(discIdx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discovery, discIdx, discSegments.length]);
+  const revealDiscTranslation = () => {
+    setDiscRevealed(true);
+    if (passKind === "discovery") playDiscSentence(); // step 2: replay once more with the translation
   };
 
   // Recommended vocabulary for the chapter: picked once by AI, saved on the
@@ -1355,6 +1400,35 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
     }
     setWordPopup(null);
     if (passKind === "discovery") {
+      // The lesson adds its recommended words to Backpack as New (skip ones
+      // the student already has).
+      const have = new Set((words as any[]).map((w: any) => normHe(w.word || "")).filter(Boolean));
+      let added = 0;
+      for (const r of recommendedWords) {
+        const key = normHe(r.hebrew || "");
+        if (!key || have.has(key)) continue;
+        have.add(key);
+        const sentence = discSegments.find((sg: any) => normHe(sg.hebrew || sg.text || "").includes(key));
+        try {
+          await base44.entities.Word.create({
+            word: r.hebrew,
+            phonetic: r.phonetic || r.hebrew,
+            translation: r.meaning || "",
+            category: "wordbank",
+            language: vidLang,
+            times_practiced: 0,
+            mastered: false,
+            example_sentence: sentence ? sentence.hebrew || sentence.text : null,
+            source_video_id: shellVideo?.video_id || null,
+            source_video_title: shellVideo?.title || null,
+            learn_status: "new",
+          });
+          added++;
+        } catch (e) {
+          console.error("[chapter] could not add recommended word", r, e);
+        }
+      }
+      if (added) queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
       // → step 3, same sentences with less help
       toast.success("Discovery done! Now the comprehension pass 👂");
       setPassKind("comprehension");
@@ -1422,16 +1496,14 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
         // Which video it came from -> its own deck in the Backpack menu.
         source_video_id: shellVideo?.video_id || null,
         source_video_title: shellVideo?.title || null,
+        // Enters Backpack as New: the student decides Learn / Skip later.
+        learn_status: "new",
       });
       queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
       setWordPopup((p: any) => (p ? { ...p, saving: false, added: true } : p));
       setMood("happy");
       toast.success("Added to backpack! 🎒");
-      // Generate its AI mnemonic image in the background (same as tapping 🎨).
-      if (row?.id) {
-        autoImageTried.current.add(row.id);
-        suggestMnemonicForWord(row);
-      }
+      // Its mnemonic image is generated once the student chooses Learn.
     } catch (e: any) {
       setWordPopup((p: any) => (p ? { ...p, saving: false } : p));
       toast.error("Couldn't add the word");
@@ -1599,7 +1671,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 pending-review flow */}
             {backpackDecks.all.length === 0 && <PhotoWordCapture language={language} />}
 
-            {backpackDecks.all.length === 0 ? (
+            {triageOpen ? (
+              <WordTriage words={newWords} onDecide={decideWord} onClose={() => setTriageOpen(false)} />
+            ) : backpackDecks.all.length === 0 && newWords.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                 <Turtle mood={mood} size="text-6xl" />
                 <p className="font-medium text-slate-700">No cards yet</p>
@@ -1622,12 +1696,27 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 </div>
               </div>
             ) : deckKey === null ? (
-              <BackpackDeckMenu
-                decks={backpackDecks}
-                onOpen={openDeck}
-                onAdd={() => setAddWordsOpen(true)}
-                camera={<PhotoWordCapture language={language} compact />}
-              />
+              <>
+                {newWords.length > 0 && (
+                  <button
+                    onClick={() => setTriageOpen(true)}
+                    className="mt-3 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-fuchsia-200 bg-white px-4 py-3 text-left shadow-md shadow-fuchsia-100"
+                  >
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-fuchsia-100 text-lg">🆕</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold text-slate-900">{newWords.length} new word{newWords.length === 1 ? "" : "s"}</span>
+                      <span className="block text-xs text-slate-500">Decide what to learn · swipe ✓ Learn / ↓ Skip</span>
+                    </span>
+                    <span className="text-lg font-bold text-fuchsia-500">›</span>
+                  </button>
+                )}
+                <BackpackDeckMenu
+                  decks={backpackDecks}
+                  onOpen={openDeck}
+                  onAdd={() => setAddWordsOpen(true)}
+                  camera={<PhotoWordCapture language={language} compact />}
+                />
+              </>
             ) : (
               <>
                 {/* Back to the deck menu */}
@@ -2084,8 +2173,24 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             </div>
 
             {/* Player */}
-            <div className="relative w-full flex-shrink-0 bg-black" style={{ aspectRatio: "16/9" }}>
+            <div className="relative w-full flex-shrink-0 bg-black" style={discovery ? { height: 150 } : { aspectRatio: "16/9" }}>
               <div id="shell-yt-player" className="h-full w-full" />
+              {discovery && (
+                <>
+                  {/* no taps on YouTube itself */}
+                  <div className="absolute inset-0" />
+                  {/* paused: our own cover instead of YouTube's title / "More videos" screen */}
+                  {!shellPlaying && (
+                    <button
+                      onClick={() => playDiscSentence()}
+                      className="absolute inset-0 flex items-center justify-center bg-cover bg-center"
+                      style={{ backgroundImage: `linear-gradient(rgba(15,23,42,.45), rgba(15,23,42,.45)), url(https://i.ytimg.com/vi/${shellVideo.video_id}/hqdefault.jpg)` }}
+                    >
+                      <span className="rounded-full bg-white/90 px-4 py-2 text-sm font-bold text-indigo-600 shadow-lg">🔁 Replay sentence</span>
+                    </button>
+                  )}
+                </>
+              )}
             </div>
 
             {discovery ? (
@@ -3165,16 +3270,20 @@ function DiscoveryPanel({
   const popupRec = popupOpen ? recommendedFor(wordPopup.clean) : null;
   const tappable = mode === "discovery";
 
+  // One line each, never wrapping: long lines shrink their font to fit.
+  const fit = (text: string, max: number, k: number) =>
+    `max(10px, min(${max}px, calc(100cqw / ${((text || "").length + 2) * k})))`;
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3 pt-3">
+    <div className="flex min-h-0 flex-1 flex-col px-3 pb-2 pt-2">
       {/* progress through the sentences */}
-      <div className="flex flex-shrink-0 gap-[3px]">
+      <div className="flex flex-shrink-0 gap-[2px]">
         {segments.map((_: any, i: number) => (
           <span key={i} className={`h-1 flex-1 rounded-full ${i < idx ? "bg-teal-500" : i === idx ? "bg-indigo-500" : "bg-slate-200"}`} />
         ))}
       </div>
 
-      <div className="mt-3 flex-shrink-0 rounded-3xl bg-white p-4 shadow-lg shadow-indigo-100/70">
+      <div className="mt-2 flex-shrink-0 rounded-3xl bg-white px-4 py-3 shadow-lg shadow-indigo-100/70" style={{ containerType: "inline-size" }}>
         <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
           <span>Sentence {idx + 1} of {segments.length}{tappable ? " · tap any word" : " · try to understand it"}</span>
           <button onClick={onReplay} className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600">
@@ -3182,8 +3291,17 @@ function DiscoveryPanel({
           </button>
         </div>
 
-        {/* the sentence in the target language, every word tappable */}
-        <p dir={rtl ? "rtl" : "ltr"} className={`mt-3 text-2xl leading-loose text-slate-900 ${rtl ? "text-right" : ""}`}>
+        {/* 1 · phonetic (top) */}
+        <p className="mt-2 overflow-hidden whitespace-nowrap italic text-indigo-500" style={{ fontSize: fit(phonetic, 14, 0.5) }}>
+          {phonetic || (translating ? "…" : " ")}
+        </p>
+
+        {/* 2 · the sentence in the target language, one line, every word tappable */}
+        <p
+          dir={rtl ? "rtl" : "ltr"}
+          className={`mt-0.5 overflow-hidden whitespace-nowrap leading-snug text-slate-900 ${rtl ? "text-right" : ""}`}
+          style={{ fontSize: fit(main.replace(/[֑-ׇ]/g, ""), 24, 0.62) }}
+        >
           {tokens.map((tok: string, wi: number) => {
             const key = `${popupKeyPrefix}${wi}`;
             const open = wordPopup?.key === key;
@@ -3205,61 +3323,52 @@ function DiscoveryPanel({
           })}
         </p>
 
-        {/* tapped word: meaning at once + add to Backpack */}
-        {tappable && popupOpen && (
-          <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2.5">
-            <div className="flex items-baseline gap-2">
-              <span dir={rtl ? "rtl" : "ltr"} className="text-xl font-bold text-indigo-950">{wordPopup.clean}</span>
-              {wordPopup.phonetic && <span className="text-sm italic text-indigo-500">{wordPopup.phonetic}</span>}
-              {popupRec && <span className="ml-auto rounded-full bg-fuchsia-100 px-2 py-0.5 text-[10px] font-bold text-fuchsia-700">⭐ Recommended</span>}
-            </div>
-            <p className="mt-0.5 text-sm text-slate-700">
-              {wordPopup.loading ? "translating…" : `= ${wordPopup.translation || popupRec?.meaning || "—"}`}
-            </p>
-            <div className="mt-2 flex gap-2">
-              <button onClick={onReplay} className="flex-1 rounded-xl bg-white py-2 text-xs font-bold text-indigo-600">🔊 Hear in sentence</button>
-              <button
-                onClick={onAddWord}
-                disabled={wordPopup.saving || wordPopup.added}
-                className="flex-1 rounded-xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-2 text-xs font-bold text-white disabled:opacity-70"
-              >
-                {wordPopup.added ? "✓ In your Backpack" : wordPopup.saving ? "Adding…" : "＋ Add to Backpack"}
-              </button>
-              <button onClick={onClosePopup} aria-label="Close" className="rounded-xl px-2 text-slate-400">✕</button>
-            </div>
-          </div>
-        )}
-
-        {/* translation, revealed after the student has tried */}
+        {/* 3 · translation, revealed after the student has tried */}
         {revealed ? (
-          <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2.5">
-            {phonetic && <p className="text-sm italic text-indigo-500">{phonetic}</p>}
-            <p className="text-sm text-slate-700">{english || (translating ? "translating…" : "—")}</p>
-          </div>
+          <p className="mt-1 overflow-hidden whitespace-nowrap text-slate-600" style={{ fontSize: fit(english, 14, 0.5) }}>
+            {english || (translating ? "translating…" : "—")}
+          </p>
         ) : (
-          <button onClick={onReveal} className="mt-3 w-full rounded-2xl border border-dashed border-indigo-200 py-2.5 text-sm font-semibold text-indigo-600">
+          <button onClick={onReveal} className="mt-1.5 w-full rounded-xl border border-dashed border-indigo-200 py-1.5 text-xs font-semibold text-indigo-600">
             👁 Show translation
           </button>
         )}
 
-        {tappable && recommendedCount > 0 && (
-          <p className="mt-3 text-center text-[10px] text-slate-400">
-            <span className="mr-1 inline-block w-4 border-b-2 border-fuchsia-400 align-middle" />recommended word ·
-            <span className="mx-1 inline-block w-4 border-b-2 border-dotted border-indigo-200 align-middle" />tap for meaning
-          </p>
+        {/* tapped word: meaning at once + add to Backpack */}
+        {tappable && popupOpen && (
+          <div className="mt-2 flex items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-2">
+                <span dir={rtl ? "rtl" : "ltr"} className="text-lg font-bold text-indigo-950">{wordPopup.clean}</span>
+                {wordPopup.phonetic && <span className="truncate text-xs italic text-indigo-500">{wordPopup.phonetic}</span>}
+                {popupRec && <span className="text-xs" title="Recommended">⭐</span>}
+              </div>
+              <p className="truncate text-xs text-slate-700">
+                {wordPopup.loading ? "translating…" : `= ${wordPopup.translation || popupRec?.meaning || "—"}`}
+              </p>
+            </div>
+            <button
+              onClick={onAddWord}
+              disabled={wordPopup.saving || wordPopup.added}
+              className="flex-shrink-0 rounded-xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-70"
+            >
+              {wordPopup.added ? "✓ Added" : wordPopup.saving ? "…" : "＋ Add"}
+            </button>
+            <button onClick={onClosePopup} aria-label="Close" className="flex-shrink-0 px-1 text-slate-400">✕</button>
+          </div>
         )}
       </div>
 
-      <div className="mt-3 flex flex-shrink-0 gap-2">
-        <button onClick={onPrev} disabled={idx === 0} className="flex-1 rounded-2xl border border-indigo-100 bg-white py-3 text-sm font-semibold text-indigo-600 disabled:opacity-40">
+      <div className="mt-2 flex flex-shrink-0 gap-2">
+        <button onClick={onPrev} disabled={idx === 0} className="flex-1 rounded-2xl border border-indigo-100 bg-white py-2.5 text-sm font-semibold text-indigo-600 disabled:opacity-40">
           ‹ Previous
         </button>
         {last ? (
-          <button onClick={onFinish} className="flex-[1.4] rounded-2xl bg-gradient-to-r from-teal-500 to-indigo-500 py-3 text-sm font-bold text-white shadow-md">
-            {tappable ? "✓ Finish discovery" : "✓ Finish comprehension pass"}
+          <button onClick={onFinish} className="flex-[1.4] rounded-2xl bg-gradient-to-r from-teal-500 to-indigo-500 py-2.5 text-sm font-bold text-white shadow-md">
+            {tappable ? "✓ Finish discovery" : "✓ Finish pass"}
           </button>
         ) : (
-          <button onClick={onNext} className="flex-[1.4] rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-sm font-bold text-white shadow-md">
+          <button onClick={onNext} className="flex-[1.4] rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-2.5 text-sm font-bold text-white shadow-md">
             Next sentence ›
           </button>
         )}
@@ -3292,6 +3401,129 @@ function ChapterResult({ title, before, after, onClose }: { title: string; befor
         </div>
         <button onClick={onClose} className="mt-5 w-full rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30">
           Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Backpack Words · Select. New words (recommended by the chapter + the ones the
+// student tapped) are decided one by one: swipe right / ✓ Learn = join study,
+// swipe left / ↓ Skip = not useful. An optional priority (1–5) can be set —
+// it's about importance, not about how well the word is known.
+// ---------------------------------------------------------------------------
+function WordTriage({
+  words,
+  onDecide,
+  onClose,
+}: {
+  words: any[];
+  onDecide: (w: any, learn: boolean, priority: number | null) => Promise<void>;
+  onClose: () => void;
+}) {
+  // Freeze the queue when the screen opens so cards don't jump as they're decided.
+  const [queue] = useState<any[]>(() => words.slice());
+  const [i, setI] = useState(0);
+  const [learned, setLearned] = useState(0);
+  const [showPriority, setShowPriority] = useState(false);
+  const [priority, setPriority] = useState<number | null>(null);
+  const [leaving, setLeaving] = useState<0 | 1 | -1>(0);
+  const w = queue[i];
+
+  const decide = async (learn: boolean) => {
+    if (!w || leaving) return;
+    setLeaving(learn ? 1 : -1);
+    await onDecide(w, learn, priority);
+    if (learn) setLearned((n) => n + 1);
+    setPriority(null);
+    setShowPriority(false);
+    setLeaving(0);
+    setI((n) => n + 1);
+  };
+
+  if (!w) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-4xl">🎒</p>
+        <p className="text-lg font-bold text-slate-900">All decided!</p>
+        <p className="text-sm text-slate-500">
+          {learned} word{learned === 1 ? "" : "s"} added to your study. Masteri is preparing their mnemonics.
+        </p>
+        <button onClick={onClose} className="mt-2 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-8 py-3 text-sm font-bold text-white shadow-md">
+          Back to Backpack
+        </button>
+      </div>
+    );
+  }
+
+  const rtl = isRTLText(w.word || "");
+  return (
+    <div className="flex min-h-0 flex-1 flex-col pt-2">
+      <div className="flex flex-shrink-0 items-center gap-2 px-1">
+        <button onClick={onClose} className="rounded-full border border-indigo-100 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 shadow-sm">← Back</button>
+        <span className="flex-1 text-sm font-semibold text-slate-700">New words</span>
+        <span className="text-xs font-semibold text-slate-400">{i + 1} / {queue.length}</span>
+      </div>
+
+      <div className="relative mt-4 flex flex-1 items-start justify-center">
+        <motion.div
+          key={w.id}
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.9}
+          onDragEnd={(_: any, info: any) => {
+            if (info.offset.x > 110) decide(true);
+            else if (info.offset.x < -110) decide(false);
+          }}
+          initial={{ opacity: 0, y: 12, scale: 0.97 }}
+          animate={leaving ? { x: leaving * 420, rotate: leaving * 12, opacity: 0 } : { opacity: 1, y: 0, scale: 1, x: 0, rotate: 0 }}
+          transition={{ duration: 0.25 }}
+          className="w-full cursor-grab touch-pan-y select-none rounded-3xl bg-white p-6 text-center shadow-xl shadow-indigo-200/60 active:cursor-grabbing"
+        >
+          {w.source_video_title && (
+            <p className="mb-3 truncate text-[11px] font-semibold text-slate-400">📺 {w.source_video_title}</p>
+          )}
+          <p dir={rtl ? "rtl" : "ltr"} className="text-4xl font-extrabold leading-tight text-indigo-950">{w.word}</p>
+          {w.phonetic && w.phonetic !== w.word && <p className="mt-1 text-lg italic text-indigo-500">{w.phonetic}</p>}
+          <p className="mt-2 text-xl font-semibold text-slate-800">{w.translation || "—"}</p>
+          {w.example_sentence && (
+            <p dir={isRTLText(w.example_sentence) ? "rtl" : "ltr"} className="mt-4 rounded-2xl bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-600">
+              {w.example_sentence}
+            </p>
+          )}
+
+          {showPriority ? (
+            <div className="mt-4" onPointerDownCapture={(e) => e.stopPropagation()}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Priority (optional)</p>
+              <div className="mt-2 flex justify-center gap-1.5">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setPriority(priority === n ? null : n)}
+                    className={`h-9 w-9 rounded-full text-sm font-bold ${priority === n ? "bg-indigo-500 text-white" : "bg-slate-100 text-slate-500"}`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[10px] text-slate-400">How important it is to you — not how well you know it</p>
+            </div>
+          ) : (
+            <button onClick={() => setShowPriority(true)} className="mt-4 text-xs font-semibold text-indigo-500 underline decoration-dotted">
+              Set priority (optional)
+            </button>
+          )}
+        </motion.div>
+      </div>
+
+      <p className="mb-2 mt-3 flex-shrink-0 text-center text-[11px] text-slate-400">Swipe right to learn · left to skip</p>
+      <div className="flex flex-shrink-0 gap-3 pb-3">
+        <button onClick={() => decide(false)} className="flex-1 rounded-2xl border border-slate-200 bg-white py-3.5 text-base font-bold text-slate-500 shadow-sm">
+          ↓ Skip
+        </button>
+        <button onClick={() => decide(true)} className="flex-1 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3.5 text-base font-bold text-white shadow-md shadow-emerald-200">
+          ✓ Learn
         </button>
       </div>
     </div>
