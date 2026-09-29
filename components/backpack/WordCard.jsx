@@ -195,7 +195,11 @@ export default function WordCard({
       key={word.id}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col ${large ? "w-full flex-auto shrink-0" : "w-48"}`}
+      // Tailwind's content globs only scan .ts/.tsx, so classes that appear
+      // only in this .jsx file are never generated — sizing that must work
+      // goes in inline styles.
+      className={`bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col ${large ? "w-full shrink-0" : "w-48"}`}
+      style={large ? { flex: '1 0 auto' } : undefined}
     >
       {/* Source content label — top of card */}
       {word.example_sentence && (
@@ -219,8 +223,8 @@ export default function WordCard({
 
       {/* Large mnemonic image — always visible */}
       <div
-        className={`relative cursor-pointer select-none bg-slate-800 overflow-hidden ${large ? "flex-1 min-h-[220px]" : ""}`}
-        style={large ? undefined : { height: '160px', minHeight: '160px' }}
+        className="relative cursor-pointer select-none bg-slate-800 overflow-hidden"
+        style={large ? { flex: '1 1 0%', minHeight: '220px' } : { height: '160px', minHeight: '160px' }}
         onClick={() => setRevealed(r => !r)}
       >
         {/* Top-right controls: EN, Translit, Hebrew toggles */}
@@ -266,7 +270,7 @@ export default function WordCard({
                 else suggestMnemonicForWord(word);
               }}
               title={customDesc.trim() ? "Regenerate from your description" : "Regenerate image"}
-              className={`absolute bottom-1.5 left-1.5 z-10 flex ${large ? 'h-9 w-9 text-base' : 'h-7 w-7 text-sm'} items-center justify-center rounded-full bg-slate-900/70 backdrop-blur-sm transition hover:bg-slate-900/90`}
+              className={`absolute bottom-1.5 left-1.5 z-10 flex ${large ? 'h-10 w-10 text-base' : 'h-7 w-7 text-sm'} items-center justify-center rounded-full bg-slate-900/70 backdrop-blur-sm transition hover:bg-slate-900/90`}
             >
               {(isGeneratingImage || regeneratingImage) ? <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-400" /> : '🔄'}
             </button>
