@@ -2708,6 +2708,13 @@ function formatClock(s: number | null) {
 // A chapter's content is at most 3.5 minutes; longer videos use the first 3:30.
 const CHAPTER_MAX_SECONDS = 210;
 
+// No subtitles in chapter step 1: turn off YouTube captions (CC / auto-translate).
+function hideCaptions(player: any) {
+  try { player.setOption?.("captions", "track", {}); } catch {}
+  try { player.unloadModule?.("captions"); } catch {}
+  try { player.unloadModule?.("cc"); } catch {}
+}
+
 function ChapterWatch({
   video,
   onExit,
@@ -2721,6 +2728,9 @@ function ChapterWatch({
   const [remaining, setRemaining] = useState<number | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [needsTap, setNeedsTap] = useState(false);
+  // Our own cover whenever the video isn't actually playing, so YouTube's
+  // pause/end screen (title, share, "More videos", big ▶) is never visible.
+  const [playing, setPlaying] = useState(false);
   const [score, setScore] = useState(50);
   const [saving, setSaving] = useState(false);
   const playerRef = useRef<any>(null);
@@ -2749,8 +2759,7 @@ function ChapterWatch({
         },
         events: {
           onReady: (e: any) => {
-            // No subtitles: unload YouTube's caption module if the viewer has CC on by default.
-            try { e.target.unloadModule?.("captions"); e.target.unloadModule?.("cc"); } catch {}
+            hideCaptions(e.target);
             e.target.playVideo();
             // Some browsers block autoplay with sound: offer one tap to start.
             startCheck = setTimeout(() => {
@@ -2758,8 +2767,12 @@ function ChapterWatch({
               if (st !== 1 && st !== 3) setNeedsTap(true);
             }, 1500);
           },
+          // YouTube (re)loads captions when playback starts if the viewer has CC
+          // on in their account — switch them off every time it does.
+          onApiChange: (e: any) => hideCaptions(e.target),
           onStateChange: (e: any) => {
-            if (e.data === 1) setNeedsTap(false);
+            setPlaying(e.data === 1);
+            if (e.data === 1) { setNeedsTap(false); hideCaptions(e.target); }
             if (e.data === 0) finish();                                    // ended → step complete
             else if (e.data === 2 && !endedRef.current) e.target.playVideo(); // no pausing
           },
@@ -2822,8 +2835,11 @@ function ChapterWatch({
         <div className="relative flex flex-1 flex-col justify-center">
           <div className="relative aspect-video w-full bg-black">
             <div id="chapter-yt-player" className="absolute inset-0 h-full w-full" />
-            {/* Blocks taps on the player: no pausing, seeking or YouTube UI. */}
+            {/* Blocks taps/hover on the player: no pausing, seeking or YouTube UI. */}
             <div className="absolute inset-0" onClick={(e) => e.preventDefault()} />
+            {!playing && !needsTap && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black text-xs text-slate-400">Loading…</div>
+            )}
             {needsTap && (
               <button
                 onClick={() => { playerRef.current?.playVideo?.(); setNeedsTap(false); }}
