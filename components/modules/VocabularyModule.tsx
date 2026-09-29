@@ -15,8 +15,13 @@ interface WordRow {
   times_practiced: number | null;
   review_status: "approved" | "rejected" | null;
   review?: string;
+  times_rated: number;
+  last_rated_at: string | null;
   student: string;
 }
+
+const formatDate = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 
 const REVIEW_LABEL = { approved: "Aprobada", rejected: "Rechazada" } as const;
 
@@ -57,7 +62,14 @@ export default function VocabularyModule({ slug }: { slug: string }) {
           <span className="text-xs text-slate-400">—</span>
         ),
     },
-    { key: "times_practiced", header: "Prácticas", render: (w) => w.times_practiced ?? 0 },
+    // times_practiced is the CURRENT 1–5 level (overwritten on each rating), not a count.
+    { key: "times_practiced", header: "Nivel", render: (w) => w.times_practiced ?? 0 },
+    { key: "times_rated", header: "Veces practicada", render: (w) => w.times_rated ?? 0 },
+    {
+      key: "last_rated_at",
+      header: "Última práctica",
+      render: (w) => <span className="text-slate-600">{formatDate(w.last_rated_at)}</span>,
+    },
     {
       key: "review_status",
       header: "Revisión",

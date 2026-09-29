@@ -44,7 +44,7 @@ export async function getStudents(schoolId: string) {
  */
 export async function getStudentsWithProgress(orgId: string, coachId?: string | null) {
   const students = await getStudents(orgId);
-  const [profilesRes, wordsRes, journalsRes, teamRes] = await Promise.all([
+  const [profilesRes, wordsRes, journalsRes, teamRes, activityRes] = await Promise.all([
     supabaseAdmin
       .from("user_profile")
       .select("created_by, language, current_day, xp, daily_streak, last_active_date")
@@ -52,9 +52,16 @@ export async function getStudentsWithProgress(orgId: string, coachId?: string | 
     supabaseAdmin.from("word").select("created_by").eq("org_id", orgId),
     supabaseAdmin.from("journal_entry").select("created_by").eq("org_id", orgId),
     supabaseAdmin.from("team_members").select("id, name").eq("org_id", orgId),
+    // Rating history (migration 1300). If the view is missing, activity stays empty.
+    supabaseAdmin
+      .from("student_rating_activity")
+      .select("email, ratings_24h, ratings_7d, last_rated_at")
+      .eq("org_id", orgId),
   ]);
 
   const norm = (e?: string | null) => (e ?? "").trim().toLowerCase();
+  const activityByEmail = new Map<string, any>();
+  for (const a of (activityRes.data as any[]) ?? []) activityByEmail.set(norm(a.email), a);
   const profByEmail = new Map<string, any>();
   for (const p of profilesRes.data ?? []) {
     const k = norm(p.created_by);
@@ -93,6 +100,9 @@ export async function getStudentsWithProgress(orgId: string, coachId?: string | 
         words: wordCount.get(k) ?? 0,
         journal: journalCount.get(k) ?? 0,
         lastActive: p?.last_active_date ?? null,
+        ratings24h: activityByEmail.get(k)?.ratings_24h ?? 0,
+        ratings7d: activityByEmail.get(k)?.ratings_7d ?? 0,
+        lastRated: activityByEmail.get(k)?.last_rated_at ?? null,
       },
     };
   });
@@ -321,14 +331,21 @@ export async function getSchoolWords(orgId: string, coachId?: string | null) {
     }
     return s;
   };
-  const [wordsRes, students] = await Promise.all([
+  const [wordsRes, students, statsRes] = await Promise.all([
     supabaseAdmin
       .from("word")
       .select("id, word, translation, language, mastered, is_starred, times_practiced, review_status, created_by, created_date")
       .eq("org_id", orgId)
       .order("created_date", { ascending: false }),
     getStudents(orgId),
+    // Rating history (migration 1300). If the view is missing, the columns stay empty.
+    supabaseAdmin
+      .from("word_rating_stats")
+      .select("word_id, times_rated, last_rated_at")
+      .eq("org_id", orgId),
   ]);
+  const statsByWord = new Map<string, { times_rated: number; last_rated_at: string }>();
+  for (const s of (statsRes.data as any[]) ?? []) statsByWord.set(String(s.word_id), s);
   const nameByEmail = new Map<string, string>();
   for (const s of (students as any[]) ?? []) {
     const k = norm(s.email);
@@ -348,6 +365,8 @@ export async function getSchoolWords(orgId: string, coachId?: string | null) {
     ...w,
     translation: cleanTranslation(w.translation),
     student: nameByEmail.get(norm(w.created_by)) ?? w.created_by ?? "—",
+    times_rated: statsByWord.get(String(w.id))?.times_rated ?? 0,
+    last_rated_at: statsByWord.get(String(w.id))?.last_rated_at ?? null,
     _email: norm(w.created_by),
   }));
   if (allowedEmails) rows = rows.filter((w: any) => allowedEmails!.has(w._email));

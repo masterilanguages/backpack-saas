@@ -20,6 +20,9 @@ interface ProgressRow {
     streak: number | null;
     words: number;
     journal: number;
+    ratings24h?: number;
+    ratings7d?: number;
+    lastRated?: string | null;
   };
 }
 
@@ -62,6 +65,23 @@ export default function ProgressModule({ slug }: { slug: string }) {
       key: "words",
       header: "Palabras",
       render: (s) => <span className="font-medium text-slate-900">{s.progress?.words ?? 0}</span>,
+    },
+    {
+      key: "activity",
+      header: "Calificaciones 24 h · 7 días",
+      render: (s) => (
+        <span className="text-slate-900">
+          {s.progress?.ratings24h ?? 0} · {s.progress?.ratings7d ?? 0}
+        </span>
+      ),
+    },
+    {
+      key: "lastRated",
+      header: "Última práctica",
+      render: (s) =>
+        s.progress?.lastRated
+          ? new Date(s.progress.lastRated).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+          : "—",
     },
     { key: "journal", header: "Journal", render: (s) => s.progress?.journal ?? 0 },
     {
