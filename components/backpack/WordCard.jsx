@@ -83,6 +83,14 @@ const REVIEW_STYLE = {
   rejected: { color: '#f87171', ring: 'rgba(248,113,113,0.55)', label: 'Needs review', Icon: X },
 };
 
+const RATING_HINTS = {
+  1: "1 — Don't know it yet",
+  2: "2 — Barely recognize it",
+  3: "3 — Getting there",
+  4: "4 — Know it well",
+  5: "5 — Mastered",
+};
+
 export default function WordCard({
   word,
   language,
@@ -385,8 +393,18 @@ export default function WordCard({
 
       {/* Mnemonic explanation below image */}
       {(mnemonicExplanations[word.id] || word.mnemonic_explanation) && (
-        <div className="px-3 py-1.5 bg-teal-500/10 border-t border-teal-500/20">
-          <p className={`${large ? "text-sm" : "text-[10px]"} text-teal-300 italic text-center leading-snug`}>
+        <div className="px-3 py-1.5 bg-teal-500/10 border-t border-teal-500/20" style={{ containerType: 'inline-size' }}>
+          {/* Always ONE line: the text is kept short (≤42 chars), and anything
+              longer (e.g. locked approved cards) shrinks its font to fit
+              instead of wrapping or being cut with "…". */}
+          <p
+            className="text-teal-300 italic text-center leading-snug"
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              fontSize: `min(${large ? 14 : 10}px, calc(100cqw / ${(((mnemonicExplanations[word.id] || word.mnemonic_explanation || '').length + 3) * 0.56).toFixed(2)}))`,
+            }}
+          >
             💡 {mnemonicExplanations[word.id] || word.mnemonic_explanation}
           </p>
         </div>
@@ -484,38 +502,22 @@ export default function WordCard({
       {/* Bottom row: ratings + buttons */}
       <div className={`px-2 pb-2 flex items-center ${large ? "gap-2 px-3 pb-3" : "gap-1"}`}>
         <div className={`flex flex-1 ${large ? "gap-1.5" : "gap-0.5"}`}>
-          {/* Five-state scale: New (gray) → 1 Recognized (red) → 2 Familiar
-              (yellow) → 3 Can Use (light green) → ✓ Mastered (dark green).
-              The active level fills with its color. */}
-          {[
-            { value: 0, label: "New", name: "New", color: "#999999", text: "#ffffff" },
-            { value: 1, label: "1", name: "Recognized", color: "#dc2626", text: "#ffffff" },
-            { value: 2, label: "2", name: "Familiar", color: "#eab308", text: "#1f2937" },
-            { value: 3, label: "3", name: "Can Use", color: "#86efac", text: "#14532d" },
-            { value: 5, label: "✓", name: "Mastered", color: "#16a34a", text: "#ffffff" },
-          ].map(({ value, label, name, color, text }) => {
-            const active =
-              (word.times_practiced || 0) === value ||
-              // Legacy level-4 words light up (and keep) the "3" bucket.
-              (value === 3 && word.times_practiced === 4);
-            return (
-              <button
-                key={value}
-                title={name}
-                onClick={(e) => handleRateWord(
-                  word.id,
-                  (value === 3 && word.times_practiced === 4) ? 4 : value,
-                  e
-                )}
-                className={`flex-1 ${large ? "h-10 rounded-lg text-sm" : "h-6 rounded text-xs"} font-bold transition-all`}
-                style={active
-                  ? { background: color, color: text }
-                  : { background: "#1e293b", color, opacity: 0.75 }}
-              >
-                {label}
-              </button>
-            );
-          })}
+          {/* 1–5 knowledge scale; 5 = mastered (sets `mastered`). The tapped
+              level fills teal (green for 5). */}
+          {[1, 2, 3, 4, 5].map((value) => (
+            <button
+              key={value}
+              onClick={(e) => handleRateWord(word.id, value, e)}
+              title={RATING_HINTS[value]}
+              className={`flex-1 ${large ? 'h-10 rounded-lg text-base' : 'h-6 rounded text-xs'} font-bold transition-all ${
+                word.times_practiced === value
+                  ? value === 5 ? 'bg-green-500 text-white' : 'bg-teal-500 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              }`}
+            >
+              {value}
+            </button>
+          ))}
         </div>
         <button
           onClick={() => suggestMnemonicForWord(word)}

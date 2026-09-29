@@ -2451,9 +2451,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
 // source video (thumbnail, title, cards, mastered, level bar), then the words
 // that didn't come from a video.
 // ---------------------------------------------------------------------------
-// Same scale as the card rating row: New · 1 Recognized · 2 Familiar ·
-// 3 Can Use (legacy 4 counts as Can Use) · 5 Mastered.
-const LEVEL_COLORS = ["#999999", "#dc2626", "#eab308", "#86efac", "#86efac", "#16a34a"];
+// One color per level: unrated (0) · 1 · 2 · 3 · 4 · 5 mastered.
+const LEVEL_COLORS = ["#cbd5e1", "#f87171", "#fb923c", "#facc15", "#a3e635", "#22c55e"];
 
 function LevelBar({ words }: { words: any[] }) {
   const counts = [0, 0, 0, 0, 0, 0];

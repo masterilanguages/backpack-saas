@@ -1,16 +1,22 @@
 import { base44 } from "@/api/base44Client";
 
-// The 💡 line under a flashcard image: one complete, short sentence.
+// The 💡 line under a flashcard image: one complete sentence that fits on ONE
+// line of the card. 9 words alone wasn't enough ("A RACCOON (rah-KOOD=to
+// dance) twirls on the dance floor." is 9 words / 58 chars and wraps), so
+// characters are capped too: ~42 fits a phone-width card.
 export const MNEMONIC_EXPLANATION_MAX_WORDS = 9;
+export const MNEMONIC_EXPLANATION_MAX_CHARS = 42;
 export const MNEMONIC_EXPLANATION_RULE =
-  `ONE complete short sentence of at most ${MNEMONIC_EXPLANATION_MAX_WORDS} words (never cut off), ` +
+  `ONE complete short sentence of at most ${MNEMONIC_EXPLANATION_MAX_WORDS} words AND at most ` +
+  `${MNEMONIC_EXPLANATION_MAX_CHARS} characters so it fits on one line (never cut off), ` +
   `like "An ESKIMO (askeem) shaking hands to agree"`;
 
 const clean = (text: unknown) => String(text ?? "").trim().replace(/\s+/g, " ");
 const wordCount = (text: string) => (text ? text.split(" ").length : 0);
 
 export function isShortMnemonicExplanation(text: unknown): boolean {
-  return wordCount(clean(text)) <= MNEMONIC_EXPLANATION_MAX_WORDS;
+  const t = clean(text);
+  return wordCount(t) <= MNEMONIC_EXPLANATION_MAX_WORDS && t.length <= MNEMONIC_EXPLANATION_MAX_CHARS;
 }
 
 /**
@@ -24,7 +30,7 @@ export async function ensureShortMnemonicExplanation(text: unknown): Promise<str
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
       const result: any = await base44.integrations.Core.InvokeLLM({
-        prompt: `Rewrite this flashcard memory hint as ONE complete, natural sentence of at most ${MNEMONIC_EXPLANATION_MAX_WORDS} words.
+        prompt: `Rewrite this flashcard memory hint as ONE complete, natural sentence of at most ${MNEMONIC_EXPLANATION_MAX_WORDS} words and at most ${MNEMONIC_EXPLANATION_MAX_CHARS} characters, so it fits on one line.
 Keep the CAPITALIZED sound-anchor word and the transliteration in parentheses if present.
 Do not use "..." and do not cut the sentence off.
 
