@@ -541,15 +541,60 @@ Return JSON with:
   // rating moved the rated card away and put a different word under the same
   // "1 / 16", so it looked like the rating hadn't saved. Cards added later join
   // at the end; deleted/dismissed ones drop out. Switching language re-sorts.
+  // Backpack opens on a deck menu: "Practice all" + one deck per source video
+  // + "Other words". null = menu; "all"; "yt:<youtubeId>"; "other".
+  const [deckKey, setDeckKey] = useState<string | null>(null);
+  const openDeck = (key: string | null) => {
+    setDeckKey(key);
+    setCardIdx(0);
+  };
+  useEffect(() => {
+    setDeckKey(null);
+  }, [language]);
+
+  const backpackDecks = useMemo(() => {
+    const visible = (words as any[]).filter((w) => !dismissedCards.has(w.id));
+    const byVideo = new Map<string, { key: string; videoId: string; title: string; words: any[]; latest: string }>();
+    const other: any[] = [];
+    for (const w of visible) {
+      const vid = w.source_video_id;
+      if (!vid) { other.push(w); continue; }
+      let g = byVideo.get(vid);
+      if (!g) {
+        g = { key: `yt:${vid}`, videoId: vid, title: w.source_video_title || "Video", words: [], latest: "" };
+        byVideo.set(vid, g);
+      }
+      g.words.push(w);
+      const at = String(w.created_date || "");
+      if (at > g.latest) g.latest = at;
+    }
+    const videos = Array.from(byVideo.values()).sort((a, b) => b.latest.localeCompare(a.latest));
+    return { all: visible, videos, other };
+  }, [words, dismissedCards]);
+
+  const deckTitle =
+    deckKey === "all" ? "All flashcards"
+    : deckKey === "other" ? "Other words"
+    : backpackDecks.videos.find((g) => g.key === deckKey)?.title || "Video";
+
   const deckOrderRef = useRef<{ language: string; ids: any[] }>({ language: "", ids: [] });
   const flashDeck = useMemo(() => {
-    const visible = (words as any[]).filter((w) => !dismissedCards.has(w.id));
+    const visible = (words as any[]).filter(
+      (w) =>
+        !dismissedCards.has(w.id) &&
+        (deckKey === null || deckKey === "all"
+          ? true
+          : deckKey === "other"
+          ? !w.source_video_id
+          : w.source_video_id === deckKey.slice(3))
+    );
     const byLevel = (a: any, b: any) =>
       (a.times_practiced || 0) - (b.times_practiced || 0) ||
       (a.phonetic || a.word || "").localeCompare(b.phonetic || b.word || "");
     const order = deckOrderRef.current;
-    if (order.language !== language) {
-      order.language = language;
+    const orderKey = `${language}|${deckKey}`;
+    if (order.language !== orderKey) {
+      order.language = orderKey;
       order.ids = [];
     }
     const byId = new Map(visible.map((w) => [w.id, w]));
@@ -558,7 +603,7 @@ Return JSON with:
     const added = visible.filter((w) => !keptSet.has(w.id)).sort(byLevel).map((w) => w.id);
     order.ids = [...kept, ...added];
     return order.ids.map((id) => byId.get(id));
-  }, [words, dismissedCards, language]);
+  }, [words, dismissedCards, language, deckKey]);
   const safeCardIdx = Math.min(cardIdx, Math.max(0, flashDeck.length - 1));
 
   // Safety net: many save paths (journal, songs, translator, older video
@@ -569,12 +614,12 @@ Return JSON with:
   const currentCard: any = flashDeck[safeCardIdx];
   useEffect(() => {
     const w = currentCard;
-    if (tab !== "learning" || !w?.id || w.image_url || w.review_status || w.approved) return;
+    if (tab !== "learning" || deckKey === null || !w?.id || w.image_url || w.review_status || w.approved) return;
     if (suggestingMnemonic || autoImageTried.current.has(w.id)) return;
     autoImageTried.current.add(w.id);
     suggestMnemonicForWord(w);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, currentCard?.id, currentCard?.image_url, suggestingMnemonic]);
+  }, [tab, deckKey, currentCard?.id, currentCard?.image_url, suggestingMnemonic]);
 
   // "+" above the flashcard: type one or many words → one card each. After a
   // save, jump to the first new card once the refetched deck contains it.
@@ -1061,6 +1106,9 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
         // The sentence the word came from travels with the card, so the
         // flashcard can play it back.
         example_sentence: wordPopup.sentence,
+        // Which video it came from -> its own deck in the Backpack menu.
+        source_video_id: shellVideo?.video_id || null,
+        source_video_title: shellVideo?.title || null,
       });
       queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
       setWordPopup((p: any) => (p ? { ...p, saving: false, added: true } : p));
@@ -1238,7 +1286,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 pending-review flow */}
             <PhotoWordCapture language={language} />
 
-            {flashDeck.length === 0 ? (
+            {backpackDecks.all.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                 <Turtle mood={mood} size="text-6xl" />
                 <p className="font-medium text-slate-700">No cards yet</p>
@@ -1260,8 +1308,24 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   </button>
                 </div>
               </div>
+            ) : deckKey === null ? (
+              <BackpackDeckMenu
+                decks={backpackDecks}
+                onOpen={openDeck}
+                onAdd={() => setAddWordsOpen(true)}
+              />
             ) : (
               <>
+                {/* Back to the deck menu */}
+                <div className="mt-2 flex flex-shrink-0 items-center gap-2 px-1">
+                  <button
+                    onClick={() => openDeck(null)}
+                    className="flex items-center gap-1 rounded-full border border-indigo-100 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 shadow-sm"
+                  >
+                    ← Decks
+                  </button>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{deckTitle}</span>
+                </div>
                 {/* Pager */}
                 <div className="mt-2 flex flex-shrink-0 items-center justify-between px-1">
                   <button
@@ -1342,6 +1406,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
           existingWords={words}
           onAdded={async (created: any[]) => {
             queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
+            if (created.length && deckKey !== "all" && deckKey !== "other") openDeck("all");
             if (created[0]?.id) setJumpToWordId(created[0].id);
             if (created.length) setMood("happy");
             // New cards get their AI mnemonic image right away — the same as
@@ -2352,6 +2417,121 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {/* Home indicator */}
         <div className="mx-auto mt-2 h-1 w-28 rounded-full bg-indigo-300/50" />
       </div>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Backpack deck menu (variant A): "Practice all" on top, then one row per
+// source video (thumbnail, title, cards, mastered, level bar), then the words
+// that didn't come from a video.
+// ---------------------------------------------------------------------------
+// Same scale as the card rating row: New · 1 Recognized · 2 Familiar ·
+// 3 Can Use (legacy 4 counts as Can Use) · 5 Mastered.
+const LEVEL_COLORS = ["#999999", "#dc2626", "#eab308", "#86efac", "#86efac", "#16a34a"];
+
+function LevelBar({ words }: { words: any[] }) {
+  const counts = [0, 0, 0, 0, 0, 0];
+  for (const w of words) counts[Math.max(0, Math.min(5, Number(w.times_practiced) || 0))]++;
+  const total = words.length || 1;
+  return (
+    <div className="flex h-1.5 overflow-hidden rounded-full bg-slate-200">
+      {counts.map((c, lvl) =>
+        c ? <div key={lvl} style={{ width: `${(c / total) * 100}%`, background: LEVEL_COLORS[lvl] }} /> : null
+      )}
+    </div>
+  );
+}
+
+const deckSummary = (words: any[]) => {
+  const mastered = words.filter((w) => (Number(w.times_practiced) || 0) >= 5).length;
+  return `${words.length} card${words.length === 1 ? "" : "s"}${mastered ? ` · ${mastered} mastered` : ""}`;
+};
+
+function BackpackDeckMenu({
+  decks,
+  onOpen,
+  onAdd,
+}: {
+  decks: { all: any[]; videos: { key: string; videoId: string; title: string; words: any[] }[]; other: any[] };
+  onOpen: (key: string) => void;
+  onAdd: () => void;
+}) {
+  return (
+    <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto pb-4">
+      <div className="rounded-3xl bg-slate-900 p-4 text-white shadow-xl shadow-slate-900/20">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-lg font-bold">🎒 Practice all flashcards</p>
+            <p className="mt-0.5 text-xs text-slate-400">{deckSummary(decks.all)}</p>
+          </div>
+          <button
+            onClick={onAdd}
+            aria-label="Add words"
+            title="Add words"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow-md transition hover:scale-105"
+          >
+            <Plus className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-3">
+          <LevelBar words={decks.all} />
+        </div>
+        <button
+          onClick={() => onOpen("all")}
+          className="mt-3 w-full rounded-xl bg-gradient-to-r from-teal-500 to-indigo-500 py-2.5 text-sm font-bold text-white shadow"
+        >
+          Start practice
+        </button>
+      </div>
+
+      {decks.videos.length > 0 && (
+        <p className="mb-2 ml-1 mt-5 text-[11px] font-bold uppercase tracking-wider text-slate-500">From your videos</p>
+      )}
+      {decks.videos.map((g) => (
+        <button
+          key={g.key}
+          onClick={() => onOpen(g.key)}
+          className="mb-2 flex items-center gap-3 rounded-2xl border border-indigo-50 bg-white p-2 text-left shadow-sm transition hover:border-indigo-200"
+        >
+          <div className="relative h-14 w-24 flex-shrink-0 overflow-hidden rounded-xl bg-slate-200">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`https://i.ytimg.com/vi/${g.videoId}/mqdefault.jpg`} alt="" className="h-full w-full object-cover" />
+            <span className="absolute inset-0 flex items-center justify-center">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/60 text-[10px] text-white">▶</span>
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="line-clamp-2 text-sm font-semibold leading-tight text-slate-900">{g.title}</p>
+            <p className="mb-1.5 mt-0.5 text-[11px] text-slate-500">{deckSummary(g.words)}</p>
+            <LevelBar words={g.words} />
+          </div>
+          <span className="pr-1 text-lg font-bold text-indigo-500">›</span>
+        </button>
+      ))}
+
+      {decks.other.length > 0 && (
+        <>
+          {decks.videos.length > 0 && (
+            <p className="mb-2 ml-1 mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">More</p>
+          )}
+          <button
+            onClick={() => onOpen("other")}
+            className={`${decks.videos.length ? "" : "mt-5 "}mb-2 flex items-center gap-3 rounded-2xl border border-indigo-50 bg-white p-2 text-left shadow-sm transition hover:border-indigo-200`}
+          >
+            <div className="flex h-14 w-24 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-400 to-cyan-400 text-2xl">
+              ✍️
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-900">Other words</p>
+              <p className="mb-1.5 mt-0.5 text-[11px] text-slate-500">{deckSummary(decks.other)}</p>
+              <LevelBar words={decks.other} />
+            </div>
+            <span className="pr-1 text-lg font-bold text-indigo-500">›</span>
+          </button>
+        </>
+      )}
     </div>
   );
 }
