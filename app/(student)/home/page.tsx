@@ -23,6 +23,7 @@ import { mnemonicImagePrompt } from "@/lib/imageStyle";
 import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
 import WordCard from "@/components/backpack/WordCard";
+import AddWordsSheet from "@/components/home/AddWordsSheet";
 import PhotoWordCapture from "@/components/home/PhotoWordCapture";
 import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/transcription";
 
@@ -540,6 +541,16 @@ Return JSON with:
       );
   }, [words, dismissedCards]);
   const safeCardIdx = Math.min(cardIdx, Math.max(0, flashDeck.length - 1));
+
+  // "+" above the flashcard: type one or many words → one card each. After a
+  // save, jump to the first new card once the refetched deck contains it.
+  const [addWordsOpen, setAddWordsOpen] = useState(false);
+  const [jumpToWordId, setJumpToWordId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!jumpToWordId) return;
+    const idx = flashDeck.findIndex((w: any) => w.id === jumpToWordId);
+    if (idx >= 0) { setCardIdx(idx); setJumpToWordId(null); }
+  }, [jumpToWordId, flashDeck]);
 
   // -------------------------------------------------------------------------
   // Practice: AI multiple-choice questions from the newest flashcard words.
@@ -1202,12 +1213,20 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 <p className="px-6 text-sm text-slate-500">
                   Tap words in a video transcript or add them in the Journal — they become flashcards here.
                 </p>
-                <button
-                  onClick={() => setTab("library")}
-                  className="mt-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-5 py-2.5 font-semibold text-white shadow"
-                >
-                  Watch a video
-                </button>
+                <div className="mt-1 flex gap-2">
+                  <button
+                    onClick={() => setAddWordsOpen(true)}
+                    className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-5 py-2.5 font-semibold text-indigo-600 shadow"
+                  >
+                    <Plus className="h-4 w-4" /> Add words
+                  </button>
+                  <button
+                    onClick={() => setTab("library")}
+                    className="rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-5 py-2.5 font-semibold text-white shadow"
+                  >
+                    Watch a video
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -1220,9 +1239,19 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   >
                     ←
                   </button>
-                  <span className="text-xs font-semibold text-slate-400">
-                    {safeCardIdx + 1} / {flashDeck.length}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold text-slate-400">
+                      {safeCardIdx + 1} / {flashDeck.length}
+                    </span>
+                    <button
+                      onClick={() => setAddWordsOpen(true)}
+                      aria-label="Add words"
+                      title="Add words"
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow-md shadow-indigo-200 transition hover:scale-105"
+                    >
+                      <Plus className="h-5 w-5" />
+                    </button>
+                  </div>
                   <button
                     onClick={() => setCardIdx((i) => Math.min(flashDeck.length - 1, i + 1))}
                     disabled={safeCardIdx >= flashDeck.length - 1}
@@ -1273,6 +1302,18 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             )}
           </div>
         )}
+
+        <AddWordsSheet
+          open={addWordsOpen}
+          onClose={() => setAddWordsOpen(false)}
+          language={language}
+          existingWords={words}
+          onAdded={(created: any[]) => {
+            queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
+            if (created[0]?.id) setJumpToWordId(created[0].id);
+            if (created.length) setMood("happy");
+          }}
+        />
 
         {/* ================= PRACTICE / JOURNAL ================= */}
         {tab === "practice" && journalMode !== "off" && (
