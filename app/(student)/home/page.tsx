@@ -2705,6 +2705,9 @@ function formatClock(s: number | null) {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
 
+// A chapter's content is at most 3.5 minutes; longer videos use the first 3:30.
+const CHAPTER_MAX_SECONDS = 210;
+
 function ChapterWatch({
   video,
   onExit,
@@ -2721,9 +2724,17 @@ function ChapterWatch({
   const [score, setScore] = useState(50);
   const [saving, setSaving] = useState(false);
   const playerRef = useRef<any>(null);
+  const endedRef = useRef(false);
 
   useEffect(() => {
     if (phase !== "watching") return;
+    endedRef.current = false;
+    const finish = () => {
+      if (endedRef.current) return;
+      endedRef.current = true;
+      try { playerRef.current?.pauseVideo?.(); } catch {}
+      setPhase("rate");
+    };
     let cancelled = false;
     let poll: any = null;
     let startCheck: any = null;
@@ -2734,6 +2745,7 @@ function ChapterWatch({
         playerVars: {
           autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1,
           iv_load_policy: 3, cc_load_policy: 0, playsinline: 1,
+          end: CHAPTER_MAX_SECONDS, // play at most the first 3:30
         },
         events: {
           onReady: (e: any) => {
@@ -2748,17 +2760,21 @@ function ChapterWatch({
           },
           onStateChange: (e: any) => {
             if (e.data === 1) setNeedsTap(false);
-            if (e.data === 0) setPhase("rate");          // ended → step complete
-            else if (e.data === 2) e.target.playVideo();  // no pausing
+            if (e.data === 0) finish();                                    // ended → step complete
+            else if (e.data === 2 && !endedRef.current) e.target.playVideo(); // no pausing
           },
         },
       });
       poll = setInterval(() => {
         const p = playerRef.current;
         if (!p?.getDuration) return;
-        const d = p.getDuration() || 0;
+        const d = Math.min(p.getDuration() || 0, CHAPTER_MAX_SECONDS);
         const t = p.getCurrentTime() || 0;
-        if (d > 0) { setTotal(d); setRemaining(Math.max(0, d - t)); }
+        if (d > 0) {
+          setTotal(d);
+          setRemaining(Math.max(0, d - t));
+          if (t >= d - 0.25) finish(); // safety net if YouTube doesn't report "ended"
+        }
       }, 250);
     });
     return () => {
