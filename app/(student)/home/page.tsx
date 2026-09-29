@@ -1320,10 +1320,16 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
           onClose={() => setAddWordsOpen(false)}
           language={language}
           existingWords={words}
-          onAdded={(created: any[]) => {
+          onAdded={async (created: any[]) => {
             queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
             if (created[0]?.id) setJumpToWordId(created[0].id);
             if (created.length) setMood("happy");
+            // New cards get their AI mnemonic image right away — the same as
+            // tapping 🎨 on each one — one at a time so the card shows the
+            // "Generating image…" state and we don't fire N image jobs at once.
+            for (const w of created) {
+              if (w?.id) await suggestMnemonicForWord(w);
+            }
           }}
         />
 
