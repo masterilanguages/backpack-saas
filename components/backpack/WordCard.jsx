@@ -511,7 +511,8 @@ export default function WordCard({
         <button
           onClick={() => suggestMnemonicForWord(word)}
           disabled={suggestingMnemonic === word.id || reviewLocked}
-          className={`${large ? "w-10 h-10 text-lg" : "w-6 h-6"} rounded flex items-center justify-center text-sm hover:bg-teal-500/20 transition-all`}
+          className={`${large ? "w-10 h-10 text-lg" : "w-6 h-6"} rounded flex items-center justify-center text-sm transition-all ${reviewLocked ? 'cursor-not-allowed' : 'hover:bg-teal-500/20'}`}
+          style={reviewLocked ? { opacity: 0.4 } : undefined}
           title={reviewLocked ? "Approved cards can't be changed" : "Generate mnemonic image"}
         >
           {suggestingMnemonic === word.id ? <Loader2 className="w-3 h-3 animate-spin text-teal-400" /> : '🎨'}
