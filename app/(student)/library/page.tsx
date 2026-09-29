@@ -316,13 +316,9 @@ export default function Backpack() {
       }
       return;
     }
-    // Tapping "3" represents the level-3 bucket, which also contains legacy
-    // level-4 words (the "3" button is shown active for times_practiced 3 or 4).
-    // Don't demote a level-4 word back to 3 when the user taps the active "3".
-    const effectiveRating = (rating === 3 && word?.times_practiced === 4) ? 4 : rating;
     await updateWordMutation.mutateAsync({
       id: wordId,
-      data: { times_practiced: effectiveRating, mastered: effectiveRating >= 5 }
+      data: { times_practiced: rating, mastered: rating >= 5 }
     });
   };
 
@@ -496,7 +492,8 @@ Return JSON:
   const level0Words = langFilteredRatings.filter(w => (w.times_practiced || 0) === 0);
   const level1Words = langFilteredRatings.filter(w => w.times_practiced === 1);
   const level2Words = langFilteredRatings.filter(w => w.times_practiced === 2);
-  const level3Words = langFilteredRatings.filter(w => w.times_practiced === 3 || w.times_practiced === 4);
+  const level3Words = langFilteredRatings.filter(w => w.times_practiced === 3);
+  const level4Words = langFilteredRatings.filter(w => w.times_practiced === 4);
   const level5Words = langFilteredRatings.filter(w => w.times_practiced >= 5);
 
   const coachWords = langFilteredRatings.filter(w => w.coach_folder === 'From Coach' && (w.times_practiced || 0) === 0);
@@ -507,13 +504,15 @@ Return JSON:
     { id: "level1", label: "Level 1", color: "orange" },
     { id: "level2", label: "Level 2", color: "yellow" },
     { id: "level3", label: "Level 3", color: "purple" },
-    { id: "level5", label: "Mastered", color: "green" },
+    { id: "level4", label: "Level 4", color: "blue" },
+    { id: "level5", label: "Level 5 ⭐", color: "green" },
   ];
 
 
   const getDisplayWords = () => {
     let words: any[] = [];
     if (activeTab === "level5") words = level5Words;
+    else if (activeTab === "level4") words = level4Words;
     else if (activeTab === "level3") words = level3Words;
     else if (activeTab === "level2") words = level2Words;
     else if (activeTab === "level1") words = level1Words;
@@ -1294,7 +1293,7 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
           {/* Rating - After picture */}
           <p className="text-slate-400 text-sm mb-2 text-center">How well do you know this word?</p>
           <div className="flex gap-2 justify-center mb-4">
-            {[{ value: 1, label: "1" }, { value: 2, label: "2" }, { value: 3, label: "3" }, { value: 5, label: "M ⭐" }].map(({ value, label }) => (
+            {[{ value: 1, label: "1" }, { value: 2, label: "2" }, { value: 3, label: "3" }, { value: 4, label: "4" }, { value: 5, label: "5 ⭐" }].map(({ value, label }) => (
               <motion.button
                 key={value}
                 whileHover={{ scale: 1.1 }}

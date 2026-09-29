@@ -77,6 +77,14 @@ function SentenceWords({ words, onAddToBackpack, showHebrew = true, showTranslit
   );
 }
 
+const RATING_HINTS = {
+  1: "1 — Don't know it yet",
+  2: "2 — Barely recognize it",
+  3: "3 — Getting there",
+  4: "4 — Know it well",
+  5: "5 — Mastered",
+};
+
 export default function WordCard({
   word,
   language,
@@ -440,23 +448,19 @@ export default function WordCard({
       {/* Bottom row: ratings + buttons */}
       <div className={`px-2 pb-2 flex items-center ${large ? "gap-2 px-3 pb-3" : "gap-1"}`}>
         <div className={`flex flex-1 ${large ? "gap-1.5" : "gap-0.5"}`}>
-          {[{ value: 1, label: "1" }, { value: 2, label: "2" }, { value: 3, label: "3" }, { value: 5, label: "M" }].map(({ value, label }) => (
+          {/* 1–5 knowledge scale; 5 = mastered (sets `mastered`). */}
+          {[1, 2, 3, 4, 5].map((value) => (
             <button
               key={value}
-              onClick={(e) => handleRateWord(
-                word.id,
-                // Legacy preservation: a word already at level 4 should not be demoted to 3
-                // when the "3" button is tapped — keep the existing level-4 value.
-                (value === 3 && word.times_practiced === 4) ? 4 : value,
-                e
-              )}
+              onClick={(e) => handleRateWord(word.id, value, e)}
+              title={RATING_HINTS[value]}
               className={`flex-1 ${large ? 'h-10 rounded-lg text-base' : 'h-6 rounded text-xs'} font-bold transition-all ${
-                word.times_practiced === value || (value === 3 && word.times_practiced === 4)
+                word.times_practiced === value
                   ? value === 5 ? 'bg-green-500 text-white' : 'bg-teal-500 text-white'
                   : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
             >
-              {label}
+              {value}
             </button>
           ))}
         </div>
