@@ -53,11 +53,16 @@ export async function POST(req: Request) {
 
   const link = data?.properties?.action_link;
   // Si el email no existe o falla, devolvemos ok igual (no filtrar).
-  if (error || !link) return NextResponse.json({ ok: true, emailSent: false });
+  if (error || !link) {
+    if (error) console.error("[forgot] generateLink error:", error.message);
+    return NextResponse.json({ ok: true, emailSent: false });
+  }
 
   try {
     const resend = new Resend(apiKey);
-    await resend.emails.send({
+    // El SDK de Resend NO lanza en errores de la API (dominio sin verificar,
+    // key inválida, remitente no permitido…): los devuelve en `error`.
+    const { error: sendError } = await resend.emails.send({
       from: process.env.EMAIL_FROM || "Backpack <onboarding@resend.dev>",
       to: email,
       subject: "Reset your password",
@@ -71,6 +76,10 @@ export async function POST(req: Request) {
           <p style="color:#94a3b8;font-size:12px">If you didn't request this, you can safely ignore this email.</p>
         </div>`,
     });
+    if (sendError) {
+      console.error("[forgot] Resend rejected the email:", sendError.name, sendError.message);
+      return NextResponse.json({ ok: true, emailSent: false });
+    }
   } catch (e: any) {
     console.error("[forgot] Resend error:", e?.message);
     // No filtramos el fallo al cliente.
