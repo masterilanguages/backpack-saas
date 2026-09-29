@@ -324,7 +324,7 @@ export async function getSchoolWords(orgId: string, coachId?: string | null) {
   const [wordsRes, students] = await Promise.all([
     supabaseAdmin
       .from("word")
-      .select("id, word, translation, language, mastered, is_starred, times_practiced, created_by, created_date")
+      .select("id, word, translation, language, mastered, is_starred, times_practiced, review_status, created_by, created_date")
       .eq("org_id", orgId)
       .order("created_date", { ascending: false }),
     getStudents(orgId),

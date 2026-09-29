@@ -13,8 +13,12 @@ interface WordRow {
   language: string | null;
   mastered: boolean | null;
   times_practiced: number | null;
+  review_status: "approved" | "rejected" | null;
+  review?: string;
   student: string;
 }
+
+const REVIEW_LABEL = { approved: "Aprobada", rejected: "Rechazada" } as const;
 
 export default function VocabularyModule({ slug }: { slug: string }) {
   const [rows, setRows] = useState<WordRow[]>([]);
@@ -23,7 +27,15 @@ export default function VocabularyModule({ slug }: { slug: string }) {
   useEffect(() => {
     fetch(`/api/school/${slug}/words`)
       .then((r) => r.json())
-      .then((data) => setRows(Array.isArray(data) ? data : []))
+      .then((data) =>
+        setRows(
+          (Array.isArray(data) ? data : []).map((w: WordRow) => ({
+            ...w,
+            // Plain label so the DataTable filter can match on it.
+            review: w.review_status ? REVIEW_LABEL[w.review_status] : "Sin revisar",
+          })),
+        ),
+      )
       .finally(() => setLoading(false));
   }, [slug]);
 
@@ -46,6 +58,18 @@ export default function VocabularyModule({ slug }: { slug: string }) {
         ),
     },
     { key: "times_practiced", header: "Prácticas", render: (w) => w.times_practiced ?? 0 },
+    {
+      key: "review_status",
+      header: "Revisión",
+      render: (w) =>
+        w.review_status === "rejected" ? (
+          <StatusBadge status="Rechazada" tone="red" />
+        ) : w.review_status === "approved" ? (
+          <StatusBadge status="Aprobada" tone="green" />
+        ) : (
+          <span className="text-xs text-slate-400">—</span>
+        ),
+    },
     { key: "student", header: "Alumno", render: (w) => <span className="text-slate-600">{w.student}</span> },
   ];
 
@@ -69,6 +93,7 @@ export default function VocabularyModule({ slug }: { slug: string }) {
           filters={[
             { key: "language", label: "Languages", options: languages },
             { key: "student", label: "Students", options: students },
+            { key: "review", label: "Revisión", options: ["Rechazada", "Aprobada", "Sin revisar"] },
           ]}
           emptyTitle="No vocabulary yet"
           emptyDescription="Aparecerá aquí cuando los alumnos guarden palabras en el portal."

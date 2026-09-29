@@ -139,6 +139,22 @@ export default function WordCard({
   // against attempting a real delete on them.
   const isRealWordId = word.id != null && !String(word.id).startsWith('session_');
 
+  // Student review (per card, never shared): null → "approved" → "rejected" → null.
+  // An approved card is locked for the student; only an admin can still edit it.
+  // Rejected cards stay editable and show up for the admin under Vocabulary.
+  const reviewStatus = word.review_status || null;
+  const reviewLocked = reviewStatus === 'approved' && !isAdmin;
+  const canEdit = isContentEditable(word) && !reviewLocked;
+  const canReview = !isAdmin && isRealWordId && !word._shared && !word.approved;
+  const cycleReview = (e) => {
+    e.stopPropagation();
+    const next = reviewStatus === null ? 'approved' : reviewStatus === 'approved' ? 'rejected' : null;
+    updateWordMutation.mutate(
+      { id: word.id, data: { review_status: next } },
+      { onSuccess: () => toast.success(next === 'approved' ? "Card approved ✅" : next === 'rejected' ? "Card flagged for review" : "Review cleared") }
+    );
+  };
+
   const regenerateImageFromDescription = async (description) => {
     setRegeneratingImage(true);
     try {
@@ -223,6 +239,16 @@ export default function WordCard({
           <span className="text-green-400 text-[10px] font-semibold">✅ Approved card</span>
         </div>
       )}
+      {!word.approved && reviewStatus === 'approved' && (
+        <div className="flex items-center gap-1 px-2 py-0.5 border-b" style={{ background: 'rgba(34,197,94,0.15)', borderColor: 'rgba(34,197,94,0.3)' }}>
+          <span className="text-green-400 text-[10px] font-semibold">✅ Approved</span>
+        </div>
+      )}
+      {reviewStatus === 'rejected' && (
+        <div className="flex items-center gap-1 px-2 py-0.5 border-b" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.3)' }}>
+          <span className="text-red-400 text-[10px] font-semibold">❌ Flagged for review</span>
+        </div>
+      )}
       {word._shared && (
         <div className="flex items-center gap-1 px-2 py-0.5 bg-teal-500/15 border-b border-teal-500/30">
           <span className="text-teal-300 text-[10px] font-semibold">⭐ New — tap to rank</span>
@@ -270,7 +296,7 @@ export default function WordCard({
             />
             {/* Regenerate the image: with typed specs in the designer input it
                 recreates from those specs, otherwise a fresh auto mnemonic. */}
-            <button
+            {!reviewLocked && <button
               onClick={(e) => {
                 e.stopPropagation();
                 if (isGeneratingImage || regeneratingImage) return;
@@ -281,7 +307,7 @@ export default function WordCard({
               className={`absolute bottom-1.5 left-1.5 z-10 flex ${large ? 'h-10 w-10 text-base' : 'h-7 w-7 text-sm'} items-center justify-center rounded-full bg-slate-900/70 backdrop-blur-sm transition hover:bg-slate-900/90`}
             >
               {(isGeneratingImage || regeneratingImage) ? <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-400" /> : '🔄'}
-            </button>
+            </button>}
           </>
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-teal-500/15 via-teal-400/5 to-slate-800 flex flex-col items-center justify-center text-center px-4 gap-2">
@@ -314,7 +340,7 @@ export default function WordCard({
             <EditableWord
               text={word.word}
               language={nativeWordRTL ? "he" : "en"}
-              editable={isContentEditable(word)}
+              editable={canEdit}
               onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { word: v } })}
               className={`text-teal-300 font-bold ${large ? "text-3xl" : "text-base"}`}
               onClick={(e) => e.stopPropagation()}
@@ -326,7 +352,7 @@ export default function WordCard({
           <p className={`text-slate-400 text-center ${large ? "text-lg" : "text-sm"}`}>
             <EditableWord
               text={word.phonetic || word.word}
-              editable={isContentEditable(word)}
+              editable={canEdit}
               onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { phonetic: v } })}
               className={`text-slate-400 ${large ? "text-lg" : "text-sm"}`}
               onClick={(e) => e.stopPropagation()}
@@ -338,7 +364,7 @@ export default function WordCard({
           <p className={`text-white font-semibold text-center ${large ? "text-xl" : "text-base"}`}>
             <EditableWord
               text={word.translation || "(no translation)"}
-              editable={isContentEditable(word)}
+              editable={canEdit}
               onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { translation: v } })}
               className={`text-white font-semibold ${large ? "text-xl" : "text-base"}`}
               onClick={(e) => e.stopPropagation()}
@@ -466,19 +492,39 @@ export default function WordCard({
         </div>
         <button
           onClick={() => suggestMnemonicForWord(word)}
-          disabled={suggestingMnemonic === word.id}
+          disabled={suggestingMnemonic === word.id || reviewLocked}
           className={`${large ? "w-10 h-10 text-lg" : "w-6 h-6"} rounded flex items-center justify-center text-sm hover:bg-teal-500/20 transition-all`}
-          title="Generate mnemonic image"
+          title={reviewLocked ? "Approved cards can't be changed" : "Generate mnemonic image"}
         >
           {suggestingMnemonic === word.id ? <Loader2 className="w-3 h-3 animate-spin text-teal-400" /> : '🎨'}
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); setShowCustomMnemonic(v => !v); setCustomDesc(""); }}
-          className={`${large ? "w-10 h-10 text-lg" : "w-6 h-6"} rounded flex items-center justify-center transition-all ${showCustomMnemonic ? 'bg-teal-500/20 text-teal-300' : 'hover:bg-teal-500/20 text-slate-400'}`}
-          title="Design your own mnemonic"
+          disabled={reviewLocked}
+          className={`${large ? "w-10 h-10 text-lg" : "w-6 h-6"} rounded flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${showCustomMnemonic ? 'bg-teal-500/20 text-teal-300' : 'hover:bg-teal-500/20 text-slate-400'}`}
+          title={reviewLocked ? "Approved cards can't be changed" : "Design your own mnemonic"}
         >
           <Pencil className={large ? "w-4 h-4" : "w-3 h-3"} />
         </button>
+        {canReview && (
+          <button
+            onClick={cycleReview}
+            disabled={updateWordMutation.isPending}
+            className={`${large ? "w-10 h-10 text-base" : "w-6 h-6 text-xs"} rounded flex items-center justify-center font-bold transition-all ${reviewStatus ? '' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+            style={
+              reviewStatus === 'approved' ? { background: 'rgba(34,197,94,0.25)', color: '#4ade80' }
+              : reviewStatus === 'rejected' ? { background: 'rgba(239,68,68,0.25)', color: '#f87171' }
+              : undefined
+            }
+            title={
+              reviewStatus === 'approved' ? "Approved — tap to flag it as wrong"
+              : reviewStatus === 'rejected' ? "Flagged for review — tap to clear"
+              : "Approve this card"
+            }
+          >
+            {reviewStatus === 'rejected' ? '✕' : '✓'}
+          </button>
+        )}
         {isAdmin && (
           <button
             onClick={() => approveWordMutation.mutate({ id: word.id, approved: !word.approved })}
