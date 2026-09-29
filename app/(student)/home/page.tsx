@@ -561,6 +561,21 @@ Return JSON with:
   }, [words, dismissedCards, language]);
   const safeCardIdx = Math.min(cardIdx, Math.max(0, flashDeck.length - 1));
 
+  // Safety net: many save paths (journal, songs, translator, older video
+  // flows…) create a word without an image. When such a card is shown in
+  // Backpack, generate its AI mnemonic once. Reviewed cards (approved /
+  // rejected) are left untouched.
+  const autoImageTried = useRef<Set<any>>(new Set());
+  const currentCard: any = flashDeck[safeCardIdx];
+  useEffect(() => {
+    const w = currentCard;
+    if (tab !== "learning" || !w?.id || w.image_url || w.review_status || w.approved) return;
+    if (suggestingMnemonic || autoImageTried.current.has(w.id)) return;
+    autoImageTried.current.add(w.id);
+    suggestMnemonicForWord(w);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, currentCard?.id, currentCard?.image_url, suggestingMnemonic]);
+
   // "+" above the flashcard: type one or many words → one card each. After a
   // save, jump to the first new card once the refetched deck contains it.
   const [addWordsOpen, setAddWordsOpen] = useState(false);
@@ -1035,7 +1050,7 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
     if (!wordPopup || wordPopup.saving || wordPopup.added) return;
     setWordPopup((p: any) => ({ ...p, saving: true }));
     try {
-      await base44.entities.Word.create({
+      const row = await base44.entities.Word.create({
         word: wordPopup.clean,
         translation: wordPopup.translation || "",
         phonetic: wordPopup.phonetic || wordPopup.clean,
@@ -1051,6 +1066,11 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
       setWordPopup((p: any) => (p ? { ...p, saving: false, added: true } : p));
       setMood("happy");
       toast.success("Added to backpack! 🎒");
+      // Generate its AI mnemonic image in the background (same as tapping 🎨).
+      if (row?.id) {
+        autoImageTried.current.add(row.id);
+        suggestMnemonicForWord(row);
+      }
     } catch (e: any) {
       setWordPopup((p: any) => (p ? { ...p, saving: false } : p));
       toast.error("Couldn't add the word");
@@ -1327,6 +1347,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             // New cards get their AI mnemonic image right away — the same as
             // tapping 🎨 on each one — one at a time so the card shows the
             // "Generating image…" state and we don't fire N image jobs at once.
+            for (const w of created) if (w?.id) autoImageTried.current.add(w.id);
             for (const w of created) {
               if (w?.id) await suggestMnemonicForWord(w);
             }
