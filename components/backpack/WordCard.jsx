@@ -83,6 +83,76 @@ const REVIEW_STYLE = {
   rejected: { color: '#f87171', ring: 'rgba(248,113,113,0.55)', label: 'Needs review', Icon: X },
 };
 
+// Backpack card: up to 3 usage examples, each stacked as phonetic (top, blue),
+// native script (every word tappable → "= meaning · + Add"), English (grey).
+// Inline styles: Tailwind doesn't scan .jsx.
+function UsageExamples({ examples, loading, lang, showEnglish, onAddToBackpack, target }) {
+  const stem = String(target || '').replace(/[֑-ׇ]/g, '').replace(/^[הוכלבמש]/, '');
+  const [active, setActive] = useState(null); // "exampleIndex:wordIndex"
+  if (loading && !examples?.length) {
+    return (
+      <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 0', fontSize: 12, color: '#94a3b8' }}>
+        <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> Writing examples…
+      </div>
+    );
+  }
+  if (!examples?.length) return null;
+  return (
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.1em', color: '#94a3b8', textTransform: 'uppercase', paddingLeft: 2 }}>Examples</div>
+      {examples.map((ex, i) => {
+        const rtl = isRTLText(ex.hebrew_sentence || '');
+        const words = Array.isArray(ex.words) && ex.words.length ? ex.words : null;
+        const [ai, wi] = (active || '').split(':').map(Number);
+        const picked = active && ai === i && words ? words[wi] : null;
+        return (
+          <div key={i} style={{ borderRadius: 12, background: 'linear-gradient(180deg,#f5f7ff,#eef2ff)', border: '1px solid #e0e7ff', padding: '4px 10px' }}>
+            {needsTransliteration(lang) && (
+              <div style={{ fontSize: 12, fontStyle: 'italic', color: '#4f46e5', lineHeight: 1.3 }}>{ex.transliteration}</div>
+            )}
+            <div dir={rtl ? 'rtl' : 'ltr'} style={{ fontSize: 15, color: '#0f172a', lineHeight: 1.35, textAlign: rtl ? 'right' : 'left' }}>
+              {words
+                ? words.map((w, j) => (
+                    <span key={j}>
+                      <span
+                        onClick={() => setActive(active === `${i}:${j}` ? null : `${i}:${j}`)}
+                        style={{
+                          cursor: 'pointer', borderRadius: 4, padding: '0 2px',
+                          borderBottom: '1px dotted #a5b4fc',
+                          background: active === `${i}:${j}` ? '#e0e7ff' : 'transparent',
+                          ...(stem && String(w.hebrew || '').replace(/[֑-ׇ]/g, '').includes(stem) ? { color: '#4f46e5', fontWeight: 700 } : {}),
+                        }}
+                      >
+                        {w.hebrew}
+                      </span>
+                      {j < words.length - 1 ? ' ' : ''}
+                    </span>
+                  ))
+                : ex.hebrew_sentence}
+            </div>
+            {showEnglish !== false && ex.english && (
+              <div style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.25 }}>{ex.english}</div>
+            )}
+            {picked && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, padding: '4px 8px', borderRadius: 10, background: '#fff', border: '1px solid #c7d2fe', fontSize: 12 }}>
+                <span style={{ fontWeight: 700, color: '#4338ca' }}>{picked.word}</span>
+                {picked.meaning && <span style={{ color: '#64748b', flex: 1 }}>= {picked.meaning}</span>}
+                <button
+                  onClick={() => { onAddToBackpack(picked.word, picked.meaning, picked.hebrew); setActive(null); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 3, background: '#6366f1', color: '#fff', border: 0, borderRadius: 8, padding: '3px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  <Plus style={{ width: 12, height: 12 }} /> Add
+                </button>
+                <button onClick={() => setActive(null)} style={{ background: 'none', border: 0, color: '#94a3b8', cursor: 'pointer' }}><X style={{ width: 13, height: 13 }} /></button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const RATING_HINTS = {
   1: "1 — Don't know it yet",
   2: "2 — Barely recognize it",
@@ -122,6 +192,8 @@ export default function WordCard({
   // Single-card view (Backpack tab): fill the available width/height and scale
   // text + controls up. Default stays the compact w-48 grid tile.
   large = false,
+  // Backpack only: the 3 usage examples are being generated for this card.
+  generatingExamples = false,
 }) {
   const [revealed, setRevealed] = useState(false);
   const [regeneratingImage, setRegeneratingImage] = useState(false);
@@ -276,8 +348,8 @@ export default function WordCard({
         </div>
 
         {/* Image in a circle, 💡 pill on its bottom edge, actions in a column to its right */}
-        <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center', marginTop: 30, flexShrink: 0 }}>
-        <div style={{ position: 'relative', width: 'min(244px, 68%)' }}>
+        <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center', marginTop: 36, flexShrink: 0 }}>
+        <div style={{ position: 'relative', width: 'min(186px, 52%)' }}>
           <div
             onClick={() => setRevealed(r => !r)}
             style={{
@@ -314,7 +386,7 @@ export default function WordCard({
             )}
           </div>
           {explanation && (
-            <div style={{ position: 'absolute', left: '50%', bottom: -16, transform: 'translateX(-50%)', width: '112%', display: 'flex', justifyContent: 'center', containerType: 'inline-size' }}>
+            <div style={{ position: 'absolute', left: '50%', bottom: -16, transform: 'translateX(-50%)', width: 'min(172%, 310px)', display: 'flex', justifyContent: 'center', containerType: 'inline-size' }}>
               <span
                 style={{
                   maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', fontStyle: 'italic', color: '#0f766e',
@@ -329,7 +401,7 @@ export default function WordCard({
           )}
         </div>
         {/* Actions: regenerate image · design your own · review ✓ · (admin share) · delete */}
-        <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button
             onClick={() => suggestMnemonicForWord(word)}
             disabled={suggestingMnemonic === word.id || reviewLocked}
@@ -392,9 +464,9 @@ export default function WordCard({
         </div>
 
         {/* Word, stacked: native script / phonetic / meaning (tap to reveal) */}
-        <div onClick={() => setRevealed(r => !r)} style={{ textAlign: 'center', marginTop: explanation ? 28 : 16, cursor: 'pointer', flexShrink: 0 }}>
+        <div onClick={() => setRevealed(r => !r)} style={{ textAlign: 'center', marginTop: explanation ? 24 : 12, cursor: 'pointer', flexShrink: 0 }}>
           {showHebrew && (
-            <div dir={nativeWordRTL ? 'rtl' : 'ltr'} style={{ fontSize: 36, fontWeight: 800, color: '#1e1b4b', lineHeight: 1.1 }}>
+            <div dir={nativeWordRTL ? 'rtl' : 'ltr'} style={{ fontSize: 32, fontWeight: 800, color: '#1e1b4b', lineHeight: 1.1 }}>
               <EditableWord
                 text={word.word}
                 language={nativeWordRTL ? 'he' : 'en'}
@@ -433,6 +505,18 @@ export default function WordCard({
           )}
         </div>
 
+        {/* 3 usage examples under the word (phonetic on top) */}
+        <div style={{ width: '100%', marginTop: 8, flexShrink: 0 }}>
+          <UsageExamples
+            examples={Array.isArray(word.usage_examples) ? word.usage_examples : null}
+            loading={generatingExamples}
+            lang={lang}
+            showEnglish
+            target={word.word}
+            onAddToBackpack={(w, meaning, hebrew) => handleAddWordFromSentence(w, meaning, hebrew)}
+          />
+        </div>
+
         {/* Custom mnemonic designer (✎) */}
         {showCustomMnemonic && (
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
@@ -457,7 +541,7 @@ export default function WordCard({
           </div>
         )}
 
-        <div style={{ flex: 1, minHeight: 12 }} />
+        <div style={{ flex: 1, minHeight: 8 }} />
 
         {/* Sentence the word was captured from, with listen */}
         {hasSentence && (
@@ -501,7 +585,7 @@ export default function WordCard({
         )}
 
         {/* 1–5 rating (5 = mastered) */}
-        <div style={{ width: '100%', display: 'flex', gap: 6, flexShrink: 0, marginTop: 12 }}>
+        <div style={{ width: '100%', display: 'flex', gap: 6, flexShrink: 0, marginTop: 8 }}>
           {[1, 2, 3, 4, 5].map((value) => {
             const active = word.times_practiced === value;
             const color = value === 5 ? '#22c55e' : '#14b8a6';

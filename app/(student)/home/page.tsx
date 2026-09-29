@@ -175,6 +175,11 @@ export default function Home() {
     if (typeof window === "undefined") return new Set();
     try { return new Set(JSON.parse(localStorage.getItem("watchedShellVideos") || "[]")); } catch { return new Set(); }
   });
+
+  // PATH chapters: step 1 "Watch for Meaning" is shown the first time a video is
+  // opened from the path; its "How much did you understand?" answer is the
+  // chapter's baseline score (chapter_progress, migration 1600).
+  const [chapterWatch, setChapterWatch] = useState<any>(null);
   const [mood, setMood] = useState<Mood>("idle");
 
   // In-shell journal (lives inside the Practice tab)
@@ -277,6 +282,18 @@ export default function Home() {
   });
 
   const language = userProfile?.language || "hebrew";
+
+  const { data: chapterProgress = [] } = useQuery({
+    queryKey: ["chapterProgress", currentUser?.email],
+    queryFn: () => base44.entities.ChapterProgress.filter({ created_by: currentUser.email }),
+    enabled: !!currentUser?.email,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const chapterByVideo = useMemo(
+    () => new Map((chapterProgress as any[]).map((p: any) => [p.video_id, p])),
+    [chapterProgress]
+  );
 
   const { data: words = [] } = useQuery({
     queryKey: ["wordRatings", language, currentUser?.email],
@@ -630,6 +647,79 @@ Return JSON with:
   // Older cards may carry a long 💡 explanation (2–3 lines). When one is shown,
   // rewrite it once into a complete sentence of at most 9 words and save it.
   // Approved/rejected cards are locked and left as they are.
+  // Three short usage examples per card (shown under the word, phonetic on
+  // top). Generated once when a card without them is shown, then saved on the
+  // word (usage_examples, migration 1500) so they aren't regenerated each visit.
+  const examplesTried = useRef<Set<any>>(new Set());
+  const [generatingExamples, setGeneratingExamples] = useState<Record<string, boolean>>({});
+  const generateUsageExamples = async (word: any) => {
+    setGeneratingExamples((prev) => ({ ...prev, [word.id]: true }));
+    try {
+      const lang = word.language || language;
+      const label = languageLabel(lang);
+      const nativeWord = word.word && word.word !== word.phonetic ? word.word : null;
+      const result: any = await base44.integrations.Core.InvokeLLM({
+        prompt: `You are an expert ${label} teacher writing usage examples for a flashcard.
+
+TARGET WORD: ${nativeWord ? `${label}: "${nativeWord}"` : ""} Transliteration: "${word.phonetic || word.word}" | English meaning: "${word.translation || ""}"
+
+Write 3 DIFFERENT, natural, everyday modern ${label} sentences that use this word (or its correctly conjugated/declined form).
+Rules:
+- Each sentence 3 to 6 words, simple enough for a learner, each showing a different typical use.
+- Standard modern written ${label} (${usesNikud(lang) ? "no nikud" : "native spelling"}).
+- The English translation must say exactly the same as the ${label} sentence.
+- "words" maps 1-to-1, in order, to the ${label} words of the sentence, each with its transliteration and English meaning.
+
+Return JSON: { "examples": [ { "hebrew_sentence": the sentence in ${label} script, "transliteration": the whole sentence in Latin letters, "english": its translation, "words": [ { "hebrew": word in ${label} script, "word": its transliteration, "meaning": its English meaning } ] } ] }`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            examples: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  hebrew_sentence: { type: "string" },
+                  transliteration: { type: "string" },
+                  english: { type: "string" },
+                  words: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: { hebrew: { type: "string" }, word: { type: "string" }, meaning: { type: "string" } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      const examples = (result?.examples || [])
+        .filter((e: any) => e?.hebrew_sentence && e?.transliteration)
+        .slice(0, 3);
+      if (examples.length) {
+        await updateWordMutation.mutateAsync({ id: word.id, data: { usage_examples: examples } });
+      }
+    } catch (e) {
+      console.error("[usage examples] generation failed", e);
+    }
+    setGeneratingExamples((prev) => {
+      const next = { ...prev };
+      delete next[word.id];
+      return next;
+    });
+  };
+  useEffect(() => {
+    const w = currentCard;
+    if (tab !== "learning" || deckKey === null || !w?.id || String(w.id).startsWith("session_")) return;
+    if (Array.isArray(w.usage_examples) && w.usage_examples.length) return;
+    if (examplesTried.current.has(w.id)) return;
+    examplesTried.current.add(w.id);
+    generateUsageExamples(w);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, deckKey, currentCard?.id]);
+
   const shortenTried = useRef<Set<any>>(new Set());
   useEffect(() => {
     const w = currentCard;
@@ -863,6 +953,28 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
   // In-shell video player: open a library video inside the shell — YouTube
   // player on top, tap-to-seek transcript below, synced highlighting.
   // -------------------------------------------------------------------------
+  // From the PATH: a chapter without a baseline starts with step 1.
+  const openChapter = (v: any) => {
+    if (v?.video_id && !chapterByVideo.get(v.video_id)?.baseline_score) setChapterWatch(v);
+    else openShellVideo(v);
+  };
+  const saveChapterBaseline = async (v: any, score: number) => {
+    const existing = chapterByVideo.get(v.video_id);
+    const data = { baseline_score: score, baseline_at: new Date().toISOString(), video_title: v.title || null };
+    try {
+      if (existing?.id) await base44.entities.ChapterProgress.update(existing.id, data);
+      else await base44.entities.ChapterProgress.create({ video_id: v.video_id, ...data });
+      queryClient.invalidateQueries({ queryKey: ["chapterProgress"] });
+      toast.success(`Baseline saved: ${score}%`);
+    } catch (e) {
+      console.error("[chapter] could not save baseline", e);
+      toast.error("Couldn't save your answer — please try again.");
+      throw e;
+    }
+    setChapterWatch(null);
+    openShellVideo(v); // next: the video with its transcript (until step 2 is built)
+  };
+
   const openShellVideo = async (v: any) => {
     setShellVideo(v);
     shellVideoIdRef.current = v.id;
@@ -1417,6 +1529,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       deleteWordMutation={deleteWordMutation}
                       handleAddWordFromSentence={handleAddWordFromSentence}
                       generateCardSentence={generateCardSentence}
+                      generatingExamples={Boolean(generatingExamples[flashDeck[safeCardIdx]?.id])}
                       sessionTitleMap={{}}
                     />
                 </div>
@@ -1987,6 +2100,14 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         )}
 
         {/* ================= PATH — video journey, Mondly-style ================= */}
+        {chapterWatch && (
+          <ChapterWatch
+            video={chapterWatch}
+            onExit={() => setChapterWatch(null)}
+            onSave={(score) => saveChapterBaseline(chapterWatch, score)}
+          />
+        )}
+
         {tab === "path" && !shellVideo && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
             <div className="flex flex-shrink-0 items-center justify-between">
@@ -2019,7 +2140,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                           <div key={`${v._mine ? "m" : "c"}_${v.id}`} className={`relative flex items-center gap-3 ${left ? "" : "flex-row-reverse"}`}>
                             {/* Node: the video thumbnail on its little platform */}
                             <button
-                              onClick={() => openShellVideo(v)}
+                              onClick={() => openChapter(v)}
                               className={`relative w-36 flex-shrink-0 overflow-hidden rounded-2xl bg-white shadow-lg transition hover:scale-[1.03] ${
                                 isNext
                                   ? "ring-4 ring-fuchsia-400/70 shadow-fuchsia-300/50"
@@ -2044,10 +2165,15 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                               <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${left ? "" : "justify-end"}`}>
                                 {v.difficulty_level && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-500">{v.difficulty_level}</span>}
                                 {v.duration_minutes && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-500">{v.duration_minutes} min</span>}
+                                {chapterByVideo.get(vid)?.baseline_score != null && (
+                                  <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                                    Understood {chapterByVideo.get(vid).baseline_score}%
+                                  </span>
+                                )}
                               </div>
                               {isNext && (
                                 <button
-                                  onClick={() => openShellVideo(v)}
+                                  onClick={() => openChapter(v)}
                                   className="mt-2 rounded-full bg-gradient-to-r from-fuchsia-500 to-pink-500 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-md shadow-fuchsia-300/60"
                                 >
                                   {watchedIds.size === 0 ? "Start" : "Continue"}
@@ -2561,6 +2687,172 @@ function BackpackDeckMenu({
             <span className="pr-1 text-lg font-bold text-indigo-500">›</span>
           </button>
         </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PATH chapter · Step 1 "Watch for Meaning — Uninterrupted".
+// Full-screen video with no controls, subtitles, text or translation; it can't
+// be paused or skipped (a layer blocks taps and a pause is resumed at once). A
+// countdown shows the time left. When the video ends the student answers
+// "How much did you understand?" (1–100%) — the chapter's baseline score.
+// ---------------------------------------------------------------------------
+function formatClock(s: number | null) {
+  if (s == null || !isFinite(s)) return "–:––";
+  const t = Math.max(0, Math.ceil(s));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+}
+
+function ChapterWatch({
+  video,
+  onExit,
+  onSave,
+}: {
+  video: any;
+  onExit: () => void;
+  onSave: (score: number) => Promise<void>;
+}) {
+  const [phase, setPhase] = useState<"intro" | "watching" | "rate">("intro");
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [total, setTotal] = useState<number | null>(null);
+  const [needsTap, setNeedsTap] = useState(false);
+  const [score, setScore] = useState(50);
+  const [saving, setSaving] = useState(false);
+  const playerRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (phase !== "watching") return;
+    let cancelled = false;
+    let poll: any = null;
+    let startCheck: any = null;
+    loadYouTubeApi().then((YT: any) => {
+      if (cancelled) return;
+      playerRef.current = new YT.Player("chapter-yt-player", {
+        videoId: video.video_id,
+        playerVars: {
+          autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1,
+          iv_load_policy: 3, cc_load_policy: 0, playsinline: 1,
+        },
+        events: {
+          onReady: (e: any) => {
+            // No subtitles: unload YouTube's caption module if the viewer has CC on by default.
+            try { e.target.unloadModule?.("captions"); e.target.unloadModule?.("cc"); } catch {}
+            e.target.playVideo();
+            // Some browsers block autoplay with sound: offer one tap to start.
+            startCheck = setTimeout(() => {
+              const st = playerRef.current?.getPlayerState?.();
+              if (st !== 1 && st !== 3) setNeedsTap(true);
+            }, 1500);
+          },
+          onStateChange: (e: any) => {
+            if (e.data === 1) setNeedsTap(false);
+            if (e.data === 0) setPhase("rate");          // ended → step complete
+            else if (e.data === 2) e.target.playVideo();  // no pausing
+          },
+        },
+      });
+      poll = setInterval(() => {
+        const p = playerRef.current;
+        if (!p?.getDuration) return;
+        const d = p.getDuration() || 0;
+        const t = p.getCurrentTime() || 0;
+        if (d > 0) { setTotal(d); setRemaining(Math.max(0, d - t)); }
+      }, 250);
+    });
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      clearTimeout(startCheck);
+      try { playerRef.current?.destroy?.(); } catch {}
+      playerRef.current = null;
+    };
+  }, [phase, video.video_id]);
+
+  const progress = total && remaining != null ? Math.min(1, Math.max(0, 1 - remaining / total)) : 0;
+
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col bg-[#07060f] text-white">
+      {/* Top bar */}
+      <div className="flex flex-shrink-0 items-center justify-between px-4 pb-2 pt-9">
+        <button onClick={onExit} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/15">
+          ✕ Exit
+        </button>
+        <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200">🎬 Watch for meaning</span>
+      </div>
+
+      {phase === "intro" && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+          <p className="text-2xl font-bold leading-tight">{video.title}</p>
+          <p className="text-sm leading-relaxed text-slate-300">
+            Watch the entire video from beginning to end. Try to understand the overall meaning, story and context — not every word.
+          </p>
+          <div className="flex flex-wrap justify-center gap-2 text-[11px] text-slate-300">
+            {["No subtitles", "No written words", "No translation", "No pausing or skipping"].map((r) => (
+              <span key={r} className="rounded-full border border-white/15 bg-white/5 px-3 py-1">{r}</span>
+            ))}
+          </div>
+          <button
+            onClick={() => setPhase("watching")}
+            className="mt-2 w-full max-w-xs rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold shadow-lg shadow-indigo-500/30"
+          >
+            ▶ Start
+          </button>
+        </div>
+      )}
+
+      {phase === "watching" && (
+        <div className="relative flex flex-1 flex-col justify-center">
+          <div className="relative aspect-video w-full bg-black">
+            <div id="chapter-yt-player" className="absolute inset-0 h-full w-full" />
+            {/* Blocks taps on the player: no pausing, seeking or YouTube UI. */}
+            <div className="absolute inset-0" onClick={(e) => e.preventDefault()} />
+            {needsTap && (
+              <button
+                onClick={() => { playerRef.current?.playVideo?.(); setNeedsTap(false); }}
+                className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm font-bold"
+              >
+                ▶ Tap to start
+              </button>
+            )}
+          </div>
+          <div className="mt-10 text-center">
+            <p className="text-5xl font-extrabold tabular-nums tracking-wide">{formatClock(remaining)}</p>
+            <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-400">remaining</p>
+          </div>
+          <div className="mx-6 mt-6 h-1 overflow-hidden rounded-full bg-white/15">
+            <div className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500" style={{ width: `${progress * 100}%` }} />
+          </div>
+        </div>
+      )}
+
+      {phase === "rate" && (
+        <div className="flex flex-1 flex-col items-center justify-center px-5">
+          <div className="w-full rounded-3xl bg-white p-6 text-center text-slate-900 shadow-2xl">
+            <p className="text-3xl">🎧</p>
+            <p className="mt-2 text-xl font-bold text-indigo-950">How much did you understand?</p>
+            <p className="mt-1 text-xs text-slate-500">The overall meaning, story and context — not every word.</p>
+            <p className="mt-4 bg-gradient-to-r from-fuchsia-500 to-indigo-500 bg-clip-text text-6xl font-extrabold text-transparent">{score}%</p>
+            <input
+              type="range"
+              min={1}
+              max={100}
+              value={score}
+              onChange={(e) => setScore(Number(e.target.value))}
+              aria-label="How much did you understand, from 1 to 100 percent"
+              className="mt-4 w-full accent-indigo-500"
+            />
+            <div className="mt-1 flex justify-between text-[10px] text-slate-400"><span>1%</span><span>100%</span></div>
+            <button
+              disabled={saving}
+              onClick={async () => { setSaving(true); try { await onSave(score); } finally { setSaving(false); } }}
+              className="mt-5 w-full rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30 disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
