@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2, Pause, RefreshCw, Check } from "lucide-react";
 import { languageLabel, isRTLText } from "@/lib/language";
+import { shortMnemonicExplanation, MNEMONIC_EXPLANATION_RULE } from "@/lib/imageStyle";
 
 const RATINGS = [
   { value: 1, label: "1", color: "#ef4444" },
@@ -88,7 +89,7 @@ CRITICAL: Do NOT name any character, creature, animal, or person in the image wi
 
 Return JSON with:
 - sound_anchor: English word/phrase that sounds like "${soundPhonetic}"
-- explanation: one punchy memorable sentence using the sound_anchor that hints at the meaning WITHOUT using the exact English translation "${word.translation}" or "${word.phonetic}". Use synonyms or indirect references.
+- explanation: ${MNEMONIC_EXPLANATION_RULE}, using the sound_anchor, that hints at the meaning WITHOUT using the exact English translation "${word.translation}" or "${word.phonetic}". Use synonyms or indirect references.
 - image_prompt: vivid cartoon scene description (no text in image, single clear subject, bright colors, no naming any creatures or characters)`,
         response_json_schema: {
           type: "object",
@@ -106,12 +107,12 @@ Return JSON with:
 
       setMnemonicData(prev => ({
         ...prev,
-        [key]: { image_url: imageResult.url, explanation: concept.explanation, loading: false }
+        [key]: { image_url: imageResult.url, explanation: shortMnemonicExplanation(concept.explanation), loading: false }
       }));
 
       // Persist to DB if word has an id
       if (word.id) {
-        base44.entities.Word.update(word.id, { image_url: imageResult.url, mnemonic_explanation: concept.explanation }).catch(e => { console.error('save mnemonic failed', e); toast.error('Could not save mnemonic — it may be lost on reload'); });
+        base44.entities.Word.update(word.id, { image_url: imageResult.url, mnemonic_explanation: shortMnemonicExplanation(concept.explanation) }).catch(e => { console.error('save mnemonic failed', e); toast.error('Could not save mnemonic — it may be lost on reload'); });
       }
     } catch (e) {
       setMnemonicData(prev => ({ ...prev, [key]: { ...(prev[key] || {}), loading: false } }));

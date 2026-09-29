@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
-import { mnemonicImagePrompt } from "@/lib/imageStyle";
+import { mnemonicImagePrompt, shortMnemonicExplanation, MNEMONIC_EXPLANATION_RULE } from "@/lib/imageStyle";
 import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
 import WordCard from "@/components/backpack/WordCard";
@@ -440,7 +440,7 @@ STEP 3 — The image must show the OBJECT doing something related to the meaning
 
 Return JSON:
 - sound_anchor: the English noun that sounds like "${targetWord}"
-- explanation: one punchy sentence like "An ESKIMO (askeem=agree) shaking hands in the snow"
+- explanation: ${MNEMONIC_EXPLANATION_RULE}
 - image_prompt: a vivid description of the SCENE and ACTION only, where the meaning "${meaning}" is the clear centerpiece and the sound_anchor object is just a small prop. Modern/timeless setting. NO era/period words, NO art-style or realism words, no talking, no speech, no text, no naming any creatures.`,
         response_json_schema: {
           type: "object",
@@ -456,10 +456,11 @@ Return JSON:
         prompt: mnemonicImagePrompt(concept.image_prompt),
       });
 
-      setMnemonicExplanations((prev: any) => ({ ...prev, [word.id]: concept.explanation }));
+      const explanation = shortMnemonicExplanation(concept.explanation);
+      setMnemonicExplanations((prev: any) => ({ ...prev, [word.id]: explanation }));
       await updateWordMutation.mutateAsync({
         id: word.id,
-        data: { image_url: imageResult.url, mnemonic_explanation: concept.explanation },
+        data: { image_url: imageResult.url, mnemonic_explanation: explanation },
       });
       toast.success("Mnemonic image created! 🎨");
     } catch (e) {
