@@ -180,6 +180,19 @@ export default function Home() {
   // opened from the path; its "How much did you understand?" answer is the
   // chapter's baseline score (chapter_progress, migration 1600).
   const [chapterWatch, setChapterWatch] = useState<any>(null);
+  // Step 2 "Sentence-by-Sentence Discovery": runs inside the in-shell video view.
+  const [discovery, setDiscovery] = useState(false); // a sentence-by-sentence pass is on
+  // Which pass: step 2 "discovery" (words tappable) or step 3 "comprehension"
+  // (less help: translation hidden, words not tappable).
+  const [passKind, setPassKind] = useState<"discovery" | "comprehension">("discovery");
+  // Step 4 "Final Uninterrupted Pass" and the Before → After result.
+  const [chapterFinal, setChapterFinal] = useState<any>(null);
+  const [chapterResult, setChapterResult] = useState<{ title: string; before: number; after: number } | null>(null);
+  const [discIdx, setDiscIdx] = useState(0);
+  const [discRevealed, setDiscRevealed] = useState(false);
+  const [discTranslations, setDiscTranslations] = useState<Record<number, { english: string; phonetic: string }>>({});
+  const [discTranslating, setDiscTranslating] = useState(false);
+  const discStopAtRef = useRef<number | null>(null);
   const [mood, setMood] = useState<Mood>("idle");
 
   // In-shell journal (lives inside the Practice tab)
@@ -955,8 +968,21 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
   // -------------------------------------------------------------------------
   // From the PATH: a chapter without a baseline starts with step 1.
   const openChapter = (v: any) => {
-    if (v?.video_id && !chapterByVideo.get(v.video_id)?.baseline_score) setChapterWatch(v);
-    else openShellVideo(v);
+    const progress = v?.video_id ? chapterByVideo.get(v.video_id) : null;
+    if (!v?.video_id) { openShellVideo(v); return; }
+    if (!progress?.baseline_score) setChapterWatch(v);                         // 1 · Watch for meaning
+    else if (!progress.discovery_completed_at) startPass(v, "discovery");      // 2 · Discovery
+    else if (!progress.comprehension_completed_at) startPass(v, "comprehension"); // 3 · Comprehension
+    else if (!progress.final_score) setChapterFinal(v);                       // 4 · Final pass
+    else startPass(v, null);                                                   // chapter done: plain view
+  };
+  const startPass = (v: any, kind: "discovery" | "comprehension" | null) => {
+    setDiscovery(kind !== null);
+    if (kind) setPassKind(kind);
+    setDiscIdx(0);
+    setDiscRevealed(false);
+    setDiscTranslations({});
+    openShellVideo(v);
   };
   const saveChapterBaseline = async (v: any, score: number) => {
     const existing = chapterByVideo.get(v.video_id);
@@ -972,7 +998,22 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
       throw e;
     }
     setChapterWatch(null);
-    openShellVideo(v); // next: the video with its transcript (until step 2 is built)
+    startPass(v, "discovery"); // next: step 2, sentence-by-sentence discovery
+  };
+
+  const saveChapterFinal = async (v: any, score: number) => {
+    const existing = chapterByVideo.get(v.video_id);
+    try {
+      if (!existing?.id) throw new Error("no chapter progress");
+      await base44.entities.ChapterProgress.update(existing.id, { final_score: score, final_at: new Date().toISOString() });
+      queryClient.invalidateQueries({ queryKey: ["chapterProgress"] });
+    } catch (e) {
+      console.error("[chapter] could not save final score", e);
+      toast.error("Couldn't save your answer — please try again.");
+      throw e;
+    }
+    setChapterFinal(null);
+    setChapterResult({ title: v.title || "", before: existing.baseline_score, after: score });
   };
 
   const openShellVideo = async (v: any) => {
@@ -1113,6 +1154,8 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
   };
 
   const closeShellVideo = () => {
+    setDiscovery(false);
+    discStopAtRef.current = null;
     shellVideoIdRef.current = null;
     try { shellPlayerRef.current?.destroy?.(); } catch (e) {}
     shellPlayerRef.current = null;
@@ -1194,6 +1237,139 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
     if (play) p.playVideo?.();
   };
 
+  // ---- Step 2: Sentence-by-Sentence Discovery -------------------------------
+  // Only the chapter's content (first 3:30). A sentence ends where the next begins.
+  const discSegments = useMemo(
+    () => (discovery ? shellSegments.filter((s: any) => (s.start ?? 0) < CHAPTER_MAX_SECONDS) : []),
+    [discovery, shellSegments]
+  );
+  const discSeg: any = discSegments[discIdx] || null;
+  const discEnd = (i: number) => {
+    const next = discSegments[i + 1];
+    const start = discSegments[i]?.start ?? 0;
+    return Math.min(next ? next.start : start + 8, CHAPTER_MAX_SECONDS);
+  };
+  const playDiscSentence = (i = discIdx) => {
+    const seg = discSegments[i];
+    const p = shellPlayerRef.current;
+    if (!seg || !p?.seekTo) return;
+    discStopAtRef.current = discEnd(i);
+    p.seekTo(seg.start ?? 0, true);
+    p.playVideo?.();
+  };
+  // Stop playback at the end of the current sentence.
+  useEffect(() => {
+    if (!discovery) return;
+    const t = setInterval(() => {
+      const p = shellPlayerRef.current;
+      const stopAt = discStopAtRef.current;
+      if (stopAt == null || !p?.getCurrentTime) return;
+      if (p.getCurrentTime() >= stopAt - 0.05) {
+        discStopAtRef.current = null;
+        p.pauseVideo?.();
+      }
+    }, 100);
+    return () => clearInterval(t);
+  }, [discovery]);
+  // Each new sentence plays on its own (translation hidden).
+  useEffect(() => {
+    if (!discovery || !discSeg) return;
+    setDiscRevealed(false);
+    const t = setTimeout(() => playDiscSentence(discIdx), 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discovery, passKind, discIdx, discSegments.length]);
+
+  const revealDiscTranslation = async () => {
+    setDiscRevealed(true);
+    if (passKind === "discovery") playDiscSentence(); // step 2: replay once more with the translation
+    const seg = discSeg;
+    if (!seg || (seg.english && seg.transliteration) || discTranslations[discIdx]) return;
+    const main = seg.hebrew || seg.text || seg.transliteration || "";
+    setDiscTranslating(true);
+    try {
+      const r: any = await base44.integrations.Core.InvokeLLM({
+        prompt: `Translate this ${languageLabel(vidLang)} sentence into natural English and give its Latin-letter transliteration: "${main}". Return JSON with: english, phonetic.`,
+        response_json_schema: { type: "object", properties: { english: { type: "string" }, phonetic: { type: "string" } } },
+      });
+      setDiscTranslations((prev) => ({ ...prev, [discIdx]: { english: r?.english || "", phonetic: r?.phonetic || "" } }));
+    } catch {}
+    setDiscTranslating(false);
+  };
+
+  // Recommended vocabulary for the chapter: picked once by AI, saved on the
+  // student's chapter_progress row, highlighted in the sentences.
+  const discProgress: any = shellVideo?.video_id ? chapterByVideo.get(shellVideo.video_id) : null;
+  const recommendedWords: any[] = Array.isArray(discProgress?.recommended_words) ? discProgress.recommended_words : [];
+  const recommendTried = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!discovery || passKind !== "discovery" || !discProgress?.id || recommendedWords.length || !discSegments.length) return;
+    if (recommendTried.current.has(discProgress.id)) return;
+    recommendTried.current.add(discProgress.id);
+    (async () => {
+      try {
+        const text = discSegments.map((s: any) => s.hebrew || s.text || "").join("\n");
+        const level = shellVideo?.difficulty_level || "Beginner";
+        const r: any = await base44.integrations.Core.InvokeLLM({
+          prompt: `These are the sentences of a short ${languageLabel(vidLang)} video for a ${level} learner:\n${text}\n\nPick the 8 to 12 most useful words to learn from it: frequent in the language, important for understanding this content, and suited to a ${level} learner. Use each word exactly as it appears in the sentences. Return JSON: { "words": [ { "hebrew": the word as written in the sentence, "phonetic": Latin transliteration, "meaning": English meaning in context } ] }`,
+          response_json_schema: {
+            type: "object",
+            properties: {
+              words: { type: "array", items: { type: "object", properties: { hebrew: { type: "string" }, phonetic: { type: "string" }, meaning: { type: "string" } } } },
+            },
+          },
+        });
+        const list = (r?.words || []).filter((w: any) => w?.hebrew).slice(0, 12);
+        if (list.length) {
+          await base44.entities.ChapterProgress.update(discProgress.id, { recommended_words: list });
+          queryClient.invalidateQueries({ queryKey: ["chapterProgress"] });
+        }
+      } catch (e) {
+        console.error("[chapter] recommended words failed", e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discovery, passKind, discProgress?.id, recommendedWords.length, discSegments.length]);
+  const normHe = (t: string) => cleanToken(t || "").replace(/[\u0591-\u05C7]/g, "");
+  const recommendedFor = (token: string) => {
+    const t = normHe(token);
+    if (!t) return null;
+    return recommendedWords.find((w: any) => {
+      const r = normHe(w.hebrew);
+      return r && (t === r || (t.length > 2 && t.slice(1) === r) || (r.length > 2 && r.slice(1) === t));
+    }) || null;
+  };
+
+  const finishDiscovery = async () => {
+    discStopAtRef.current = null;
+    shellPlayerRef.current?.pauseVideo?.();
+    const field = passKind === "discovery" ? "discovery_completed_at" : "comprehension_completed_at";
+    try {
+      if (discProgress?.id) {
+        await base44.entities.ChapterProgress.update(discProgress.id, { [field]: new Date().toISOString() });
+        queryClient.invalidateQueries({ queryKey: ["chapterProgress"] });
+      }
+    } catch {
+      toast.error("Couldn't save your progress — please try again.");
+      return;
+    }
+    setWordPopup(null);
+    if (passKind === "discovery") {
+      // → step 3, same sentences with less help
+      toast.success("Discovery done! Now the comprehension pass 👂");
+      setPassKind("comprehension");
+      setDiscIdx(0);
+      setDiscRevealed(false);
+      setDiscTranslations({});
+    } else {
+      // → step 4, the final uninterrupted pass
+      toast.success("Comprehension pass done! Final pass 🎬");
+      const v = shellVideo;
+      closeShellVideo();
+      if (v) setChapterFinal(v);
+    }
+  };
+
   // Tap a word in the transcript: pause the video and open the popup with
   // sound / edit / add-to-backpack. The translation is looked up in context.
   const vidLang = shellVideo?.language || language;
@@ -1202,6 +1378,7 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
     const clean = cleanToken(token);
     if (!clean) return;
     shellPlayerRef.current?.pauseVideo?.();
+    if (discovery) playDiscSentence(); // hear the word again in context
     const already = (words as any[]).some(
       (w) => w.word === clean || (w.phonetic || "").toLowerCase() === clean.toLowerCase()
     );
@@ -1901,7 +2078,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">{shellVideo.title}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">
+                {discovery ? (passKind === "discovery" ? "🔍 Sentence discovery" : "👂 Comprehension pass") : shellVideo.title}
+              </span>
             </div>
 
             {/* Player */}
@@ -1909,6 +2088,28 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <div id="shell-yt-player" className="h-full w-full" />
             </div>
 
+            {discovery ? (
+              <DiscoveryPanel
+                mode={passKind}
+                loading={shellSegsLoading}
+                segments={discSegments}
+                idx={discIdx}
+                revealed={discRevealed}
+                translation={discTranslations[discIdx]}
+                translating={discTranslating}
+                wordPopup={wordPopup}
+                recommendedFor={recommendedFor}
+                recommendedCount={recommendedWords.length}
+                onTapWord={(key: string, tok: string, main: string) => tapTranscriptWord(key, tok, main)}
+                onAddWord={savePopupWord}
+                onClosePopup={() => setWordPopup(null)}
+                onReplay={() => playDiscSentence()}
+                onReveal={revealDiscTranslation}
+                onPrev={() => { setWordPopup(null); setDiscIdx((i) => Math.max(0, i - 1)); }}
+                onNext={() => { setWordPopup(null); setDiscIdx((i) => i + 1); }}
+                onFinish={finishDiscovery}
+              />
+            ) : (<>
             {/* Floating controls: play/pause + turtle slow mode */}
             <div className="relative z-10 -mt-5 flex flex-shrink-0 justify-center gap-3">
               <button
@@ -2096,6 +2297,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 </div>
               )}
             </div>
+            </>)}
           </div>
         )}
 
@@ -2107,6 +2309,15 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             onSave={(score) => saveChapterBaseline(chapterWatch, score)}
           />
         )}
+        {chapterFinal && (
+          <ChapterWatch
+            final
+            video={chapterFinal}
+            onExit={() => setChapterFinal(null)}
+            onSave={(score) => saveChapterFinal(chapterFinal, score)}
+          />
+        )}
+        {chapterResult && <ChapterResult {...chapterResult} onClose={() => setChapterResult(null)} />}
 
         {tab === "path" && !shellVideo && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
@@ -2167,7 +2378,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                 {v.duration_minutes && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-500">{v.duration_minutes} min</span>}
                                 {chapterByVideo.get(vid)?.baseline_score != null && (
                                   <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
-                                    Understood {chapterByVideo.get(vid).baseline_score}%
+                                    {chapterByVideo.get(vid).final_score != null
+                                      ? `${chapterByVideo.get(vid).baseline_score}% → ${chapterByVideo.get(vid).final_score}%`
+                                      : `Understood ${chapterByVideo.get(vid).baseline_score}%`}
                                   </span>
                                 )}
                               </div>
@@ -2719,10 +2932,13 @@ function ChapterWatch({
   video,
   onExit,
   onSave,
+  final = false,
 }: {
   video: any;
   onExit: () => void;
   onSave: (score: number) => Promise<void>;
+  // Step 4 "Final Uninterrupted Pass": same rules, different wording.
+  final?: boolean;
 }) {
   const [phase, setPhase] = useState<"intro" | "watching" | "rate">("intro");
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -2808,14 +3024,16 @@ function ChapterWatch({
         <button onClick={onExit} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/15">
           ✕ Exit
         </button>
-        <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200">🎬 Watch for meaning</span>
+        <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200">{final ? "🎬 Final pass" : "🎬 Watch for meaning"}</span>
       </div>
 
       {phase === "intro" && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
           <p className="text-2xl font-bold leading-tight">{video.title}</p>
           <p className="text-sm leading-relaxed text-slate-300">
-            Watch the entire video from beginning to end. Try to understand the overall meaning, story and context — not every word.
+            {final
+              ? "Watch it again from beginning to end — this time it's pure listening comprehension."
+              : "Watch the entire video from beginning to end. Try to understand the overall meaning, story and context — not every word."}
           </p>
           <div className="flex flex-wrap justify-center gap-2 text-[11px] text-slate-300">
             {["No subtitles", "No written words", "No translation", "No pausing or skipping"].map((r) => (
@@ -2886,6 +3104,196 @@ function ChapterWatch({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PATH chapter · Step 2 "Sentence-by-Sentence Discovery" (below the player).
+// One sentence at a time: it plays without translation, is shown in the target
+// language with every word tappable (meaning at once, add to Backpack, the
+// sentence replays), then "Show translation" reveals it and replays once more.
+// Recommended words (picked by the system) are underlined and starred.
+// ---------------------------------------------------------------------------
+function DiscoveryPanel({
+  mode = "discovery", loading, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
+  onTapWord, onAddWord, onClosePopup, onReplay, onReveal, onPrev, onNext, onFinish,
+}: {
+  // "discovery" (step 2): words tappable, recommended words marked.
+  // "comprehension" (step 3): less help — words not tappable.
+  mode?: "discovery" | "comprehension";
+  loading: boolean;
+  segments: any[];
+  idx: number;
+  revealed: boolean;
+  translation?: { english: string; phonetic: string };
+  translating: boolean;
+  wordPopup: any;
+  recommendedFor: (token: string) => any;
+  recommendedCount: number;
+  onTapWord: (key: string, token: string, sentence: string) => void;
+  onAddWord: () => void;
+  onClosePopup: () => void;
+  onReplay: () => void;
+  onReveal: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onFinish: () => void;
+}) {
+  if (loading) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10">
+        <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+        <p className="text-xs text-slate-500">Preparing the sentences…</p>
+      </div>
+    );
+  }
+  if (!segments.length) {
+    return <p className="py-10 text-center text-sm text-slate-400">No sentences available for this video.</p>;
+  }
+  const seg = segments[Math.min(idx, segments.length - 1)];
+  const main = seg.hebrew || seg.text || seg.transliteration || "";
+  const rtl = isRTLText(main);
+  const tokens = main.split(/\s+/).filter(Boolean);
+  const english = seg.english || translation?.english || "";
+  const phonetic =
+    (seg.transliteration && !isRTLText(seg.transliteration) && seg.transliteration !== main ? seg.transliteration : "") ||
+    translation?.phonetic || "";
+  const last = idx >= segments.length - 1;
+  const popupKeyPrefix = `d${idx}_`;
+  const popupOpen = wordPopup && String(wordPopup.key || "").startsWith(popupKeyPrefix);
+  const popupRec = popupOpen ? recommendedFor(wordPopup.clean) : null;
+  const tappable = mode === "discovery";
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3 pt-3">
+      {/* progress through the sentences */}
+      <div className="flex flex-shrink-0 gap-[3px]">
+        {segments.map((_: any, i: number) => (
+          <span key={i} className={`h-1 flex-1 rounded-full ${i < idx ? "bg-teal-500" : i === idx ? "bg-indigo-500" : "bg-slate-200"}`} />
+        ))}
+      </div>
+
+      <div className="mt-3 flex-shrink-0 rounded-3xl bg-white p-4 shadow-lg shadow-indigo-100/70">
+        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          <span>Sentence {idx + 1} of {segments.length}{tappable ? " · tap any word" : " · try to understand it"}</span>
+          <button onClick={onReplay} className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600">
+            🔁 Replay
+          </button>
+        </div>
+
+        {/* the sentence in the target language, every word tappable */}
+        <p dir={rtl ? "rtl" : "ltr"} className={`mt-3 text-2xl leading-loose text-slate-900 ${rtl ? "text-right" : ""}`}>
+          {tokens.map((tok: string, wi: number) => {
+            const key = `${popupKeyPrefix}${wi}`;
+            const open = wordPopup?.key === key;
+            const rec = tappable ? recommendedFor(tok) : null;
+            if (!tappable) return <span key={key}>{tok}{wi < tokens.length - 1 ? " " : ""}</span>;
+            return (
+              <span key={key}>
+                <span
+                  onClick={() => onTapWord(key, tok, main)}
+                  className={`cursor-pointer rounded-md px-0.5 transition ${open ? "bg-indigo-100" : "hover:bg-indigo-50"} ${
+                    rec ? "border-b-2 border-fuchsia-400" : "border-b-2 border-dotted border-indigo-200"
+                  }`}
+                >
+                  {tok}
+                </span>
+                {wi < tokens.length - 1 ? " " : ""}
+              </span>
+            );
+          })}
+        </p>
+
+        {/* tapped word: meaning at once + add to Backpack */}
+        {tappable && popupOpen && (
+          <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2.5">
+            <div className="flex items-baseline gap-2">
+              <span dir={rtl ? "rtl" : "ltr"} className="text-xl font-bold text-indigo-950">{wordPopup.clean}</span>
+              {wordPopup.phonetic && <span className="text-sm italic text-indigo-500">{wordPopup.phonetic}</span>}
+              {popupRec && <span className="ml-auto rounded-full bg-fuchsia-100 px-2 py-0.5 text-[10px] font-bold text-fuchsia-700">⭐ Recommended</span>}
+            </div>
+            <p className="mt-0.5 text-sm text-slate-700">
+              {wordPopup.loading ? "translating…" : `= ${wordPopup.translation || popupRec?.meaning || "—"}`}
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button onClick={onReplay} className="flex-1 rounded-xl bg-white py-2 text-xs font-bold text-indigo-600">🔊 Hear in sentence</button>
+              <button
+                onClick={onAddWord}
+                disabled={wordPopup.saving || wordPopup.added}
+                className="flex-1 rounded-xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-2 text-xs font-bold text-white disabled:opacity-70"
+              >
+                {wordPopup.added ? "✓ In your Backpack" : wordPopup.saving ? "Adding…" : "＋ Add to Backpack"}
+              </button>
+              <button onClick={onClosePopup} aria-label="Close" className="rounded-xl px-2 text-slate-400">✕</button>
+            </div>
+          </div>
+        )}
+
+        {/* translation, revealed after the student has tried */}
+        {revealed ? (
+          <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2.5">
+            {phonetic && <p className="text-sm italic text-indigo-500">{phonetic}</p>}
+            <p className="text-sm text-slate-700">{english || (translating ? "translating…" : "—")}</p>
+          </div>
+        ) : (
+          <button onClick={onReveal} className="mt-3 w-full rounded-2xl border border-dashed border-indigo-200 py-2.5 text-sm font-semibold text-indigo-600">
+            👁 Show translation
+          </button>
+        )}
+
+        {tappable && recommendedCount > 0 && (
+          <p className="mt-3 text-center text-[10px] text-slate-400">
+            <span className="mr-1 inline-block w-4 border-b-2 border-fuchsia-400 align-middle" />recommended word ·
+            <span className="mx-1 inline-block w-4 border-b-2 border-dotted border-indigo-200 align-middle" />tap for meaning
+          </p>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-shrink-0 gap-2">
+        <button onClick={onPrev} disabled={idx === 0} className="flex-1 rounded-2xl border border-indigo-100 bg-white py-3 text-sm font-semibold text-indigo-600 disabled:opacity-40">
+          ‹ Previous
+        </button>
+        {last ? (
+          <button onClick={onFinish} className="flex-[1.4] rounded-2xl bg-gradient-to-r from-teal-500 to-indigo-500 py-3 text-sm font-bold text-white shadow-md">
+            {tappable ? "✓ Finish discovery" : "✓ Finish comprehension pass"}
+          </button>
+        ) : (
+          <button onClick={onNext} className="flex-[1.4] rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-sm font-bold text-white shadow-md">
+            Next sentence ›
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// End of step 4: the chapter's measurable progress, "Before 42% → After 87%".
+// ---------------------------------------------------------------------------
+function ChapterResult({ title, before, after, onClose }: { title: string; before: number; after: number; onClose: () => void }) {
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-gradient-to-b from-[#f7f8ff] via-[#f2f4fe] to-[#e9ecfd] px-5">
+      <div className="w-full rounded-3xl bg-white p-6 text-center shadow-2xl shadow-indigo-200/70">
+        <p className="text-3xl">🎉</p>
+        <p className="mt-1 text-xl font-bold text-indigo-950">Chapter complete</p>
+        {title && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{title}</p>}
+        <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-slate-400">How much you understood</p>
+        <div className="mt-3 flex items-center justify-center gap-3">
+          <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-rose-50 text-rose-600">
+            <span className="text-3xl font-extrabold">{before}%</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Before</span>
+          </div>
+          <span className="text-2xl text-indigo-300">➜</span>
+          <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-emerald-50 text-emerald-600 shadow-lg shadow-emerald-200">
+            <span className="text-3xl font-extrabold">{after}%</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">After</span>
+          </div>
+        </div>
+        <button onClick={onClose} className="mt-5 w-full rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30">
+          Done
+        </button>
+      </div>
     </div>
   );
 }
