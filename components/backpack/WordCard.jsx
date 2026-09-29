@@ -77,6 +77,12 @@ function SentenceWords({ words, onAddToBackpack, showHebrew = true, showTranslit
   );
 }
 
+// Review state is shown as a tinted card outline + a status chip on the image.
+const REVIEW_STYLE = {
+  approved: { color: '#4ade80', ring: 'rgba(74,222,128,0.55)', label: 'Approved', Icon: Check },
+  rejected: { color: '#f87171', ring: 'rgba(248,113,113,0.55)', label: 'Needs review', Icon: X },
+};
+
 const RATING_HINTS = {
   1: "1 — Don't know it yet",
   2: "2 — Barely recognize it",
@@ -146,6 +152,7 @@ export default function WordCard({
   const reviewLocked = reviewStatus === 'approved' && !isAdmin;
   const canEdit = isContentEditable(word) && !reviewLocked;
   const canReview = !isAdmin && isRealWordId && !word._shared && !word.approved;
+  const review = reviewStatus ? REVIEW_STYLE[reviewStatus] : null;
   const cycleReview = (e) => {
     e.stopPropagation();
     const next = reviewStatus === null ? 'approved' : reviewStatus === 'approved' ? 'rejected' : null;
@@ -223,7 +230,10 @@ export default function WordCard({
       // only in this .jsx file are never generated — sizing that must work
       // goes in inline styles.
       className={`bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col ${large ? "w-full shrink-0" : "w-48"}`}
-      style={large ? { flex: '1 0 auto' } : undefined}
+      style={{
+        ...(large ? { flex: '1 0 auto' } : {}),
+        ...(review ? { borderColor: review.ring, boxShadow: `0 0 0 1px ${review.ring}` } : {}),
+      }}
     >
       {/* Source content label — top of card */}
       {word.example_sentence && (
@@ -239,16 +249,6 @@ export default function WordCard({
           <span className="text-green-400 text-[10px] font-semibold">✅ Approved card</span>
         </div>
       )}
-      {!word.approved && reviewStatus === 'approved' && (
-        <div className="flex items-center gap-1 px-2 py-0.5 border-b" style={{ background: 'rgba(34,197,94,0.15)', borderColor: 'rgba(34,197,94,0.3)' }}>
-          <span className="text-green-400 text-[10px] font-semibold">✅ Approved</span>
-        </div>
-      )}
-      {reviewStatus === 'rejected' && (
-        <div className="flex items-center gap-1 px-2 py-0.5 border-b" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.3)' }}>
-          <span className="text-red-400 text-[10px] font-semibold">❌ Flagged for review</span>
-        </div>
-      )}
       {word._shared && (
         <div className="flex items-center gap-1 px-2 py-0.5 bg-teal-500/15 border-b border-teal-500/30">
           <span className="text-teal-300 text-[10px] font-semibold">⭐ New — tap to rank</span>
@@ -261,6 +261,24 @@ export default function WordCard({
         style={large ? { flex: '1 1 0%', minHeight: '220px' } : { height: '160px', minHeight: '160px' }}
         onClick={() => setRevealed(r => !r)}
       >
+        {review && (
+          <div
+            className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 rounded-full"
+            style={{
+              padding: large ? '4px 10px 4px 8px' : '2px 7px 2px 5px',
+              background: 'rgba(15,23,42,0.8)',
+              backdropFilter: 'blur(6px)',
+              border: `1px solid ${review.ring}`,
+              color: review.color,
+              fontSize: large ? 12 : 10,
+              fontWeight: 600,
+              lineHeight: 1.2,
+            }}
+          >
+            <review.Icon style={{ width: large ? 14 : 11, height: large ? 14 : 11 }} strokeWidth={3} />
+            {review.label}
+          </div>
+        )}
         {/* Top-right controls: EN, Translit, Hebrew toggles */}
         <div className="absolute top-1.5 right-1.5 z-10 flex gap-1">
           <button
@@ -522,7 +540,9 @@ export default function WordCard({
               : "Approve this card"
             }
           >
-            {reviewStatus === 'rejected' ? '✕' : '✓'}
+            {reviewStatus === 'rejected'
+              ? <X className={large ? "w-4 h-4" : "w-3 h-3"} strokeWidth={3} />
+              : <Check className={large ? "w-4 h-4" : "w-3 h-3"} strokeWidth={3} />}
           </button>
         )}
         {isAdmin && (
