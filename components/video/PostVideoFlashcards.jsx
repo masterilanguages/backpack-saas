@@ -8,7 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2, Pause, RefreshCw, Check } from "lucide-react";
 import { languageLabel, isRTLText } from "@/lib/language";
-import { shortMnemonicExplanation, MNEMONIC_EXPLANATION_RULE } from "@/lib/imageStyle";
+import { MNEMONIC_EXPLANATION_RULE, ensureShortMnemonicExplanation } from "@/lib/mnemonicExplanation";
 
 const RATINGS = [
   { value: 1, label: "1", color: "#ef4444" },
@@ -105,14 +105,15 @@ Return JSON with:
         prompt: `${concept.image_prompt}. 3D Pixar-style render, high definition, glossy and vibrant, expressive cartoon character with big eyes, cinematic lighting, ultra-detailed textures, colorful and fun. Plain white background. ABSOLUTELY NO TEXT, NO LETTERS, NO WORDS anywhere in the image.`
       });
 
+      const explanation = await ensureShortMnemonicExplanation(concept.explanation);
       setMnemonicData(prev => ({
         ...prev,
-        [key]: { image_url: imageResult.url, explanation: shortMnemonicExplanation(concept.explanation), loading: false }
+        [key]: { image_url: imageResult.url, explanation, loading: false }
       }));
 
       // Persist to DB if word has an id
       if (word.id) {
-        base44.entities.Word.update(word.id, { image_url: imageResult.url, mnemonic_explanation: shortMnemonicExplanation(concept.explanation) }).catch(e => { console.error('save mnemonic failed', e); toast.error('Could not save mnemonic — it may be lost on reload'); });
+        base44.entities.Word.update(word.id, { image_url: imageResult.url, mnemonic_explanation: explanation }).catch(e => { console.error('save mnemonic failed', e); toast.error('Could not save mnemonic — it may be lost on reload'); });
       }
     } catch (e) {
       setMnemonicData(prev => ({ ...prev, [key]: { ...(prev[key] || {}), loading: false } }));

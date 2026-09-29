@@ -35,18 +35,6 @@ export const MNEMONIC_IMAGE_STYLE =
 
 // Build a full GenerateImage prompt: style FIRST, then the scene, then the
 // reinforcing constraints. Pass only the scene-specific part (what to depict).
-// The 💡 line under a flashcard image must stay one short line.
-export const MNEMONIC_EXPLANATION_MAX_WORDS = 9;
-export const MNEMONIC_EXPLANATION_RULE =
-  `ONE short line, ${MNEMONIC_EXPLANATION_MAX_WORDS} words maximum, like "An ESKIMO (askeem) shaking hands to agree"`;
-
-/** Hard cap in case the model ignores the word limit. */
-export function shortMnemonicExplanation(text: string | null | undefined): string {
-  const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
-  if (words.length <= MNEMONIC_EXPLANATION_MAX_WORDS) return words.join(" ");
-  return words.slice(0, MNEMONIC_EXPLANATION_MAX_WORDS).join(" ").replace(/[,;:.\u2014-]+$/, "") + "…";
-}
-
 export function mnemonicImagePrompt(scene: string): string {
   return `${MNEMONIC_IMAGE_STYLE_LEAD} Scene to depict: ${String(scene || "").trim()}. ${MNEMONIC_IMAGE_STYLE_TAIL}`;
 }

@@ -24,7 +24,8 @@ import TranslatorWidget from "@/components/TranslatorWidget";
 import SessionFlashcardsSection from "@/components/backpack/SessionFlashcardsSection";
 import PasteWordsList from "@/components/backpack/PasteWordsList";
 import { languageLabel, usesNikud, nativeScriptInstruction, isRTLText } from "@/lib/language";
-import { mnemonicImagePrompt, shortMnemonicExplanation, MNEMONIC_EXPLANATION_RULE } from "@/lib/imageStyle";
+import { mnemonicImagePrompt } from "@/lib/imageStyle";
+import { MNEMONIC_EXPLANATION_RULE, ensureShortMnemonicExplanation } from "@/lib/mnemonicExplanation";
 
 // Simple English singularizer for common plural patterns
 function toSingular(word: any) {
@@ -426,7 +427,7 @@ Return JSON:
         prompt: mnemonicImagePrompt(concept.image_prompt)
       });
 
-      const explanation = shortMnemonicExplanation(concept.explanation);
+      const explanation = await ensureShortMnemonicExplanation(concept.explanation);
       setMnemonicExplanations((prev: any) => ({ ...prev, [word.id]: explanation }));
 
       // For approved or shared cards, create a personal copy instead of modifying the original

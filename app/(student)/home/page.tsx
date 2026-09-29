@@ -19,7 +19,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
-import { mnemonicImagePrompt, shortMnemonicExplanation, MNEMONIC_EXPLANATION_RULE } from "@/lib/imageStyle";
+import { mnemonicImagePrompt } from "@/lib/imageStyle";
+import {
+  MNEMONIC_EXPLANATION_RULE,
+  ensureShortMnemonicExplanation,
+  isShortMnemonicExplanation,
+} from "@/lib/mnemonicExplanation";
 import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
 import WordCard from "@/components/backpack/WordCard";
@@ -456,7 +461,7 @@ Return JSON:
         prompt: mnemonicImagePrompt(concept.image_prompt),
       });
 
-      const explanation = shortMnemonicExplanation(concept.explanation);
+      const explanation = await ensureShortMnemonicExplanation(concept.explanation);
       setMnemonicExplanations((prev: any) => ({ ...prev, [word.id]: explanation }));
       await updateWordMutation.mutateAsync({
         id: word.id,
@@ -621,6 +626,24 @@ Return JSON with:
     suggestMnemonicForWord(w);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, deckKey, currentCard?.id, currentCard?.image_url, suggestingMnemonic]);
+
+  // Older cards may carry a long 💡 explanation (2–3 lines). When one is shown,
+  // rewrite it once into a complete sentence of at most 9 words and save it.
+  // Approved/rejected cards are locked and left as they are.
+  const shortenTried = useRef<Set<any>>(new Set());
+  useEffect(() => {
+    const w = currentCard;
+    if (tab !== "learning" || deckKey === null || !w?.id || w.review_status || w.approved) return;
+    if (!w.mnemonic_explanation || isShortMnemonicExplanation(w.mnemonic_explanation)) return;
+    if (shortenTried.current.has(w.id)) return;
+    shortenTried.current.add(w.id);
+    ensureShortMnemonicExplanation(w.mnemonic_explanation).then((short) => {
+      if (!short || !isShortMnemonicExplanation(short)) return;
+      setMnemonicExplanations((prev: any) => ({ ...prev, [w.id]: short }));
+      updateWordMutation.mutate({ id: w.id, data: { mnemonic_explanation: short } });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, deckKey, currentCard?.id, currentCard?.mnemonic_explanation]);
 
   // "+" above the flashcard: type one or many words → one card each. After a
   // save, jump to the first new card once the refetched deck contains it.

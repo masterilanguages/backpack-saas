@@ -386,11 +386,7 @@ export default function WordCard({
       {/* Mnemonic explanation below image */}
       {(mnemonicExplanations[word.id] || word.mnemonic_explanation) && (
         <div className="px-3 py-1.5 bg-teal-500/10 border-t border-teal-500/20">
-          <p
-            className={`${large ? "text-sm" : "text-[10px]"} text-teal-300 italic text-center leading-snug`}
-            style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-            title={mnemonicExplanations[word.id] || word.mnemonic_explanation}
-          >
+          <p className={`${large ? "text-sm" : "text-[10px]"} text-teal-300 italic text-center leading-snug`}>
             💡 {mnemonicExplanations[word.id] || word.mnemonic_explanation}
           </p>
         </div>
