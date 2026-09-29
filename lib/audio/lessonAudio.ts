@@ -126,8 +126,24 @@ export function generateLessonAudio(
   return {
     supported: true,
     play() {
-      synth.cancel(); // clear anything mid-flight so we always start clean
-      synth.speak(build());
+      // Chrome quirks that made 🔊 silently do nothing now and then:
+      //  - an utterance queued in the same tick as cancel() can be dropped;
+      //  - the engine can get stuck "paused" (e.g. after the tab was idle);
+      //  - on first use the voice list may still be loading.
+      synth.cancel();
+      synth.resume();
+      const speakNow = () => {
+        synth.resume();
+        synth.speak(build());
+      };
+      if (!synth.getVoices().length) {
+        let done = false;
+        const once = () => { if (!done) { done = true; speakNow(); } };
+        synth.addEventListener("voiceschanged", once, { once: true });
+        setTimeout(once, 400);
+      } else {
+        setTimeout(speakNow, 60);
+      }
     },
     pause() {
       synth.cancel();
