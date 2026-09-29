@@ -275,8 +275,9 @@ export default function WordCard({
           </div>
         </div>
 
-        {/* Image in a circle, 💡 pill on its bottom edge */}
-        <div style={{ position: 'relative', width: 'min(270px, 78%)', marginTop: 30, flexShrink: 0 }}>
+        {/* Image in a circle, 💡 pill on its bottom edge, actions in a column to its right */}
+        <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center', marginTop: 30, flexShrink: 0 }}>
+        <div style={{ position: 'relative', width: 'min(244px, 68%)' }}>
           <div
             onClick={() => setRevealed(r => !r)}
             style={{
@@ -319,13 +320,75 @@ export default function WordCard({
                   maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', fontStyle: 'italic', color: '#0f766e',
                   background: '#f0fdfa', border: '1px solid #ccfbf1', borderRadius: 999, padding: '6px 14px',
                   boxShadow: '0 6px 16px -8px rgba(15,118,110,.4)',
-                  fontSize: `min(13px, calc(100cqw / ${((explanation.length + 6) * 0.56).toFixed(2)}))`,
+                  fontSize: `max(11px, min(13px, calc(100cqw / ${((explanation.length + 6) * 0.56).toFixed(2)})))`,
                 }}
               >
                 💡 {explanation}
               </span>
             </div>
           )}
+        </div>
+        {/* Actions: regenerate image · design your own · review ✓ · (admin share) · delete */}
+        <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            onClick={() => suggestMnemonicForWord(word)}
+            disabled={suggestingMnemonic === word.id || reviewLocked}
+            title={reviewLocked ? "Approved cards can't be changed" : 'Generate mnemonic image'}
+            style={{ ...roundBtn, opacity: reviewLocked ? 0.4 : 1, cursor: reviewLocked ? 'not-allowed' : 'pointer' }}
+          >
+            {suggestingMnemonic === word.id ? <Loader2 className="animate-spin" style={{ width: 16, height: 16, color: '#6366f1' }} /> : '🎨'}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowCustomMnemonic(v => !v); setCustomDesc(''); }}
+            disabled={reviewLocked}
+            title={reviewLocked ? "Approved cards can't be changed" : 'Design your own mnemonic'}
+            style={{ ...roundBtn, opacity: reviewLocked ? 0.4 : 1, cursor: reviewLocked ? 'not-allowed' : 'pointer', ...(showCustomMnemonic ? { background: '#e0e7ff', color: '#4f46e5' } : {}) }}
+          >
+            <Pencil style={{ width: 16, height: 16 }} />
+          </button>
+          {canReview && (
+            <button
+              onClick={cycleReview}
+              disabled={updateWordMutation.isPending}
+              title={
+                reviewStatus === 'approved' ? 'Approved — tap to flag it as wrong'
+                : reviewStatus === 'rejected' ? 'Flagged for review — tap to clear'
+                : 'Approve this card'
+              }
+              style={{
+                ...roundBtn,
+                ...(reviewStatus === 'approved' ? { background: '#dcfce7', color: '#16a34a' }
+                  : reviewStatus === 'rejected' ? { background: '#fee2e2', color: '#dc2626' }
+                  : {}),
+              }}
+            >
+              {reviewStatus === 'rejected'
+                ? <X style={{ width: 17, height: 17 }} strokeWidth={3} />
+                : <Check style={{ width: 17, height: 17 }} strokeWidth={3} />}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => approveWordMutation.mutate({ id: word.id, approved: !word.approved })}
+              disabled={approveWordMutation.isPending}
+              title={word.approved ? 'Unapprove card' : 'Approve card for all users'}
+              style={{ ...roundBtn, ...(word.approved ? { background: '#dcfce7' } : {}) }}
+            >
+              ✅
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (!isRealWordId) { toast.info("This card isn't saved yet"); return; }
+              if (word.approved && !isAdmin) { handleDismissWord(word.id); return; }
+              deleteWordMutation.mutate({ id: word.id, phonetic: word.phonetic || word.word });
+            }}
+            title={word.approved && !isAdmin ? 'Remove from my view' : 'Delete word'}
+            style={{ ...roundBtn, color: '#ef4444' }}
+          >
+            🗑️
+          </button>
+        </div>
         </div>
 
         {/* Word, stacked: native script / phonetic / meaning (tap to reveal) */}
@@ -437,70 +500,8 @@ export default function WordCard({
           </div>
         )}
 
-        {/* Actions: regenerate image · design your own · review ✓ · (admin share) · delete */}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', margin: '12px 0 10px', flexShrink: 0 }}>
-          <button
-            onClick={() => suggestMnemonicForWord(word)}
-            disabled={suggestingMnemonic === word.id || reviewLocked}
-            title={reviewLocked ? "Approved cards can't be changed" : 'Generate mnemonic image'}
-            style={{ ...roundBtn, opacity: reviewLocked ? 0.4 : 1, cursor: reviewLocked ? 'not-allowed' : 'pointer' }}
-          >
-            {suggestingMnemonic === word.id ? <Loader2 className="animate-spin" style={{ width: 16, height: 16, color: '#6366f1' }} /> : '🎨'}
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowCustomMnemonic(v => !v); setCustomDesc(''); }}
-            disabled={reviewLocked}
-            title={reviewLocked ? "Approved cards can't be changed" : 'Design your own mnemonic'}
-            style={{ ...roundBtn, opacity: reviewLocked ? 0.4 : 1, cursor: reviewLocked ? 'not-allowed' : 'pointer', ...(showCustomMnemonic ? { background: '#e0e7ff', color: '#4f46e5' } : {}) }}
-          >
-            <Pencil style={{ width: 16, height: 16 }} />
-          </button>
-          {canReview && (
-            <button
-              onClick={cycleReview}
-              disabled={updateWordMutation.isPending}
-              title={
-                reviewStatus === 'approved' ? 'Approved — tap to flag it as wrong'
-                : reviewStatus === 'rejected' ? 'Flagged for review — tap to clear'
-                : 'Approve this card'
-              }
-              style={{
-                ...roundBtn,
-                ...(reviewStatus === 'approved' ? { background: '#dcfce7', color: '#16a34a' }
-                  : reviewStatus === 'rejected' ? { background: '#fee2e2', color: '#dc2626' }
-                  : {}),
-              }}
-            >
-              {reviewStatus === 'rejected'
-                ? <X style={{ width: 17, height: 17 }} strokeWidth={3} />
-                : <Check style={{ width: 17, height: 17 }} strokeWidth={3} />}
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              onClick={() => approveWordMutation.mutate({ id: word.id, approved: !word.approved })}
-              disabled={approveWordMutation.isPending}
-              title={word.approved ? 'Unapprove card' : 'Approve card for all users'}
-              style={{ ...roundBtn, ...(word.approved ? { background: '#dcfce7' } : {}) }}
-            >
-              ✅
-            </button>
-          )}
-          <button
-            onClick={() => {
-              if (!isRealWordId) { toast.info("This card isn't saved yet"); return; }
-              if (word.approved && !isAdmin) { handleDismissWord(word.id); return; }
-              deleteWordMutation.mutate({ id: word.id, phonetic: word.phonetic || word.word });
-            }}
-            title={word.approved && !isAdmin ? 'Remove from my view' : 'Delete word'}
-            style={{ ...roundBtn, color: '#ef4444' }}
-          >
-            🗑️
-          </button>
-        </div>
-
         {/* 1–5 rating (5 = mastered) */}
-        <div style={{ width: '100%', display: 'flex', gap: 6, flexShrink: 0 }}>
+        <div style={{ width: '100%', display: 'flex', gap: 6, flexShrink: 0, marginTop: 12 }}>
           {[1, 2, 3, 4, 5].map((value) => {
             const active = word.times_practiced === value;
             const color = value === 5 ? '#22c55e' : '#14b8a6';
