@@ -563,7 +563,7 @@ Provide:
       translation: english,
       phonetic: transliteration,
       category: "wordbank",
-      times_practiced: 1,
+      times_practiced: 0,
       mastered: false,
     });
   };

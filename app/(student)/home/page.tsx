@@ -358,12 +358,6 @@ export default function Home() {
     onError: (e: any) => toast.error(`Couldn't switch language: ${e?.message || "unknown error"}`),
   });
 
-  const bumpWordMutation = useMutation({
-    mutationFn: ({ id, level }: any) =>
-      base44.entities.Word.update(id, { times_practiced: level, mastered: level >= 5 }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wordRatings"] }),
-  });
-
   // -------------------------------------------------------------------------
   // Backpack flashcards: the same mutations/handlers the full Backpack page
   // wires into WordCard, in compact form (all cards here are the user's own).
@@ -398,11 +392,24 @@ export default function Home() {
 
   const handleRateWord = async (wordId: any, rating: any, event: any) => {
     event?.stopPropagation?.();
-    await updateWordMutation.mutateAsync({
-      id: wordId,
-      data: { times_practiced: rating, mastered: rating >= 5 },
-    });
-    setMood(rating >= 5 ? "cheer" : "happy");
+    // Highlight the tapped number immediately instead of after the round-trip
+    // (~1 s), so the rating doesn't look ignored; roll back if the save fails.
+    const key = ["wordRatings", language, currentUser?.email];
+    const previous = queryClient.getQueryData(key);
+    queryClient.setQueryData(key, (old: any) =>
+      Array.isArray(old)
+        ? old.map((w: any) => (w.id === wordId ? { ...w, times_practiced: rating, mastered: rating >= 5 } : w))
+        : old
+    );
+    try {
+      await updateWordMutation.mutateAsync({
+        id: wordId,
+        data: { times_practiced: rating, mastered: rating >= 5 },
+      });
+      setMood(rating >= 5 ? "cheer" : "happy");
+    } catch {
+      queryClient.setQueryData(key, previous);
+    }
   };
 
   // Sound-anchor mnemonic image — same recipe as the full Backpack page.
@@ -629,14 +636,7 @@ Return JSON: { "questions": [ { "word": the flashcard word, "prompt": the questi
     if (correct) {
       setQuizScore((s) => s + 1);
       setMood("happy");
-      // Correct answer counts as practice on that word (feeds the daily goal).
-      const w = (words as any[]).find(
-        (w) => (w.phonetic || w.word)?.toLowerCase() === (q.word || "").toLowerCase()
-      );
-      if (w) {
-        const level = Math.min((w.times_practiced || 0) + 1, 4);
-        bumpWordMutation.mutate({ id: w.id, level });
-      }
+      // The 1–5 level is the student's own rating; the quiz no longer changes it.
     } else {
       setMood("sad");
     }

@@ -192,7 +192,7 @@ export default function SongsPage() {
       phonetic: word.transliteration,
       category: "wordbank",
       example_sentence: `From song: ${songTitle}`,
-      times_practiced: 1,
+      times_practiced: 0,
       mastered: false,
     });
 

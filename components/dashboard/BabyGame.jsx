@@ -276,14 +276,7 @@ const [imageApproved, setImageApproved] = useState(false);
       // Correct!
       setCorrectChoice(choice.hebrew);
 
-      // Save word as practiced
-      const existingWord = wordRatings.find(w => w.word === currentWord.hebrew);
-      if (existingWord) {
-        await updateWordMutation.mutateAsync({
-          id: existingWord.id,
-          data: { times_practiced: Math.min((existingWord.times_practiced || 0) + 1, 5), mastered: false }
-        });
-      }
+      // The 1–5 level is the student's own rating; a correct answer no longer changes it.
 
       onCorrect && onCorrect(currentWord);
 

@@ -175,7 +175,7 @@ export default function ClickableWord({
         translation: finalTranslation,
         phonetic: finalTransliteration,
         category: "wordbank",
-        times_practiced: 1,
+        times_practiced: 0,
         mastered: false,
       });
       toast.success("Word added to backpack! 🎒");

@@ -133,7 +133,7 @@ Return: "translation" (English meaning), "transliteration" (${
         phonetic: info.transliteration || word,
         category: "wordbank",
         language,
-        times_practiced: 1,
+        times_practiced: 0,
         mastered: false,
         // Provenance (columns added in 1000_journal_lessons.sql; harmlessly
         // dropped by the shim if the migration hasn't been applied yet).

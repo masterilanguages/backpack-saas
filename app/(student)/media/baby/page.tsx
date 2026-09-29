@@ -535,7 +535,7 @@ export default function BabyVideos() {
   const addWordToBackpack = async (word: any, songId: any, songTitle: any) => {
     const existingWord = wordRatings.find((w: any) => w.word === word.hebrew);
     if (existingWord) { toast.info("Already in backpack!"); return; }
-    await createWordMutation.mutateAsync({ word: word.hebrew, translation: word.english, phonetic: word.transliteration, category: 'wordbank', example_sentence: `From song: ${songTitle}`, times_practiced: 1, mastered: false });
+    await createWordMutation.mutateAsync({ word: word.hebrew, translation: word.english, phonetic: word.transliteration, category: 'wordbank', example_sentence: `From song: ${songTitle}`, times_practiced: 0, mastered: false });
     toast.success(`Added "${word.transliteration}" to backpack! 🎒`);
     const progress = songProgress.find((p: any) => p.song_id === songId);
     const song = songs.find((s: any) => s.id === songId);
@@ -766,7 +766,7 @@ export default function BabyVideos() {
       translation: line.english,
       phonetic: line.transliteration,
       category: "wordbank",
-      times_practiced: 1,
+      times_practiced: 0,
       mastered: false,
     });
     toast.success(`Added "${line.transliteration}" to backpack! 🎒`);
@@ -833,7 +833,7 @@ export default function BabyVideos() {
       translation: item.english || item.meaning,
       phonetic: item.transliteration,
       category: "wordbank",
-      times_practiced: 1,
+      times_practiced: 0,
       mastered: false,
     });
     toast.success(`Added "${item.transliteration}" to backpack! 🎒`);
@@ -1227,7 +1227,7 @@ export default function BabyVideos() {
               translation: word.english,
               phonetic: word.transliteration,
               category: "wordbank",
-              times_practiced: 1,
+              times_practiced: 0,
               mastered: false,
             });
             toast.success(`Added "${word.transliteration}" to backpack! 🎒`);
