@@ -1234,9 +1234,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
 
                 {/* The full WordCard flashcard (mnemonic image, ratings,
                     sentence with clickable words, edit-in-place, …) */}
-                <div className="mt-2 flex min-h-0 flex-1 justify-center overflow-y-auto pb-3">
-                  <div className="h-fit">
+                <div className="mt-2 flex min-h-0 flex-1 flex-col items-center overflow-y-auto pb-3">
                     <WordCard
+                      large
                       // Remount per card: each flashcard starts with its
                       // translation hidden — pressing the card reveals it.
                       key={flashDeck[safeCardIdx]?.id}
@@ -1268,7 +1268,6 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       generateCardSentence={generateCardSentence}
                       sessionTitleMap={{}}
                     />
-                  </div>
                 </div>
               </>
             )}
