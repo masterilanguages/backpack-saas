@@ -55,6 +55,7 @@ const ENTITY_TABLE = {
   UserProgram: 'user_program',
   UserSavedVideo: 'user_saved_video',
   ChapterProgress: 'chapter_progress',
+  ChapterContent: 'chapter_content',
   UserStoryProgress: 'user_story_progress',
   Video: 'video',
   VocabExposure: 'vocab_exposure',

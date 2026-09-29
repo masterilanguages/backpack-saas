@@ -1274,14 +1274,88 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
 
   // ---- Step 2: Sentence-by-Sentence Discovery -------------------------------
   // Only the chapter's content (first 3:30). A sentence ends where the next begins.
-  const discSegments = useMemo(
-    () => (discovery ? shellSegments.filter((s: any) => (s.start ?? 0) < CHAPTER_MAX_SECONDS) : []),
-    [discovery, shellSegments]
-  );
+  // The chapter's sentences with REAL timings (chapter_content, migration 1900):
+  // prepared once per video from timed captions grouped into full sentences.
+  // The stored transcript has AI-estimated starts, so "play this sentence"
+  // played the wrong audio; it's only used if preparation fails.
+  const [chapterPreparing, setChapterPreparing] = useState(false);
+  const { data: chapterContent = null } = useQuery({
+    queryKey: ["chapterContent", shellVideo?.video_id],
+    queryFn: async () => (await base44.entities.ChapterContent.filter({ video_id: shellVideo.video_id }))?.[0] || null,
+    enabled: discovery && !!shellVideo?.video_id,
+    staleTime: Infinity,
+  });
+  const prepareTried = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const vid = shellVideo?.video_id;
+    if (!discovery || !vid || chapterContent || prepareTried.current.has(vid)) return;
+    prepareTried.current.add(vid);
+    (async () => {
+      setChapterPreparing(true);
+      try {
+        const lang = shellVideo.language || language;
+        const res: any = await transcribeMediaSource(youtubeSource(vid), { language: lang });
+        const frags = (res?.transcript || [])
+          .map((f: any) => ({ text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0) }))
+          .filter((f: any) => f.text && f.start < CHAPTER_MAX_SECONDS);
+        if (!frags.length) throw new Error(res?.error || "no timed transcript");
+        const r: any = await base44.integrations.Core.InvokeLLM({
+          prompt: `These are numbered caption fragments of a ${languageLabel(lang)} video, in order:
+${frags.map((f: any, i: number) => `${i}: ${f.text}`).join("\n")}
+
+Group consecutive fragments into complete, natural sentences (merge fragments that belong to the same sentence; don't split a fragment). Cover every fragment exactly once, in order.
+For each sentence return: from (first fragment number), to (last fragment number), hebrew (the sentence in ${languageLabel(lang)} script, exactly as spoken), transliteration (Latin letters), english (natural translation).
+Return JSON: { "sentences": [ { "from", "to", "hebrew", "transliteration", "english" } ] }`,
+          response_json_schema: {
+            type: "object",
+            properties: {
+              sentences: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    from: { type: "number" }, to: { type: "number" },
+                    hebrew: { type: "string" }, transliteration: { type: "string" }, english: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        });
+        const sentences = (r?.sentences || [])
+          .filter((x: any) => Number.isInteger(x?.from) && Number.isInteger(x?.to) && x.from <= x.to && frags[x.from] && frags[x.to] && x.hebrew)
+          .map((x: any) => ({
+            start: frags[x.from].start,
+            end: Math.min(frags[x.to].end, CHAPTER_MAX_SECONDS),
+            hebrew: x.hebrew,
+            text: x.hebrew,
+            transliteration: x.transliteration || "",
+            english: x.english || "",
+          }))
+          .sort((a: any, b: any) => a.start - b.start);
+        if (!sentences.length) throw new Error("no sentences");
+        await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences, source: res?.source || "" });
+        queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
+      } catch (e) {
+        console.error("[chapter] could not prepare timed sentences, using the stored transcript", e);
+      }
+      setChapterPreparing(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discovery, shellVideo?.video_id, chapterContent]);
+
+  const discSegments = useMemo(() => {
+    if (!discovery) return [];
+    if (Array.isArray(chapterContent?.sentences) && chapterContent.sentences.length) return chapterContent.sentences;
+    if (chapterPreparing) return [];
+    return shellSegments.filter((s: any) => (s.start ?? 0) < CHAPTER_MAX_SECONDS);
+  }, [discovery, chapterContent, chapterPreparing, shellSegments]);
   const discSeg: any = discSegments[discIdx] || null;
   const discEnd = (i: number) => {
+    const seg = discSegments[i];
+    if (seg?.end) return Math.min(seg.end + 0.25, CHAPTER_MAX_SECONDS); // real end (+ a hair so the last syllable isn't clipped)
     const next = discSegments[i + 1];
-    const start = discSegments[i]?.start ?? 0;
+    const start = seg?.start ?? 0;
     return Math.min(next ? next.start : start + 8, CHAPTER_MAX_SECONDS);
   };
   const playDiscSentence = (i = discIdx) => {
@@ -2196,7 +2270,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             {discovery ? (
               <DiscoveryPanel
                 mode={passKind}
-                loading={shellSegsLoading}
+                loading={shellSegsLoading || chapterPreparing}
                 segments={discSegments}
                 idx={discIdx}
                 revealed={discRevealed}
