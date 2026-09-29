@@ -10,7 +10,7 @@
 //   ACCOUNT   profile menu — Progress and Schedule live here
 // The turtle mascot reacts (idle / happy / sad / cheer) like Duolingo's owl.
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
@@ -529,17 +529,29 @@ Return JSON with:
     toast.success("Removed from your view");
   };
 
-  // Deck for the one-by-one pager: new cards first, then by level.
+  // Deck for the one-by-one pager: new cards first, then by level — sorted once,
+  // then kept in that order while the student studies. Re-sorting after every
+  // rating moved the rated card away and put a different word under the same
+  // "1 / 16", so it looked like the rating hadn't saved. Cards added later join
+  // at the end; deleted/dismissed ones drop out. Switching language re-sorts.
+  const deckOrderRef = useRef<{ language: string; ids: any[] }>({ language: "", ids: [] });
   const flashDeck = useMemo(() => {
-    return (words as any[])
-      .filter((w) => !dismissedCards.has(w.id))
-      .slice()
-      .sort(
-        (a, b) =>
-          (a.times_practiced || 0) - (b.times_practiced || 0) ||
-          (a.phonetic || a.word || "").localeCompare(b.phonetic || b.word || "")
-      );
-  }, [words, dismissedCards]);
+    const visible = (words as any[]).filter((w) => !dismissedCards.has(w.id));
+    const byLevel = (a: any, b: any) =>
+      (a.times_practiced || 0) - (b.times_practiced || 0) ||
+      (a.phonetic || a.word || "").localeCompare(b.phonetic || b.word || "");
+    const order = deckOrderRef.current;
+    if (order.language !== language) {
+      order.language = language;
+      order.ids = [];
+    }
+    const byId = new Map(visible.map((w) => [w.id, w]));
+    const kept = order.ids.filter((id) => byId.has(id));
+    const keptSet = new Set(kept);
+    const added = visible.filter((w) => !keptSet.has(w.id)).sort(byLevel).map((w) => w.id);
+    order.ids = [...kept, ...added];
+    return order.ids.map((id) => byId.get(id));
+  }, [words, dismissedCards, language]);
   const safeCardIdx = Math.min(cardIdx, Math.max(0, flashDeck.length - 1));
 
   // "+" above the flashcard: type one or many words → one card each. After a
