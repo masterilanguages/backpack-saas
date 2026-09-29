@@ -283,8 +283,45 @@ export default function Backpack() {
     },
   });
 
+  // Session flashcards are built on the fly (id "session_N") and are not rows.
+  // Match them to the user's own copy of the same word, if they already have one.
+  const findOwnCopyOfSessionWord = (s: any) => {
+    const key = (s?.phonetic || s?.word || s?.hebrew || "").toLowerCase();
+    if (!key) return undefined;
+    return (wordRatings as any[]).find(w =>
+      !w._shared && (w.phonetic || w.word || "").toLowerCase() === key
+    );
+  };
+
   const handleRateWord = async (wordId: any, rating: any, event: any) => {
     event.stopPropagation();
+    // Rating a session card saves it to the backpack (or re-rates the user's
+    // existing copy). Updating by the synthetic id matched no row and silently
+    // saved nothing.
+    if (String(wordId).startsWith("session_")) {
+      const s = sessionFlashcardData?.words?.[Number(String(wordId).slice("session_".length))];
+      if (!s) return;
+      const own = findOwnCopyOfSessionWord(s);
+      if (own) {
+        await updateWordMutation.mutateAsync({
+          id: own.id,
+          data: { times_practiced: rating, mastered: rating >= 5 },
+        });
+      } else {
+        await createWordMutation.mutateAsync({
+          word: s.word || s.hebrew || s.phonetic,
+          translation: singularizeTranslation(s.translation),
+          phonetic: s.phonetic,
+          category: "wordbank",
+          language: s.language || userProfile?.language || "hebrew",
+          times_practiced: rating,
+          mastered: rating >= 5,
+          image_url: s.image_url || null,
+        });
+        toast.success(rating >= 5 ? "Saved to your backpack — Mastered! ⭐" : "Saved to your backpack!");
+      }
+      return;
+    }
     // Check if it's a shared (approved) card not yet owned by this user
     const word = (wordRatings as any[]).find(w => w.id === wordId);
     if (word?._shared) {
@@ -1025,7 +1062,8 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
                     // Carry the target language so Latin-script words render LTR
                     // (WordCard derives direction from word.language).
                     language: sessionFlashcardData.words[singleCardIndex]?.language || userProfile?.language || 'hebrew',
-                    times_practiced: 0,
+                    // Show the level the user already gave this word (0 if new).
+                    times_practiced: findOwnCopyOfSessionWord(sessionFlashcardData.words[singleCardIndex])?.times_practiced || 0,
                     mastered: false,
                   }}
                   showAllEnglish={showAllEnglish}
