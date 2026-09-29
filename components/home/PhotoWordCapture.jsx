@@ -18,7 +18,10 @@ import { languageLabel, isRTLText } from "@/lib/language";
 
 const base44 = base44Client;
 
-export default function PhotoWordCapture({ language = "hebrew" }) {
+// `compact`: a round camera icon (Backpack top bar, next to "+") instead of
+// the full-width "Scan handwritten words" button. Inline styles: this is .jsx,
+// which Tailwind does not scan.
+export default function PhotoWordCapture({ language = "hebrew", compact = false }) {
   const inputRef = useRef(null);
   const [scanning, setScanning] = useState(false);
   const [captured, setCaptured] = useState([]); // last scan's words, shown as chips
@@ -81,6 +84,41 @@ export default function PhotoWordCapture({ language = "hebrew" }) {
       setScanning(false);
     }
   };
+
+  if (compact) {
+    return (
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{ display: "none" }} />
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={scanning}
+          aria-label="Scan handwritten words"
+          title="Scan handwritten words"
+          style={{
+            width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+            background: "#fff", border: "1px solid #e0e7ff", boxShadow: "0 4px 12px -6px rgba(99,102,241,.5)", cursor: "pointer",
+          }}
+        >
+          {scanning
+            ? <Loader2 className="animate-spin" style={{ width: 17, height: 17, color: "#6366f1" }} />
+            : <Camera style={{ width: 17, height: 17, color: "#6366f1" }} />}
+        </button>
+        {captured.length > 0 && (
+          <div style={{
+            position: "absolute", right: 0, top: 44, zIndex: 30, width: 240, background: "#fff", borderRadius: 16,
+            border: "1px solid #e0e7ff", boxShadow: "0 16px 40px -16px rgba(79,70,229,.45)", padding: "8px 10px",
+          }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", marginBottom: 6 }}>Captured — review &amp; rate them in your Backpack:</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {captured.map((w) => (
+                <span key={w} dir={isRTLText(w) ? "rtl" : "ltr"} style={{ borderRadius: 999, background: "#eef2ff", padding: "3px 9px", fontSize: 12, color: "#4338ca" }}>{w}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex-shrink-0">

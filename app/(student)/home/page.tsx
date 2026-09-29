@@ -1308,7 +1308,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-3">
             {/* Photograph handwritten vocab → words land in the Backpack's
                 pending-review flow */}
-            <PhotoWordCapture language={language} />
+            {backpackDecks.all.length === 0 && <PhotoWordCapture language={language} />}
 
             {backpackDecks.all.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
@@ -1337,6 +1337,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 decks={backpackDecks}
                 onOpen={openDeck}
                 onAdd={() => setAddWordsOpen(true)}
+                camera={<PhotoWordCapture language={language} compact />}
               />
             ) : (
               <>
@@ -1363,6 +1364,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     <span className="text-xs font-semibold text-slate-400">
                       {safeCardIdx + 1} / {flashDeck.length}
                     </span>
+                    <PhotoWordCapture language={language} compact />
                     <button
                       onClick={() => setAddWordsOpen(true)}
                       aria-label="Add words"
@@ -2476,10 +2478,12 @@ function BackpackDeckMenu({
   decks,
   onOpen,
   onAdd,
+  camera,
 }: {
   decks: { all: any[]; videos: { key: string; videoId: string; title: string; words: any[] }[]; other: any[] };
   onOpen: (key: string) => void;
   onAdd: () => void;
+  camera?: React.ReactNode;
 }) {
   return (
     <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto pb-4">
@@ -2489,14 +2493,17 @@ function BackpackDeckMenu({
             <p className="text-lg font-bold">🎒 Practice all flashcards</p>
             <p className="mt-0.5 text-xs text-slate-400">{deckSummary(decks.all)}</p>
           </div>
-          <button
-            onClick={onAdd}
-            aria-label="Add words"
-            title="Add words"
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow-md transition hover:scale-105"
-          >
-            <Plus className="h-5 w-5" />
-          </button>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            {camera}
+            <button
+              onClick={onAdd}
+              aria-label="Add words"
+              title="Add words"
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow-md transition hover:scale-105"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+          </div>
         </div>
         <div className="mt-3">
           <LevelBar words={decks.all} />

@@ -221,6 +221,309 @@ export default function WordCard({
   // click on card toggles English reveal
   const showingEnglish = showAllEnglish || revealed;
 
+  // ---------------------------------------------------------------------------
+  // Backpack single-card view (variant C1, chosen by the client): white card,
+  // the mnemonic image in a large circle, the 💡 line as a pill on the circle's
+  // bottom edge, the word stacked (Hebrew / phonetic / meaning on tap), then the
+  // video sentence, the action buttons and the 1–5 rating row.
+  // Everything is inline-styled: Tailwind doesn't scan .jsx, so new classes here
+  // would never be generated.
+  // ---------------------------------------------------------------------------
+  if (large) {
+    const explanation = mnemonicExplanations[word.id] || word.mnemonic_explanation;
+    const hasSentence = word.example_sentence && word.example_sentence.includes(' ') && !/^Session \d+$/i.test(word.example_sentence);
+    const roundBtn = {
+      width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: '#f1f5f9', color: '#334155', fontSize: 15, border: 0, cursor: 'pointer', transition: 'transform .15s',
+    };
+    const toggleBtn = (on) => ({
+      fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 999, lineHeight: 1, cursor: 'pointer',
+      border: `1px solid ${on ? '#14b8a6' : '#e2e8f0'}`, background: on ? '#14b8a6' : '#fff', color: on ? '#fff' : '#475569',
+    });
+    const statusChip =
+      reviewStatus === 'approved' ? { text: '✓ Approved', bg: '#dcfce7', fg: '#15803d' }
+      : reviewStatus === 'rejected' ? { text: '✕ Needs review', bg: '#fee2e2', fg: '#b91c1c' }
+      : word.approved ? { text: '✓ Approved card', bg: '#dcfce7', fg: '#15803d' }
+      : word._shared ? { text: '⭐ New — tap to rank', bg: '#ccfbf1', fg: '#0f766e' }
+      : null;
+
+    return (
+      <motion.div
+        key={word.id}
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        style={{
+          flex: '1 0 auto', width: '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center',
+          background: '#fff', borderRadius: 28, padding: '12px 12px 14px', color: '#0f172a',
+          boxShadow: review
+            ? `0 0 0 2px ${review.ring}, 0 20px 50px -24px rgba(79,70,229,.35)`
+            : '0 20px 50px -24px rgba(79,70,229,.35)',
+        }}
+      >
+        {/* Status chip (left) + EN / native-script toggles (right) */}
+        <div style={{ position: 'absolute', top: 12, left: 12, right: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 3 }}>
+          {statusChip
+            ? <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: statusChip.bg, color: statusChip.fg }}>{statusChip.text}</span>
+            : <span />}
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button onClick={(e) => { e.stopPropagation(); onEnglishToggle?.(); }} style={toggleBtn(showAllEnglish)} title="Toggle English">EN</button>
+            {needsTransliteration(lang) && (
+              <button onClick={(e) => { e.stopPropagation(); onHebrewToggle?.(); }} style={toggleBtn(showHebrew)} title={`Toggle ${languageLabel(lang)}`}>
+                {String(lang).toLowerCase() === 'arabic' ? 'ع' : 'א'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Image in a circle, 💡 pill on its bottom edge */}
+        <div style={{ position: 'relative', width: 'min(270px, 78%)', marginTop: 30, flexShrink: 0 }}>
+          <div
+            onClick={() => setRevealed(r => !r)}
+            style={{
+              position: 'relative', width: '100%', aspectRatio: '1 / 1', borderRadius: '50%', overflow: 'hidden', cursor: 'pointer',
+              background: 'radial-gradient(circle at 40% 35%, #f5f3ff 0%, #e0e7ff 60%, #c7d2fe 100%)',
+              boxShadow: '0 0 0 7px #fff, 0 0 0 8px #eef2ff, 0 18px 36px -14px rgba(79,70,229,.45)',
+            }}
+          >
+            {word.image_url && !imgFailed ? (
+              <img
+                src={word.image_url}
+                alt={word.phonetic}
+                onError={() => setImgFailed(true)}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+            ) : (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, textAlign: 'center', padding: 24 }}>
+                {(isGeneratingImage || regeneratingImage) ? (
+                  <>
+                    <Loader2 className="animate-spin" style={{ width: 28, height: 28, color: '#6366f1' }} />
+                    <span style={{ fontSize: 12, color: '#64748b' }}>Generating image…</span>
+                  </>
+                ) : (
+                  !reviewLocked && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setImgFailed(false); suggestMnemonicForWord(word); }}
+                      style={{ fontSize: 12, fontWeight: 600, color: '#4f46e5', background: '#fff', border: '1px solid #c7d2fe', borderRadius: 999, padding: '6px 12px', cursor: 'pointer' }}
+                    >
+                      🎨 Create image
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+          {explanation && (
+            <div style={{ position: 'absolute', left: '50%', bottom: -16, transform: 'translateX(-50%)', width: '112%', display: 'flex', justifyContent: 'center', containerType: 'inline-size' }}>
+              <span
+                style={{
+                  maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', fontStyle: 'italic', color: '#0f766e',
+                  background: '#f0fdfa', border: '1px solid #ccfbf1', borderRadius: 999, padding: '6px 14px',
+                  boxShadow: '0 6px 16px -8px rgba(15,118,110,.4)',
+                  fontSize: `min(13px, calc(100cqw / ${((explanation.length + 6) * 0.56).toFixed(2)}))`,
+                }}
+              >
+                💡 {explanation}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Word, stacked: native script / phonetic / meaning (tap to reveal) */}
+        <div onClick={() => setRevealed(r => !r)} style={{ textAlign: 'center', marginTop: explanation ? 28 : 16, cursor: 'pointer', flexShrink: 0 }}>
+          {showHebrew && (
+            <div dir={nativeWordRTL ? 'rtl' : 'ltr'} style={{ fontSize: 36, fontWeight: 800, color: '#1e1b4b', lineHeight: 1.1 }}>
+              <EditableWord
+                text={word.word}
+                language={nativeWordRTL ? 'he' : 'en'}
+                editable={canEdit}
+                onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { word: v } })}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          )}
+          {showTransliteration && (
+            <div style={{ fontSize: 16, fontStyle: 'italic', color: '#4f46e5', marginTop: 2 }}>
+              <EditableWord
+                text={word.phonetic || word.word}
+                editable={canEdit}
+                onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { phonetic: v } })}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          )}
+          {showingEnglish ? (
+            <div style={{ fontSize: 17, fontWeight: 600, color: '#0f172a', marginTop: 4 }}>
+              <EditableWord
+                text={word.translation || '(no translation)'}
+                editable={canEdit}
+                onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { translation: v } })}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          ) : (
+            <div style={{ display: 'inline-block', fontSize: 11.5, color: '#94a3b8', marginTop: 5, borderBottom: '1px dashed #c7d2fe' }}>
+              👆 tap to reveal meaning
+            </div>
+          )}
+          {(word.is_verb || /^l/i.test(word.phonetic || '')) && (
+            <div style={{ fontSize: 11, color: '#0f766e', marginTop: 4 }}>verb · ∞ {word.word || word.phonetic}</div>
+          )}
+        </div>
+
+        {/* Custom mnemonic designer (✎) */}
+        {showCustomMnemonic && (
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
+            <input
+              ref={inputRef}
+              autoFocus
+              value={customDesc}
+              onChange={e => setCustomDesc(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') generateCustomMnemonic(); if (e.key === 'Escape') setShowCustomMnemonic(false); }}
+              placeholder="Describe a scene…"
+              style={{ flex: 1, minWidth: 0, fontSize: 13, padding: '8px 12px', borderRadius: 12, border: '1px solid #c7d2fe', outline: 'none', color: '#0f172a' }}
+            />
+            <button
+              onClick={generateCustomMnemonic}
+              disabled={!customDesc.trim() || regeneratingImage}
+              title="Create the image from your description"
+              style={{ ...roundBtn, background: '#6366f1', color: '#fff', opacity: !customDesc.trim() || regeneratingImage ? 0.5 : 1 }}
+            >
+              {regeneratingImage ? <Loader2 className="animate-spin" style={{ width: 16, height: 16 }} /> : '✓'}
+            </button>
+            <button onClick={() => setShowCustomMnemonic(false)} style={roundBtn} title="Cancel"><X style={{ width: 16, height: 16 }} /></button>
+          </div>
+        )}
+
+        <div style={{ flex: 1, minHeight: 12 }} />
+
+        {/* Sentence the word was captured from, with listen */}
+        {hasSentence && (
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 14, padding: '8px 12px', flexShrink: 0 }}>
+            <button
+              onClick={() => generateLessonAudio({ text: word.example_sentence, language: lang }).play()}
+              title="Listen to sentence"
+              style={{ background: 'none', border: 0, cursor: 'pointer', fontSize: 15 }}
+            >
+              🔊
+            </button>
+            <p dir={isRTLText(word.example_sentence) ? 'rtl' : 'ltr'} style={{ flex: 1, fontSize: 15, lineHeight: 1.4, color: '#1e293b', textAlign: isRTLText(word.example_sentence) ? 'right' : 'left' }}>
+              {word.example_sentence}
+            </p>
+          </div>
+        )}
+        {(generatingSentence[word.id] || cardSentences[word.id]) && (
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', marginTop: 6, background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 14, padding: '8px 12px', flexShrink: 0, color: '#1e293b' }}>
+            {generatingSentence[word.id] ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+                <Loader2 className="animate-spin" style={{ width: 14, height: 14 }} /> generating…
+              </div>
+            ) : (
+              <>
+                <SentenceWords
+                  words={cardSentences[word.id].words}
+                  onAddToBackpack={(w, meaning, hebrew) => handleAddWordFromSentence(w, meaning, hebrew)}
+                  showHebrew={showHebrew}
+                  showTransliteration={showTransliteration}
+                  lang={lang}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 2 }}>
+                  <p style={{ flex: 1, textAlign: 'center', fontSize: 12, fontStyle: 'italic', color: '#64748b' }}>{cardSentences[word.id].english}</p>
+                  <button onClick={() => generateCardSentence(word)} title="Regenerate sentence" style={{ background: 'none', border: 0, cursor: 'pointer', color: '#94a3b8' }}>
+                    <RefreshCw style={{ width: 13, height: 13 }} />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Actions: regenerate image · design your own · review ✓ · (admin share) · delete */}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', margin: '12px 0 10px', flexShrink: 0 }}>
+          <button
+            onClick={() => suggestMnemonicForWord(word)}
+            disabled={suggestingMnemonic === word.id || reviewLocked}
+            title={reviewLocked ? "Approved cards can't be changed" : 'Generate mnemonic image'}
+            style={{ ...roundBtn, opacity: reviewLocked ? 0.4 : 1, cursor: reviewLocked ? 'not-allowed' : 'pointer' }}
+          >
+            {suggestingMnemonic === word.id ? <Loader2 className="animate-spin" style={{ width: 16, height: 16, color: '#6366f1' }} /> : '🎨'}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowCustomMnemonic(v => !v); setCustomDesc(''); }}
+            disabled={reviewLocked}
+            title={reviewLocked ? "Approved cards can't be changed" : 'Design your own mnemonic'}
+            style={{ ...roundBtn, opacity: reviewLocked ? 0.4 : 1, cursor: reviewLocked ? 'not-allowed' : 'pointer', ...(showCustomMnemonic ? { background: '#e0e7ff', color: '#4f46e5' } : {}) }}
+          >
+            <Pencil style={{ width: 16, height: 16 }} />
+          </button>
+          {canReview && (
+            <button
+              onClick={cycleReview}
+              disabled={updateWordMutation.isPending}
+              title={
+                reviewStatus === 'approved' ? 'Approved — tap to flag it as wrong'
+                : reviewStatus === 'rejected' ? 'Flagged for review — tap to clear'
+                : 'Approve this card'
+              }
+              style={{
+                ...roundBtn,
+                ...(reviewStatus === 'approved' ? { background: '#dcfce7', color: '#16a34a' }
+                  : reviewStatus === 'rejected' ? { background: '#fee2e2', color: '#dc2626' }
+                  : {}),
+              }}
+            >
+              {reviewStatus === 'rejected'
+                ? <X style={{ width: 17, height: 17 }} strokeWidth={3} />
+                : <Check style={{ width: 17, height: 17 }} strokeWidth={3} />}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => approveWordMutation.mutate({ id: word.id, approved: !word.approved })}
+              disabled={approveWordMutation.isPending}
+              title={word.approved ? 'Unapprove card' : 'Approve card for all users'}
+              style={{ ...roundBtn, ...(word.approved ? { background: '#dcfce7' } : {}) }}
+            >
+              ✅
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (!isRealWordId) { toast.info("This card isn't saved yet"); return; }
+              if (word.approved && !isAdmin) { handleDismissWord(word.id); return; }
+              deleteWordMutation.mutate({ id: word.id, phonetic: word.phonetic || word.word });
+            }}
+            title={word.approved && !isAdmin ? 'Remove from my view' : 'Delete word'}
+            style={{ ...roundBtn, color: '#ef4444' }}
+          >
+            🗑️
+          </button>
+        </div>
+
+        {/* 1–5 rating (5 = mastered) */}
+        <div style={{ width: '100%', display: 'flex', gap: 6, flexShrink: 0 }}>
+          {[1, 2, 3, 4, 5].map((value) => {
+            const active = word.times_practiced === value;
+            const color = value === 5 ? '#22c55e' : '#14b8a6';
+            return (
+              <button
+                key={value}
+                onClick={(e) => handleRateWord(word.id, value, e)}
+                title={RATING_HINTS[value]}
+                style={{
+                  flex: 1, height: 42, borderRadius: 12, border: 0, cursor: 'pointer', fontSize: 16, fontWeight: 700,
+                  background: active ? color : '#f1f5f9', color: active ? '#fff' : '#64748b',
+                  boxShadow: active ? `0 6px 14px -6px ${color}` : 'none', transition: 'background .15s',
+                }}
+              >
+                {value}
+              </button>
+            );
+          })}
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       key={word.id}
