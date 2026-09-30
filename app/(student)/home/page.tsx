@@ -1280,7 +1280,7 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
   // The stored transcript has AI-estimated starts, so "play this sentence"
   // played the wrong audio; it's only used if preparation fails.
   const [chapterPreparing, setChapterPreparing] = useState(false);
-  const { data: chapterContent = null } = useQuery({
+  const { data: chapterContent = null, isFetched: chapterContentFetched } = useQuery({
     queryKey: ["chapterContent", shellVideo?.video_id],
     queryFn: async () => (await base44.entities.ChapterContent.filter({ video_id: shellVideo.video_id }))?.[0] || null,
     enabled: discovery && !!shellVideo?.video_id,
@@ -1289,7 +1289,9 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
   const prepareTried = useRef<Set<string>>(new Set());
   useEffect(() => {
     const vid = shellVideo?.video_id;
-    if (!discovery || !vid || chapterContent || prepareTried.current.has(vid)) return;
+    // Wait for the lookup: while it loads chapterContent is null too, and
+    // preparing then re-transcribed (and re-billed) an already prepared video.
+    if (!discovery || !vid || !chapterContentFetched || chapterContent || prepareTried.current.has(vid)) return;
     prepareTried.current.add(vid);
     (async () => {
       setChapterPreparing(true);
@@ -1421,14 +1423,14 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
       setChapterPreparing(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discovery, shellVideo?.video_id, chapterContent]);
+  }, [discovery, shellVideo?.video_id, chapterContent, chapterContentFetched]);
 
   const discSegments = useMemo(() => {
     if (!discovery) return [];
     if (Array.isArray(chapterContent?.sentences) && chapterContent.sentences.length) return chapterContent.sentences;
-    if (chapterPreparing) return [];
+    if (chapterPreparing || !chapterContentFetched) return [];
     return shellSegments.filter((s: any) => (s.start ?? 0) < CHAPTER_MAX_SECONDS);
-  }, [discovery, chapterContent, chapterPreparing, shellSegments]);
+  }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, shellSegments]);
   const discSeg: any = discSegments[discIdx] || null;
   const discEnd = (i: number) => {
     const seg = discSegments[i];
