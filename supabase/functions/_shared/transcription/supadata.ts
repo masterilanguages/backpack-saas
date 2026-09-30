@@ -63,15 +63,21 @@ function toSegments(content: any[]): TranscriptSegment[] {
 async function fetchSupadata(
   apiKey: string,
   videoId: string,
-  opts: { lang?: string; mode?: string },
+  opts: { lang?: string; mode?: string; universal?: boolean },
   budgetMs: number,
 ): Promise<any> {
-  const params = new URLSearchParams({ videoId });
+  // `universal` = the current /transcript endpoint (takes a URL, and accepts
+  // `lang` together with mode=generate); otherwise the legacy
+  // /youtube/transcript one.
+  const path = opts.universal ? "transcript" : "youtube/transcript";
+  const params = new URLSearchParams(
+    opts.universal ? { url: `https://www.youtube.com/watch?v=${videoId}` } : { videoId },
+  );
   if (opts.lang) params.set("lang", opts.lang);
   if (opts.mode) params.set("mode", opts.mode);
   const deadline = Date.now() + budgetMs;
 
-  const resp = await fetch(`${SUPADATA_BASE}/youtube/transcript?${params.toString()}`, {
+  const resp = await fetch(`${SUPADATA_BASE}/${path}?${params.toString()}`, {
     headers: { "x-api-key": apiKey },
   });
   const payload: any = await resp.json().catch(() => ({}));
@@ -81,7 +87,7 @@ async function fetchSupadata(
 
   // Async job path (typical for mode=generate): poll until ready or budget spent.
   if (!Array.isArray(payload?.content) && payload?.jobId) {
-    const jobUrl = `${SUPADATA_BASE}/youtube/transcript/${payload.jobId}`;
+    const jobUrl = `${SUPADATA_BASE}/${path}/${payload.jobId}`;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 3000));
       const jr = await fetch(jobUrl, { headers: { "x-api-key": apiKey } });
@@ -143,6 +149,7 @@ export const supadataProvider: TranscriptionProvider = {
     // the combination with a 400 "Invalid Request" (verified live). The ASR
     // auto-detects the spoken language; wrong-language output is caught by the
     // script check below instead of an upfront pin.
+    const deadline = Date.now() + genBudget;
     let generated = await fetchSupadata(apiKey, videoId, { mode: "generate" }, firstBudget);
     steps.push("audio_generate");
     let content: any[] = Array.isArray(generated?.content) ? generated.content : [];
@@ -158,11 +165,34 @@ export const supadataProvider: TranscriptionProvider = {
       const sample = content.slice(0, 40).map((s: any) => s?.text || "").join(" ");
       if (!matchesRequestedScript(sample, reqCode)) {
         steps.push(`wrong_language:${normLang(generated?.lang) || "unknown"}`);
+        // The legacy generate can hand back the video's existing caption track
+        // (e.g. the channel's FRENCH subtitles) instead of transcribing the
+        // audio. Ask the current endpoint to transcribe the audio in the
+        // requested language.
+        const pinned = await fetchSupadata(
+          apiKey,
+          videoId,
+          { universal: true, mode: "generate", lang: reqCode },
+          Math.max(15_000, deadline - Date.now() - 40_000),
+        );
+        const pinnedContent: any[] = Array.isArray(pinned?.content) ? pinned.content : [];
+        const pinnedSample = pinnedContent.slice(0, 40).map((s: any) => s?.text || "").join(" ");
+        steps.push(`audio_generate_lang:${pinnedContent.length}${pinned?.error ? ":" + String(pinned.error).slice(0, 40) : ""}`);
+        if (pinnedContent.length > 0 && matchesRequestedScript(pinnedSample, reqCode)) {
+          steps.push("complete");
+          return {
+            transcript: toSegments(pinnedContent),
+            language: reqCode,
+            availableLanguages: pinned?.availableLangs || [],
+            source: "supadata_ai_lang",
+            steps,
+          };
+        }
         let captions = await fetchSupadata(
           apiKey,
           videoId,
           { mode: "native", lang: reqCode },
-          Math.max(20_000, genBudget - firstBudget),
+          Math.max(10_000, Math.min(20_000, deadline - Date.now() - 20_000)),
         );
         steps.push("native_captions_fallback");
         let capContent: any[] = Array.isArray(captions?.content) ? captions.content : [];
@@ -224,6 +254,23 @@ export const supadataProvider: TranscriptionProvider = {
     const transcript = toSegments(content);
     if (transcript.length === 0) {
       steps.push(`audio_generate_failed:${generated?.error || "empty"}`);
+      // Same retry on the current endpoint (it sometimes transcribes what the
+      // legacy one reports as unavailable).
+      if (reqCode && deadline - Date.now() > 30_000) {
+        const pinned = await fetchSupadata(
+          apiKey,
+          videoId,
+          { universal: true, mode: "generate", lang: reqCode },
+          deadline - Date.now() - 20_000,
+        );
+        const pinnedContent: any[] = Array.isArray(pinned?.content) ? pinned.content : [];
+        const pinnedSample = pinnedContent.slice(0, 40).map((s: any) => s?.text || "").join(" ");
+        steps.push(`audio_generate_lang:${pinnedContent.length}${pinned?.error ? ":" + String(pinned.error).slice(0, 40) : ""}`);
+        if (pinnedContent.length > 0 && matchesRequestedScript(pinnedSample, reqCode)) {
+          steps.push("complete");
+          return { transcript: toSegments(pinnedContent), language: reqCode, source: "supadata_ai_lang", steps };
+        }
+      }
       const serp = await fetchSerpapiCaptions(videoId, reqCode, (x) => matchesRequestedScript(x, reqCode), steps);
       if (serp.length > 0) {
         steps.push("complete");
