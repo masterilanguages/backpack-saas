@@ -22,6 +22,11 @@ export function shouldRefreshChapter(importedLyrics: boolean, transcriptLineCoun
   return importedLyrics && transcriptLineCount > 0;
 }
 
+/** chapter_content is keyed by video_id, unlike most entity tables. */
+export function chapterContentKey(chapter: { video_id?: unknown; id?: unknown }): string {
+  return String(chapter.video_id || chapter.id || "");
+}
+
 /** Turns canonical lyric lines plus aligned starts into chapter-ready segments. */
 export function buildLyricSegments(lines: string[], starts: number[], finalEnd: number): LyricSegment[] {
   const cleanLines = lines.map((line) => line.trim()).filter(Boolean);

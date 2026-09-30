@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildLyricSegments, shouldRefreshChapter, timedSegmentsFromSavedTranscript } from "./songLyrics.ts";
+import { buildLyricSegments, chapterContentKey, shouldRefreshChapter, timedSegmentsFromSavedTranscript } from "./songLyrics.ts";
 
 Deno.test("buildLyricSegments assigns lyric lines to non-decreasing source timings", () => {
   const result = buildLyricSegments(
@@ -35,4 +35,9 @@ Deno.test("shouldRefreshChapter only invalidates cached chapters after a lyric i
   assertEquals(shouldRefreshChapter(true, 3), true);
   assertEquals(shouldRefreshChapter(false, 3), false);
   assertEquals(shouldRefreshChapter(true, 0), false);
+});
+
+Deno.test("chapterContentKey uses the table primary key before an optional entity id", () => {
+  assertEquals(chapterContentKey({ video_id: "abc", id: "wrong" }), "abc");
+  assertEquals(chapterContentKey({ id: "legacy" }), "legacy");
 });

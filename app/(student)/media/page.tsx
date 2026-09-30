@@ -30,7 +30,7 @@ import PostVideoFlashcards from "@/components/video/PostVideoFlashcards";
 import { languageLabel, isRTLText } from "@/lib/language";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
-import { buildLyricSegments, shouldRefreshChapter, timedSegmentsFromSavedTranscript } from "@/lib/songLyrics";
+import { buildLyricSegments, chapterContentKey, shouldRefreshChapter, timedSegmentsFromSavedTranscript } from "@/lib/songLyrics";
 
 // Shared, memoized loader for the YouTube IFrame API. The YT API calls the single
 // global window.onYouTubeIframeAPIReady ONCE at script load — a single
@@ -1021,7 +1021,7 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
       if (shouldRefreshChapter(importingLyrics, processedTranscript?.length || 0) && editingVideo.video_id) {
         try {
           const chapters = await base44.entities.ChapterContent.filter({ video_id: editingVideo.video_id });
-          await Promise.all((chapters || []).map((chapter: any) => base44.entities.ChapterContent.delete(chapter.id)));
+          await Promise.all((chapters || []).map((chapter: any) => base44.entities.ChapterContent.delete(chapterContentKey(chapter))));
           queryClient.invalidateQueries({ queryKey: ["chapterContent", editingVideo.video_id] });
         } catch (error) {
           console.warn("Could not refresh the prepared chapter after lyric import", error);
