@@ -1,12 +1,13 @@
-// Splits timed transcript fragments into short, complete sentences for the
-// PATH chapter (steps 2–3, "Replay sentence").
+// Groups timed transcript fragments into the PATH chapter's "sentences"
+// (steps 2–3, "Replay sentence").
 //
-// Transcription fragments are ~5 s slices that cut sentences in half and
-// often hold several of them. Asking an AI to group them merged whole
-// dialogues into 20–30 s "sentences". Instead: split on the transcript's own
-// punctuation, give each piece a share of its fragment's time by length, join
-// pieces up to a sentence end, then merge very short sentences ("שלום.") with
-// the next one without making units too long.
+// Transcription fragments are ~5 s slices with REAL start/end times, but they
+// often cut a sentence in half. Asking an AI to group them merged whole
+// dialogues into 20–30 s blocks; splitting every sentence inside a fragment
+// needs estimated times that can be ~0.5 s off. So: join whole fragments until
+// one ends a sentence — every cut on a real fragment edge. Only when a unit
+// passes SOFT_SECONDS without a sentence end at a fragment edge is it cut
+// inside a fragment (at the first sentence end there, timed by text length).
 
 export interface TimedFragment {
   text: string;
@@ -21,69 +22,55 @@ export interface TimedSentence {
 }
 
 const SENTENCE_END = /[.?!…]["'”»)]?$/;
-const MAX_SECONDS = 12; // a run with no punctuation is cut here
-const SHORT_WORDS = 3; // sentences this short are merged with the next one
-const MERGE_MAX_WORDS = 14;
-const MERGE_MAX_SECONDS = 8;
-
-const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
+const INNER_SENTENCE_END = /[.?!…]["'”»)]?(?=\s)/;
+const SOFT_SECONDS = 8; // past this, cut inside a fragment if it has a sentence end
+const HARD_SECONDS = 16; // past this, cut at the fragment edge regardless
 
 export function splitIntoSentences(frags: TimedFragment[], maxEnd = Infinity): TimedSentence[] {
   // The ASR occasionally repeats a bit of text as a fragment that jumps back
-  // in time; drop those instead of splicing them into the wrong sentence.
-  const sorted: TimedFragment[] = [];
+  // in time; drop those. A fragment never runs past the next one's start.
+  const clean: TimedFragment[] = [];
   for (const f of frags) {
-    if (!f.text.trim()) continue;
-    const prev = sorted[sorted.length - 1];
+    const text = f.text.replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    const prev = clean[clean.length - 1];
     if (prev && f.start < prev.start) continue;
-    sorted.push(f);
+    clean.push({ text, start: f.start, end: f.end });
   }
-
-  // 1 · Pieces: each fragment split at sentence punctuation, timed by length.
-  const pieces: { text: string; start: number; end: number; ends: boolean }[] = [];
-  sorted.forEach((f, i) => {
-    const next = sorted[i + 1];
-    const end = Math.max(f.start, Math.min(f.end, next ? next.start : f.end));
-    const parts = f.text.match(/[^.?!…]+(?:[.?!…]+["'”»)]?|$)/g)?.map((p) => p.trim()).filter(Boolean) || [f.text.trim()];
-    const total = parts.reduce((n, p) => n + p.length, 0) || 1;
-    let t = f.start;
-    for (const p of parts) {
-      const d = ((end - f.start) * p.length) / total;
-      pieces.push({ text: p, start: t, end: t + d, ends: SENTENCE_END.test(p) });
-      t += d;
-    }
+  clean.forEach((f, i) => {
+    const next = clean[i + 1];
+    if (next) f.end = Math.max(f.start, Math.min(f.end, next.start));
   });
 
-  // 2 · Sentences: pieces joined up to a sentence end (or MAX_SECONDS).
-  const sentences: TimedSentence[] = [];
+  const out: TimedSentence[] = [];
   let cur: TimedSentence | null = null;
-  for (const p of pieces) {
-    cur = cur ? { text: `${cur.text} ${p.text}`, start: cur.start, end: p.end } : { ...p };
-    if (p.ends || cur.end - cur.start >= MAX_SECONDS) {
-      sentences.push(cur);
+  for (const f of clean) {
+    const before = cur ? `${cur.text} ` : "";
+    cur = cur ? { text: `${cur.text} ${f.text}`, start: cur.start, end: f.end } : { ...f };
+
+    if (SENTENCE_END.test(f.text)) {
+      out.push(cur);
       cur = null;
+      continue;
+    }
+    if (cur.end - cur.start >= SOFT_SECONDS) {
+      const m = f.text.match(INNER_SENTENCE_END);
+      if (m && m.index !== undefined) {
+        const cut = m.index + m[0].length;
+        const head = f.text.slice(0, cut).trim();
+        const tail = f.text.slice(cut).trim();
+        const at = f.start + ((f.end - f.start) * head.length) / Math.max(1, head.length + tail.length);
+        out.push({ text: `${before}${head}`, start: cur.start, end: at });
+        cur = tail ? { text: tail, start: at, end: f.end } : null;
+      } else if (cur.end - cur.start >= HARD_SECONDS) {
+        out.push(cur);
+        cur = null;
+      }
     }
   }
-  if (cur) sentences.push(cur);
+  if (cur) out.push(cur);
 
-  // 3 · Merge very short sentences with the next one.
-  const merged: TimedSentence[] = [];
-  for (const s of sentences) {
-    const prev = merged[merged.length - 1];
-    if (
-      prev &&
-      words(prev.text) <= SHORT_WORDS &&
-      words(prev.text) + words(s.text) <= MERGE_MAX_WORDS &&
-      s.end - prev.start <= MERGE_MAX_SECONDS
-    ) {
-      prev.text = `${prev.text} ${s.text}`;
-      prev.end = s.end;
-    } else {
-      merged.push({ ...s });
-    }
-  }
-
-  return merged
-    .filter((s) => s.start < maxEnd)
+  return out
+    .filter((s) => s.start < maxEnd && s.end > s.start)
     .map((s) => ({ text: s.text.replace(/\s+/g, " ").trim(), start: s.start, end: Math.min(s.end, maxEnd) }));
 }

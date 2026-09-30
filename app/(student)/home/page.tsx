@@ -1376,9 +1376,9 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
           sentences = sentences.filter((x: any) => x.start < CHAPTER_MAX_SECONDS && x.end > x.start);
           if (!sentences.length) throw new Error("could not pair the transcript with the timings");
         } else {
-        // 1 · Short, complete sentences from the fragments' own punctuation,
-        // each timed within its fragment (AI grouping merged whole dialogues
-        // into 20–30 s "sentences").
+        // 1 · Sentences cut on the fragments' real edges (see
+        // lib/chapterSentences; AI grouping merged whole dialogues into
+        // 20–30 s blocks).
         sentences = splitIntoSentences(frags, CHAPTER_MAX_SECONDS).map((x) => ({
           start: x.start,
           end: x.end,
@@ -1432,10 +1432,9 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
   const discSeg: any = discSegments[discIdx] || null;
   const discEnd = (i: number) => {
     const seg = discSegments[i];
-    // Sentence edges inside a transcript fragment are estimated (±0.5 s), so
-    // play a little past the end: hearing the next word's onset beats
-    // clipping the last one.
-    if (seg?.end) return Math.min(seg.end + 0.6, CHAPTER_MAX_SECONDS);
+    // Most edges are real fragment edges; a small tail keeps the last
+    // syllable from being clipped.
+    if (seg?.end) return Math.min(seg.end + 0.4, CHAPTER_MAX_SECONDS);
     const next = discSegments[i + 1];
     const start = seg?.start ?? 0;
     return Math.min(next ? next.start : start + 8, CHAPTER_MAX_SECONDS);
@@ -1445,7 +1444,7 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
     const p = shellPlayerRef.current;
     if (!seg || !p?.seekTo) return;
     discStopAtRef.current = discEnd(i);
-    p.seekTo(Math.max(0, (seg.start ?? 0) - 0.3), true); // a hair early so the first syllable isn't clipped
+    p.seekTo(Math.max(0, (seg.start ?? 0) - 0.2), true); // a hair early so the first syllable isn't clipped
     p.playVideo?.();
   };
   // Stop playback at the end of the current sentence.
