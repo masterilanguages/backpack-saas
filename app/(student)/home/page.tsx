@@ -31,6 +31,7 @@ import WordCard from "@/components/backpack/WordCard";
 import AddWordsSheet from "@/components/home/AddWordsSheet";
 import PhotoWordCapture from "@/components/home/PhotoWordCapture";
 import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/transcription";
+import { splitIntoSentences } from "@/lib/chapterSentences";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
 // left over from YouTube's wrong-language caption tracks (e.g. "[موسيقى]").
@@ -1375,53 +1376,17 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
           sentences = sentences.filter((x: any) => x.start < CHAPTER_MAX_SECONDS && x.end > x.start);
           if (!sentences.length) throw new Error("could not pair the transcript with the timings");
         } else {
-        // 1 · Group fragments into sentences. The model only returns fragment
-        // numbers (a short answer); if that fails, group without AI (until a
-        // sentence-ending mark or ~12 s). Timings are the real ones either way.
-        let groups: { from: number; to: number }[] = [];
-        try {
-          const g: any = await base44.integrations.Core.InvokeLLM({
-            prompt: `These are numbered caption fragments of a ${languageLabel(lang)} video, in order:
-${frags.map((f: any, i: number) => `${i}: ${f.text}`).join("\n")}
-
-Group consecutive fragments into complete, natural sentences (merge fragments that belong to the same sentence; never split a fragment). Cover every fragment exactly once, in order, from 0 to ${frags.length - 1}.
-Return JSON: { "groups": [ { "from": first fragment number, "to": last fragment number } ] }`,
-            response_json_schema: {
-              type: "object",
-              properties: { groups: { type: "array", items: { type: "object", properties: { from: { type: "number" }, to: { type: "number" } } } } },
-            },
-            max_tokens: 4000,
-          });
-          let next = 0;
-          for (const x of g?.groups || []) {
-            const from = Math.round(Number(x?.from)), to = Math.round(Number(x?.to));
-            if (from !== next || to < from || to >= frags.length) { groups = []; break; }
-            groups.push({ from, to });
-            next = to + 1;
-          }
-          if (next !== frags.length) groups = [];
-        } catch (e) {
-          console.warn("[chapter] AI grouping failed, grouping by punctuation", e);
-        }
-        if (!groups.length) {
-          let from = 0;
-          frags.forEach((f: any, i: number) => {
-            const endsSentence = /[.?!׃…]["'”»]?$/.test(f.text.trim());
-            const long = f.end - frags[from].start >= 12;
-            if (endsSentence || long || i === frags.length - 1) { groups.push({ from, to: i }); from = i + 1; }
-          });
-        }
-        sentences = groups.map(({ from, to }) => {
-          const text = frags.slice(from, to + 1).map((f: any) => f.text).join(" ").replace(/\s+/g, " ").trim();
-          return {
-            start: frags[from].start,
-            end: Math.min(frags[to].end, CHAPTER_MAX_SECONDS),
-            hebrew: text,
-            text,
-            transliteration: "",
-            english: "",
-          };
-        });
+        // 1 · Short, complete sentences from the fragments' own punctuation,
+        // each timed within its fragment (AI grouping merged whole dialogues
+        // into 20–30 s "sentences").
+        sentences = splitIntoSentences(frags, CHAPTER_MAX_SECONDS).map((x) => ({
+          start: x.start,
+          end: x.end,
+          hebrew: x.text,
+          text: x.text,
+          transliteration: "",
+          english: "",
+        }));
         }
         if (!sentences.length) throw new Error("no sentences");
 
@@ -1467,7 +1432,7 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
   const discSeg: any = discSegments[discIdx] || null;
   const discEnd = (i: number) => {
     const seg = discSegments[i];
-    if (seg?.end) return Math.min(seg.end + 0.25, CHAPTER_MAX_SECONDS); // real end (+ a hair so the last syllable isn't clipped)
+    if (seg?.end) return Math.min(seg.end + 0.35, CHAPTER_MAX_SECONDS); // end (+ a hair so the last syllable isn't clipped)
     const next = discSegments[i + 1];
     const start = seg?.start ?? 0;
     return Math.min(next ? next.start : start + 8, CHAPTER_MAX_SECONDS);
@@ -1477,7 +1442,7 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
     const p = shellPlayerRef.current;
     if (!seg || !p?.seekTo) return;
     discStopAtRef.current = discEnd(i);
-    p.seekTo(seg.start ?? 0, true);
+    p.seekTo(Math.max(0, (seg.start ?? 0) - 0.2), true); // a hair early so the first syllable isn't clipped
     p.playVideo?.();
   };
   // Stop playback at the end of the current sentence.
