@@ -16,7 +16,7 @@ import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, Clock, Star, CaptionsOff } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, Clock, Star, CaptionsOff } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
@@ -32,6 +32,8 @@ import AddWordsSheet from "@/components/home/AddWordsSheet";
 import PhotoWordCapture from "@/components/home/PhotoWordCapture";
 import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/transcription";
 import { splitIntoSentences } from "@/lib/chapterSentences";
+import { fetchLetrasLyrics } from "@/lib/lyrics";
+import { buildLyricSegments, chapterContentKey } from "@/lib/songLyrics";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
 // left over from YouTube's wrong-language caption tracks (e.g. "[موسيقى]").
@@ -353,6 +355,7 @@ export default function Home() {
   // Transcript row visibility toggles (translation / transliteration)
   const [shellShowEnglish, setShellShowEnglish] = useState(true);
   const [shellShowTranslit, setShellShowTranslit] = useState(true);
+  const [lyricsImporting, setLyricsImporting] = useState(false);
   const shellPlayerRef = React.useRef<any>(null);
   const shellTimerRef = React.useRef<any>(null);
   const activeLineRef = React.useRef<HTMLButtonElement | null>(null);
@@ -1314,6 +1317,87 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
     }
   };
 
+  // A song's published lyrics are a better textual source than speech-to-text.
+  // We keep the timed transcript only as an alignment guide, then replace the
+  // text sent to the translator and word-glossing flows with the imported lines.
+  const importSongLyrics = async () => {
+    if (!shellVideo) return;
+    const url = window.prompt("Paste the Letras.com URL for this song:");
+    if (!url?.trim()) return;
+    if (!shellSegments.length) {
+      toast.error("Wait for the audio transcript before importing lyrics.");
+      return;
+    }
+
+    setLyricsImporting(true);
+    try {
+      const imported = await fetchLetrasLyrics(url.trim());
+      const lines = imported.lines.slice(0, 120);
+      const timed = shellSegments
+        .map((s: any, i: number) => ({ i, text: scrubSegmentText(s.hebrew || s.text), start: Number(s.start) || 0 }))
+        .filter((s: any) => s.text);
+      if (!timed.length) throw new Error("No timed transcript is available yet.");
+
+      // Ask the model only to align the two representations; it never creates
+      // the lyric text. Invalid/missing matches fall back to even timing slots.
+      const alignment: any = await base44.integrations.Core.InvokeLLM({
+        prompt: `Match published song lyric lines (A) to the best matching timed speech-to-text fragments (B). The speech transcript may contain errors, but both lists are the same song. Return only where each A line STARTS. Numbers must be non-decreasing. Do not rewrite either list.
+
+A (published lyrics):
+${lines.map((line, i) => `${i}: ${line}`).join("\n")}
+
+B (timed transcript):
+${timed.slice(0, 160).map((segment: any, i: number) => `${i}: ${segment.text}`).join("\n")}
+
+Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
+        response_json_schema: {
+          type: "object",
+          properties: { starts: { type: "array", items: { type: "object", properties: { line: { type: "number" }, fragment: { type: "number" } } } } },
+        },
+        max_tokens: 4000,
+      });
+      const matched = new Map<number, number>();
+      for (const item of alignment?.starts || []) {
+        const line = Math.round(Number(item?.line));
+        const fragment = Math.round(Number(item?.fragment));
+        if (line >= 0 && line < lines.length && fragment >= 0 && fragment < timed.length) {
+          matched.set(line, fragment);
+        }
+      }
+      let previous = 0;
+      const starts = lines.map((_, line) => {
+        const fallback = Math.min(timed.length - 1, Math.floor((line * timed.length) / lines.length));
+        previous = Math.max(previous, matched.get(line) ?? fallback);
+        return timed[previous].start;
+      });
+      const duration = Number(shellPlayerRef.current?.getDuration?.()) || Math.max(starts[starts.length - 1] || 0, timed[timed.length - 1]?.start || 0) + 5;
+      const segments = buildLyricSegments(lines, starts, duration);
+      setShellSegments(segments);
+
+      const writeEntity = shellVideo._mine
+        ? base44.entities.UserSavedVideo
+        : currentUser?.role === "admin"
+        ? base44.entities.MediaLibrary
+        : null;
+      if (writeEntity) {
+        await writeEntity.update(shellVideo.id, {
+          processed_transcript: segments,
+          lyrics_source_url: imported.source_url,
+        });
+      }
+      const existingChapters = await base44.entities.ChapterContent.filter({ video_id: shellVideo.video_id });
+      await Promise.all((existingChapters || []).map((chapter: any) => base44.entities.ChapterContent.delete(chapterContentKey(chapter))));
+      prepareTried.current.delete(shellVideo.video_id);
+      queryClient.invalidateQueries({ queryKey: ["chapterContent", shellVideo.video_id] });
+      toast.success(`${segments.length} lyric lines imported. Start the chapter to translate them.`);
+    } catch (error: any) {
+      console.error("lyric import failed", error);
+      toast.error(error?.message || "Could not import lyrics.");
+    } finally {
+      setLyricsImporting(false);
+    }
+  };
+
   const closeShellVideo = () => {
     setDiscovery(false);
     discStopAtRef.current = null;
@@ -1431,6 +1515,29 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
       setChapterPreparing(true);
       try {
         const lang = shellVideo.language || language;
+        // Media has already produced the canonical transcript (and, for songs,
+        // aligned published lyrics) with timestamps. A fresh ASR pass must not
+        // replace it when preparing the learning chapter.
+        const saved = (Array.isArray(shellVideo.processed_transcript) ? shellVideo.processed_transcript : [])
+          .map((segment: any, index: number, all: any[]) => {
+            const start = Number(segment?.start) || 0;
+            const nextStart = Number(all[index + 1]?.start);
+            return {
+              start,
+              end: Number.isFinite(nextStart) && nextStart > start ? nextStart : start + 5,
+              hebrew: stripCaptionNoise(segment?.hebrew || segment?.text),
+              text: stripCaptionNoise(segment?.hebrew || segment?.text),
+              transliteration: segment?.transliteration || "",
+              english: segment?.english || "",
+              words: segment?.words,
+            };
+          })
+          .filter((segment: any) => segment.text && segment.start < CHAPTER_MAX_SECONDS);
+        if (saved.length) {
+          await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences: saved, source: "saved_transcript" });
+          queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
+          return;
+        }
         // Supadata's free plan rejects simultaneous requests ("Limit Exceeded")
         // — e.g. the shell transcribing the same new video at the same time —
         // so wait and retry a couple of times.
