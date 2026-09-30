@@ -1457,6 +1457,15 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
     p.seekTo(Math.max(0, Math.min(start, Math.max(start - 0.2, prevEnd))), true);
     p.playVideo?.();
   };
+  // Pause keeps the sentence's stop point, so Play resumes where it was and
+  // still stops at the sentence end; past it, Play replays the sentence.
+  const pauseDisc = () => shellPlayerRef.current?.pauseVideo?.();
+  const resumeDisc = () => {
+    const p = shellPlayerRef.current;
+    const stopAt = discStopAtRef.current;
+    if (p?.getCurrentTime && stopAt != null && p.getCurrentTime() < stopAt - 0.1) p.playVideo?.();
+    else playDiscSentence();
+  };
   // Stop playback at the end of the current sentence.
   useEffect(() => {
     if (!discovery) return;
@@ -1617,8 +1626,8 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
     if (wordPopup?.key === key) { setWordPopup(null); return; }
     const clean = cleanToken(token);
     if (!clean) return;
+    // Only pauses: tapping a word to read it must not start the video.
     shellPlayerRef.current?.pauseVideo?.();
-    if (discovery) playDiscSentence(); // hear the word again in context
     const already = (words as any[]).some(
       (w) => w.word === clean || (w.phonetic || "").toLowerCase() === clean.toLowerCase()
     );
@@ -2375,6 +2384,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onAddWord={savePopupWord}
                 onClosePopup={() => setWordPopup(null)}
                 onReplay={() => playDiscSentence()}
+                playing={shellPlaying}
+                onPause={pauseDisc}
+                onResume={resumeDisc}
                 onReveal={revealDiscTranslation}
                 onPrev={() => { setWordPopup(null); setDiscIdx((i) => Math.max(0, i - 1)); }}
                 onNext={() => { setWordPopup(null); setDiscIdx((i) => i + 1); }}
@@ -3400,7 +3412,7 @@ function ChapterWatch({
 // ---------------------------------------------------------------------------
 function DiscoveryPanel({
   mode = "discovery", loading, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
-  onTapWord, onAddWord, onClosePopup, onReplay, onReveal, onPrev, onNext, onFinish,
+  onTapWord, onAddWord, onClosePopup, onReplay, playing, onPause, onResume, onReveal, onPrev, onNext, onFinish,
 }: {
   // "discovery" (step 2): words tappable, recommended words marked.
   // "comprehension" (step 3): less help — words not tappable.
@@ -3418,6 +3430,9 @@ function DiscoveryPanel({
   onAddWord: () => void;
   onClosePopup: () => void;
   onReplay: () => void;
+  playing: boolean;
+  onPause: () => void;
+  onResume: () => void;
   onReveal: () => void;
   onPrev: () => void;
   onNext: () => void;
@@ -3464,9 +3479,17 @@ function DiscoveryPanel({
       <div className="mt-2 flex-shrink-0 rounded-3xl bg-white px-4 py-3 shadow-lg shadow-indigo-100/70" style={{ containerType: "inline-size" }}>
         <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
           <span>Sentence {idx + 1} of {segments.length}{tappable ? " · tap any word" : " · try to understand it"}</span>
-          <button onClick={onReplay} className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600">
-            🔁 Replay
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={playing ? onPause : onResume}
+              className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600"
+            >
+              {playing ? "⏸ Pause" : "▶ Play"}
+            </button>
+            <button onClick={onReplay} className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600">
+              🔁 Replay
+            </button>
+          </div>
         </div>
 
         {/* 1 · phonetic (top) */}
