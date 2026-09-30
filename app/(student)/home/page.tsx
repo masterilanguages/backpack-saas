@@ -3513,7 +3513,7 @@ function ChapterWatch({
     return (
       <div
         className="absolute inset-0 z-30 flex flex-col px-5 pb-6 text-slate-900"
-        style={{ background: `linear-gradient(180deg, rgba(${t},.5) 0%, rgba(${t},.18) 40%, #fff 70%)` }}
+        style={{ background: `linear-gradient(180deg, rgba(${t},.5) 0%, rgba(${t},.18) 40%, #fff 70%), #fff` }}
       >
         <div className="flex flex-shrink-0 items-center justify-between pt-9">
           <button onClick={onExit} className="flex items-center gap-1 rounded-full bg-white/75 px-3.5 py-2 text-xs font-bold text-slate-900">
@@ -3536,7 +3536,7 @@ function ChapterWatch({
         <div className="mt-5 flex flex-shrink-0 items-center gap-3.5">
           <div
             className="h-[120px] w-[120px] flex-shrink-0 rounded-2xl bg-slate-200 bg-cover bg-center"
-            style={{ backgroundImage: `url(https://i.ytimg.com/vi/${video.video_id}/hqdefault.jpg)`, boxShadow: `0 18px 34px -18px rgba(${t},.95)` }}
+            style={{ backgroundImage: `url(https://i.ytimg.com/vi/${video.video_id}/mqdefault.jpg)`, boxShadow: `0 18px 34px -18px rgba(${t},.95)` }}
           />
           <div className="min-w-0">
             <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-600">
