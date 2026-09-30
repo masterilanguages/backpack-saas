@@ -30,7 +30,7 @@ import PostVideoFlashcards from "@/components/video/PostVideoFlashcards";
 import { languageLabel, isRTLText } from "@/lib/language";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
-import { buildLyricSegments, timedSegmentsFromSavedTranscript } from "@/lib/songLyrics";
+import { buildLyricSegments, shouldRefreshChapter, timedSegmentsFromSavedTranscript } from "@/lib/songLyrics";
 
 // Shared, memoized loader for the YouTube IFrame API. The YT API calls the single
 // global window.onYouTubeIframeAPIReady ONCE at script load — a single
@@ -781,7 +781,8 @@ export default function MediaLibrary() {
 
     // A song's published lyrics are the canonical words. ASR is retained only
     // for timestamps, then each canonical line is aligned before translation.
-    if (formData.lyrics_url?.trim()) {
+    const importingLyrics = Boolean(formData.lyrics_url?.trim());
+    if (importingLyrics) {
       if (!autoSegments.length) {
         toast.error("Load the video and wait for auto-transcription before importing lyrics.");
         return false;
@@ -1013,6 +1014,19 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
         // onError already logged + toasted; bail so we don't run vocab extraction
         // on a save that never persisted (user must not think the edit succeeded).
         return false;
+      }
+      // Sentence Discovery reads ChapterContent before it reads the video
+      // transcript. Remove the old prepared chapter so it is rebuilt from the
+      // imported canonical lyrics rather than showing stale ASR lines.
+      if (shouldRefreshChapter(importingLyrics, processedTranscript?.length || 0) && editingVideo.video_id) {
+        try {
+          const chapters = await base44.entities.ChapterContent.filter({ video_id: editingVideo.video_id });
+          await Promise.all((chapters || []).map((chapter: any) => base44.entities.ChapterContent.delete(chapter.id)));
+          queryClient.invalidateQueries({ queryKey: ["chapterContent", editingVideo.video_id] });
+        } catch (error) {
+          console.warn("Could not refresh the prepared chapter after lyric import", error);
+          toast.warning("Lyrics were saved, but reopen the chapter to refresh its prepared sentences.");
+        }
       }
       // If a transcript was just processed, extract vocab words
       if (processedTranscript?.length) {

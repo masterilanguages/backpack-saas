@@ -17,6 +17,11 @@ export function timedSegmentsFromSavedTranscript(saved: any[]): Array<{ text: st
     .filter((segment) => segment.text);
 }
 
+/** A prepared chapter must be rebuilt if its canonical lyric text changed. */
+export function shouldRefreshChapter(importedLyrics: boolean, transcriptLineCount: number): boolean {
+  return importedLyrics && transcriptLineCount > 0;
+}
+
 /** Turns canonical lyric lines plus aligned starts into chapter-ready segments. */
 export function buildLyricSegments(lines: string[], starts: number[], finalEnd: number): LyricSegment[] {
   const cleanLines = lines.map((line) => line.trim()).filter(Boolean);

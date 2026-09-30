@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildLyricSegments, timedSegmentsFromSavedTranscript } from "./songLyrics.ts";
+import { buildLyricSegments, shouldRefreshChapter, timedSegmentsFromSavedTranscript } from "./songLyrics.ts";
 
 Deno.test("buildLyricSegments assigns lyric lines to non-decreasing source timings", () => {
   const result = buildLyricSegments(
@@ -29,4 +29,10 @@ Deno.test("timedSegmentsFromSavedTranscript reuses timings when editing a video"
       { text: "\u05e9\u05d5\u05e8\u05d4 \u05d1", start: 4.5 },
     ],
   );
+});
+
+Deno.test("shouldRefreshChapter only invalidates cached chapters after a lyric import", () => {
+  assertEquals(shouldRefreshChapter(true, 3), true);
+  assertEquals(shouldRefreshChapter(false, 3), false);
+  assertEquals(shouldRefreshChapter(true, 0), false);
 });
