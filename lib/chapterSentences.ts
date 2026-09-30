@@ -71,6 +71,6 @@ export function splitIntoSentences(frags: TimedFragment[], maxEnd = Infinity): T
   if (cur) out.push(cur);
 
   return out
-    .filter((s) => s.start < maxEnd && s.end > s.start)
+    .filter((s) => s.start < maxEnd - 1 && s.end - s.start >= 0.5) // no sliver at the chapter cut
     .map((s) => ({ text: s.text.replace(/\s+/g, " ").trim(), start: s.start, end: Math.min(s.end, maxEnd) }));
 }
