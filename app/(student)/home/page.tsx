@@ -45,6 +45,38 @@ import { generateLessonAudio } from "@/lib/audio/lessonAudio";
 // Strip punctuation from a tapped transcript token, keeping native letters.
 const cleanToken = (t: string) => t.replace(/[.,!?;:"'()\[\]{}«»„“”…׀׃־]+/g, "").trim();
 
+// Chapter sentences carry a gloss per word ({ w, phonetic, meaning }), made
+// with the sentence translation, so a tapped word shows its meaning at once.
+const glossPrompt = (label: string, texts: string[]) => `For each ${label} sentence below give its Latin-letter transliteration, a natural English translation, and every word of it (split on spaces, in order) with its transliteration and its English meaning in this context (1-4 words).
+${texts.map((t, i) => `${i}: ${t}`).join("\n")}
+Return JSON: { "items": [ { "i": number, "transliteration": string, "english": string, "words": [ { "w": the word exactly as written, "phonetic": string, "meaning": string } ] } ] }`;
+const GLOSS_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          i: { type: "number" },
+          transliteration: { type: "string" },
+          english: { type: "string" },
+          words: { type: "array", items: { type: "object", properties: { w: { type: "string" }, phonetic: { type: "string" }, meaning: { type: "string" } } } },
+        },
+      },
+    },
+  },
+};
+const cleanGlosses = (words: any) =>
+  (Array.isArray(words) ? words : [])
+    .filter((g: any) => g?.w && g?.meaning)
+    .map((g: any) => ({ w: String(g.w), phonetic: String(g.phonetic || ""), meaning: String(g.meaning) }));
+const normGloss = (t: string) => cleanToken(t || "").replace(/[\u0591-\u05C7]/g, "");
+const findGloss = (words: any[] | undefined, token: string) => {
+  const t = normGloss(token);
+  return t ? (words || []).find((g: any) => normGloss(g.w) === t) || null : null;
+};
+
 // Shared, memoized loader for the YouTube IFrame API (same pattern as the
 // media page — a single global onYouTubeIframeAPIReady is last-writer-wins,
 // so every consumer must chain through one promise).
@@ -1392,29 +1424,29 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
         }
         if (!sentences.length) throw new Error("no sentences");
 
-        // 2 · Phonetic + English in batches of 12 (short answers). A failed batch
-        // is filled per sentence when shown.
-        for (let b = 0; b < sentences.length; b += 12) {
-          const batch = sentences.slice(b, b + 12);
+        // 2 · Phonetic + English + a gloss per word (so tapping a word is
+        // instant), in batches of 8 run in parallel. A failed batch is filled
+        // per sentence when shown.
+        const batches: any[][] = [];
+        for (let b = 0; b < sentences.length; b += 8) batches.push(sentences.slice(b, b + 8));
+        await Promise.all(batches.map(async (batch) => {
           try {
             const t: any = await base44.integrations.Core.InvokeLLM({
-              prompt: `For each ${languageLabel(lang)} sentence below give its Latin-letter transliteration and a natural English translation, in the same order.
-${batch.map((x: any, i: number) => `${i}: ${x.text}`).join("\n")}
-Return JSON: { "items": [ { "i": number, "transliteration": string, "english": string } ] }`,
-              response_json_schema: {
-                type: "object",
-                properties: { items: { type: "array", items: { type: "object", properties: { i: { type: "number" }, transliteration: { type: "string" }, english: { type: "string" } } } } },
-              },
-              max_tokens: 4000,
+              prompt: glossPrompt(languageLabel(lang), batch.map((x: any) => x.text)),
+              response_json_schema: GLOSS_SCHEMA,
+              max_tokens: 8000,
             });
             for (const it of t?.items || []) {
               const x = batch[Math.round(Number(it?.i))];
-              if (x) { x.transliteration = it.transliteration || ""; x.english = it.english || ""; }
+              if (!x) continue;
+              x.transliteration = it.transliteration || "";
+              x.english = it.english || "";
+              x.words = cleanGlosses(it.words);
             }
           } catch (e) {
             console.warn("[chapter] translation batch failed", e);
           }
-        }
+        }));
         await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences, source: res?.source || "" });
         queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
       } catch (e) {
@@ -1432,6 +1464,25 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
     return shellSegments.filter((s: any) => (s.start ?? 0) < CHAPTER_MAX_SECONDS);
   }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, shellSegments]);
   const discSeg: any = discSegments[discIdx] || null;
+  // Word glosses of a sentence: saved with it, or (chapters prepared before
+  // glosses existed) fetched once while the sentence is on screen.
+  const glossCacheRef = useRef<Record<string, any[]>>({});
+  const discWordGlosses = (sentence: string) => {
+    const seg = discSegments.find((x: any) => (x.hebrew || x.text || x.transliteration || "") === sentence);
+    return seg?.words?.length ? seg.words : glossCacheRef.current[sentence];
+  };
+  useEffect(() => {
+    const main = discSeg ? discSeg.hebrew || discSeg.text || "" : "";
+    if (!discovery || !main || discSeg?.words?.length || glossCacheRef.current[main]) return;
+    glossCacheRef.current[main] = [];
+    base44.integrations.Core.InvokeLLM({
+      prompt: glossPrompt(languageLabel(shellVideo?.language || language), [main]),
+      response_json_schema: GLOSS_SCHEMA,
+    })
+      .then((r: any) => { glossCacheRef.current[main] = cleanGlosses(r?.items?.[0]?.words); })
+      .catch(() => { delete glossCacheRef.current[main]; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discovery, discSeg]);
   const discEnd = (i: number) => {
     const seg = discSegments[i];
     const next = discSegments[i + 1];
@@ -1631,6 +1682,13 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
     const already = (words as any[]).some(
       (w) => w.word === clean || (w.phonetic || "").toLowerCase() === clean.toLowerCase()
     );
+    const known =
+      (discovery ? findGloss(discWordGlosses(sentence), token) : null) ||
+      (discovery ? (() => { const r = recommendedFor(token); return r ? { phonetic: r.phonetic, meaning: r.meaning } : null; })() : null);
+    if (known?.meaning) {
+      setWordPopup({ key, clean, sentence, translation: known.meaning, phonetic: known.phonetic || "", loading: false, editing: false, saving: false, added: already });
+      return;
+    }
     setWordPopup({ key, clean, sentence, translation: "", phonetic: "", loading: true, editing: false, saving: false, added: already });
     try {
       const result = await base44.integrations.Core.InvokeLLM({
