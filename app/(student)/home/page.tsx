@@ -1432,10 +1432,13 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
   const discSeg: any = discSegments[discIdx] || null;
   const discEnd = (i: number) => {
     const seg = discSegments[i];
-    // Most edges are real fragment edges; a small tail keeps the last
-    // syllable from being clipped.
-    if (seg?.end) return Math.min(seg.end + 0.4, CHAPTER_MAX_SECONDS);
     const next = discSegments[i + 1];
+    // Most edges are real fragment/word edges; a small tail keeps the last
+    // syllable from being clipped, but never runs into the next sentence.
+    if (seg?.end) {
+      const tail = next?.start != null ? Math.max(seg.end, Math.min(seg.end + 0.4, next.start)) : seg.end + 0.4;
+      return Math.min(tail, CHAPTER_MAX_SECONDS);
+    }
     const start = seg?.start ?? 0;
     return Math.min(next ? next.start : start + 8, CHAPTER_MAX_SECONDS);
   };
@@ -1444,7 +1447,11 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
     const p = shellPlayerRef.current;
     if (!seg || !p?.seekTo) return;
     discStopAtRef.current = discEnd(i);
-    p.seekTo(Math.max(0, (seg.start ?? 0) - 0.2), true); // a hair early so the first syllable isn't clipped
+    // A hair early so the first syllable isn't clipped — but not into the
+    // previous sentence.
+    const prevEnd = discSegments[i - 1]?.end ?? 0;
+    const start = seg.start ?? 0;
+    p.seekTo(Math.max(0, Math.min(start, Math.max(start - 0.2, prevEnd))), true);
     p.playVideo?.();
   };
   // Stop playback at the end of the current sentence.
