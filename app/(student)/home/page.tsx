@@ -16,7 +16,7 @@ import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
@@ -2410,21 +2410,21 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <div id="shell-yt-player" className="h-full w-full" />
               {discovery && (
                 <>
-                  {/* no taps on YouTube itself */}
-                  <div className="absolute inset-0" />
-                  {/* paused: our own cover instead of YouTube's title / "More videos" screen */}
-                  {/* Still covers YouTube's own pause screen (title, "More videos"),
-                      but only with a small play mark: tapping resumes, like Play. */}
-                  {!shellPlaying && (
-                    <button
-                      onClick={resumeDisc}
-                      aria-label="Play"
-                      className="absolute inset-0 flex items-center justify-center bg-cover bg-center"
-                      style={{ backgroundImage: `linear-gradient(rgba(15,23,42,.35), rgba(15,23,42,.35)), url(https://i.ytimg.com/vi/${shellVideo.video_id}/hqdefault.jpg)` }}
-                    >
-                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/85 text-lg text-indigo-600 shadow-lg">▶</span>
-                    </button>
-                  )}
+                  {/* Taps never reach YouTube (its own buttons don't know about
+                      sentences): tapping the video pauses / resumes it instead.
+                      Paused, the thumbnail covers YouTube's pause screen. */}
+                  <button
+                    onClick={shellPlaying ? pauseDisc : resumeDisc}
+                    aria-label={shellPlaying ? "Pause" : "Play"}
+                    className="absolute inset-0 flex items-center justify-center bg-cover bg-center"
+                    style={shellPlaying ? undefined : { backgroundImage: `linear-gradient(rgba(15,23,42,.4), rgba(15,23,42,.4)), url(https://i.ytimg.com/vi/${shellVideo.video_id}/hqdefault.jpg)` }}
+                  >
+                    {!shellPlaying && (
+                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm">
+                        <Play className="ml-0.5 h-5 w-5 fill-current" />
+                      </span>
+                    )}
+                  </button>
                 </>
               )}
             </div>
@@ -3543,12 +3543,14 @@ function DiscoveryPanel({
           <div className="flex items-center gap-1.5">
             <button
               onClick={playing ? onPause : onResume}
-              className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600"
+              className="flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600"
             >
-              {playing ? "⏸ Pause" : "▶ Play"}
+              {playing ? <Pause className="h-3 w-3 fill-current" /> : <Play className="h-3 w-3 fill-current" />}
+              {playing ? "Pause" : "Play"}
             </button>
-            <button onClick={onReplay} className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600">
-              🔁 Replay
+            <button onClick={onReplay} className="flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600">
+              <RotateCcw className="h-3 w-3" />
+              Replay
             </button>
           </div>
         </div>
