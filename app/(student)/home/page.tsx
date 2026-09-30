@@ -2413,13 +2413,16 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   {/* no taps on YouTube itself */}
                   <div className="absolute inset-0" />
                   {/* paused: our own cover instead of YouTube's title / "More videos" screen */}
+                  {/* Still covers YouTube's own pause screen (title, "More videos"),
+                      but only with a small play mark: tapping resumes, like Play. */}
                   {!shellPlaying && (
                     <button
-                      onClick={() => playDiscSentence()}
+                      onClick={resumeDisc}
+                      aria-label="Play"
                       className="absolute inset-0 flex items-center justify-center bg-cover bg-center"
-                      style={{ backgroundImage: `linear-gradient(rgba(15,23,42,.45), rgba(15,23,42,.45)), url(https://i.ytimg.com/vi/${shellVideo.video_id}/hqdefault.jpg)` }}
+                      style={{ backgroundImage: `linear-gradient(rgba(15,23,42,.35), rgba(15,23,42,.35)), url(https://i.ytimg.com/vi/${shellVideo.video_id}/hqdefault.jpg)` }}
                     >
-                      <span className="rounded-full bg-white/90 px-4 py-2 text-sm font-bold text-indigo-600 shadow-lg">🔁 Replay sentence</span>
+                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/85 text-lg text-indigo-600 shadow-lg">▶</span>
                     </button>
                   )}
                 </>
