@@ -2490,6 +2490,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <DiscoveryPanel
                 mode={passKind}
                 loading={shellSegsLoading || chapterPreparing || !chapterContentFetched}
+                preparing={chapterPreparing}
                 segments={discSegments}
                 idx={discIdx}
                 revealed={discRevealed}
@@ -3533,7 +3534,7 @@ function ChapterWatch({
 // Recommended words (picked by the system) are underlined and starred.
 // ---------------------------------------------------------------------------
 function DiscoveryPanel({
-  mode = "discovery", loading, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
+  mode = "discovery", loading, preparing = false, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
   onTapWord, onAddWord, onClosePopup, onReplay, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
   title, progress, recommendedWords,
 }: {
@@ -3541,6 +3542,9 @@ function DiscoveryPanel({
   // "comprehension" (step 3): less help — words not tappable.
   mode?: "discovery" | "comprehension";
   loading: boolean;
+  // Only while the sentences are really being made (first open of a video);
+  // otherwise loading is just the quick lookup of the saved ones.
+  preparing?: boolean;
   segments: any[];
   idx: number;
   revealed: boolean;
@@ -3570,7 +3574,14 @@ function DiscoveryPanel({
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10">
         <Loader2 className="h-6 w-6 animate-spin text-slate-700" />
-        <p className="text-xs text-slate-600">Preparing the sentences…</p>
+        {preparing ? (
+          <>
+            <p className="text-xs font-semibold text-slate-700">Preparing the sentences…</p>
+            <p className="max-w-[240px] text-center text-[11px] text-slate-500">First time for this video only — about a minute.</p>
+          </>
+        ) : (
+          <p className="text-xs text-slate-600">Loading…</p>
+        )}
       </div>
     );
   }
