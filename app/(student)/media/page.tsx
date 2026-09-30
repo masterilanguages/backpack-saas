@@ -84,6 +84,7 @@ export default function MediaLibrary() {
   const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [savingVideo, setSavingVideo] = useState(false);
   const [editingVideo, setEditingVideo] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterLanguage, setFilterLanguage] = useState("");
@@ -659,6 +660,14 @@ export default function MediaLibrary() {
     }
   };
 
+  // Warn before leaving the page while a library save is still running.
+  useEffect(() => {
+    if (!savingVideo) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [savingVideo]);
+
   const resetForm = () => {
     setFormData({
       title: "",
@@ -713,7 +722,8 @@ export default function MediaLibrary() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (savingVideo) return;
     if (!formData.title) {
       toast.error("Title is required");
       return;
@@ -723,20 +733,28 @@ export default function MediaLibrary() {
       return;
     }
 
-    // Close dialog immediately before any async work
-    setShowAddDialog(false);
-
     // Personal rows: creation by non-admins, and edits of rows that came
     // from the personal collection (regardless of who edits — admins fix a
     // student's submission in place).
     if ((!editingVideo && !canEdit) || editingVideo?._source === 'personal') {
+      setShowAddDialog(false);
       handleSubmitPersonalAsync(formData, editingVideo);
       setEditingVideo(null);
       resetForm();
       return;
     }
 
-    handleSubmitAsync(formData, editingVideo);
+    // Library rows: the dialog stays open ("Adding...") until the transcript
+    // is processed and the row is saved — closing it early let people leave
+    // the page mid-save and lose the video.
+    setSavingVideo(true);
+    const ok = await handleSubmitAsync(formData, editingVideo).catch((e) => {
+      console.error(e);
+      return false;
+    });
+    setSavingVideo(false);
+    if (ok === false) return;
+    setShowAddDialog(false);
     setEditingVideo(null);
     resetForm();
   };
@@ -754,8 +772,56 @@ export default function MediaLibrary() {
 
     let processedTranscript: any = undefined;
 
-    // Process transcript only if new phonetics provided
-    if (formData.transcript_phonetics && formData.transcript_phonetics.trim()) {
+    const autoSegments: any[] = Array.isArray(formData._auto_segments) ? formData._auto_segments : [];
+    const autoUnedited = autoSegments.length > 0 && (formData.transcript_phonetics || "").trim() === (formData._auto_text || "").trim();
+
+    if (autoUnedited) {
+      // From Auto-transcribe and not edited: keep each segment with its REAL
+      // start time; only the transliteration + English are generated, in
+      // batches of 12 (one long answer used to get cut off and fail).
+      toast.info("Processing transcript...");
+      const lang = formData.language || userProfile?.language || 'hebrew';
+      const isHebrew = lang === 'hebrew';
+      const segs = autoSegments.map((s: any) => ({
+        text: String(s.text || "").trim(),
+        hebrew: isHebrew ? String(s.text || "").trim() : undefined,
+        transliteration: isHebrew ? "" : String(s.text || "").trim(),
+        english: "",
+        start: Number(s.start) || 0,
+      })).filter((s: any) => s.text);
+      const batches: any[][] = [];
+      for (let i = 0; i < segs.length; i += 12) batches.push(segs.slice(i, i + 12));
+      let failed = 0;
+      for (let i = 0; i < batches.length; i += 3) {
+        await Promise.all(batches.slice(i, i + 3).map(async (batch) => {
+          try {
+            const r: any = await base44.integrations.Core.InvokeLLM({
+              prompt: `For each ${languageLabel(lang)} line below give ${isHebrew ? "its Latin-letter transliteration and " : ""}a natural English translation, in the same order.
+${batch.map((x: any, k: number) => `${k}: ${x.text}`).join("\n")}
+Return JSON: { "items": [ { "i": number, ${isHebrew ? '"transliteration": string, ' : ""}"english": string } ] }`,
+              response_json_schema: {
+                type: "object",
+                properties: { items: { type: "array", items: { type: "object", properties: { i: { type: "number" }, transliteration: { type: "string" }, english: { type: "string" } } } } },
+              },
+              max_tokens: 4000,
+            });
+            for (const it of r?.items || []) {
+              const x = batch[Math.round(Number(it?.i))];
+              if (!x) continue;
+              if (isHebrew) x.transliteration = it.transliteration || "";
+              x.english = it.english || "";
+            }
+          } catch (e) {
+            failed++;
+            console.warn("[media] translation batch failed", e);
+          }
+        }));
+      }
+      processedTranscript = segs;
+      if (failed) toast.warning(`Transcript saved; ${failed} translation batch(es) failed and will be filled when viewed.`);
+      else toast.success("Transcript processed!");
+    } else if (formData.transcript_phonetics && formData.transcript_phonetics.trim()) {
+      // Pasted or edited text: AI splits it into sentences (estimated times).
       toast.info("Processing transcript...");
       try {
         const targetLang = formData.language || userProfile?.language || 'spanish';
@@ -799,8 +865,9 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
       }
     }
 
+    const { _auto_segments, _auto_text, ...formFields } = formData;
     const data: any = {
-      ...formData,
+      ...formFields,
       duration_minutes: formData.duration_minutes ? parseFloat(formData.duration_minutes) : null,
       default_day: formData.default_day ? parseInt(formData.default_day) : null,
     };
@@ -900,7 +967,7 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
       } catch (e) {
         // onError already logged + toasted; bail so we don't run vocab extraction
         // on a save that never persisted (user must not think the edit succeeded).
-        return;
+        return false;
       }
       // If a transcript was just processed, extract vocab words
       if (processedTranscript?.length) {
@@ -914,7 +981,7 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
         const detail = [e?.message, e?.details, e?.hint, e?.code].filter(Boolean).join(' | ');
         console.error('MediaLibrary.create FAILED →', detail || e, '| payload:', JSON.stringify(data));
         toast.error(`No se pudo guardar: ${detail || 'ver consola'}`);
-        return;
+        return false;
       }
       queryClient.invalidateQueries({ queryKey: ['mediaLibrary'] });
       toast.success("Added to library!");
@@ -2276,7 +2343,7 @@ Return a JSON with a "videos" array. Each video must have:
         onCancel={() => { setShowAddDialog(false); setEditingVideo(null); resetForm(); }}
         onAudioUpload={handleAudioUpload}
         onLoadYoutube={fetchYouTubeMetadata}
-        isPending={false}
+        isPending={savingVideo}
         allUsers={allUsers}
         sessionOptions={sessionOptions}
         sessionLanguageLabel={languageLabel(formData.language)}

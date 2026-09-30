@@ -1294,7 +1294,15 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
       setChapterPreparing(true);
       try {
         const lang = shellVideo.language || language;
-        const res: any = await transcribeMediaSource(youtubeSource(vid), { language: lang, allowTimingOnly: true });
+        // Supadata's free plan rejects simultaneous requests ("Limit Exceeded")
+        // — e.g. the shell transcribing the same new video at the same time —
+        // so wait and retry a couple of times.
+        let res: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt) await new Promise((r) => setTimeout(r, 6000 * attempt));
+          res = await transcribeMediaSource(youtubeSource(vid), { language: lang, allowTimingOnly: true });
+          if (!/limit/i.test(String(res?.error || ""))) break;
+        }
         const frags = (res?.transcript || [])
           .map((f: any) => ({ text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0) }))
           .filter((f: any) => f.text && f.start < CHAPTER_MAX_SECONDS);

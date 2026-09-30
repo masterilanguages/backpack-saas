@@ -55,7 +55,9 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
       const data = await transcribeMediaSource(source, { language: formData.language || '' });
       if (!data?.transcript?.length) { toast.error(data?.error || "No transcript found"); return; }
       const rawText = data.transcript.map(s => s.text).join('\n');
-      setFormData(p => ({ ...p, transcript_phonetics: rawText }));
+      // Keep the timed segments too: if the text isn't edited, they're saved
+      // as-is (real timings) instead of being re-processed by AI.
+      setFormData(p => ({ ...p, transcript_phonetics: rawText, _auto_segments: data.transcript, _auto_text: rawText }));
       toast.success(`Transcript loaded (${data.transcript.length} segments)!`);
     } catch (e) {
       toast.error("Failed to fetch transcript");
