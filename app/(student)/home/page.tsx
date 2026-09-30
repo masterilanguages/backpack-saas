@@ -983,13 +983,13 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     else if (!progress.final_score) setChapterFinal(v);                       // 4 · Final pass
     else startPass(v, null);                                                   // chapter done: plain view
   };
-  const startPass = (v: any, kind: "discovery" | "comprehension" | null) => {
+  const startPass = (v: any, kind: "discovery" | "comprehension" | null, markWatched = true) => {
     setDiscovery(kind !== null);
     if (kind) setPassKind(kind);
     setDiscIdx(0);
     setDiscRevealed(false);
     setDiscTranslations({});
-    openShellVideo(v);
+    openShellVideo(v, markWatched);
   };
   const saveChapterBaseline = async (v: any, score: number) => {
     const existing = chapterByVideo.get(v.video_id);
@@ -1043,10 +1043,10 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     }
   };
 
-  const openShellVideo = async (v: any) => {
+  const openShellVideo = async (v: any, markWatched = true) => {
     setShellVideo(v);
     shellVideoIdRef.current = v.id;
-    if (v.video_id) {
+    if (v.video_id && markWatched) {
       setWatchedIds((prev) => {
         const next = new Set(prev);
         next.add(v.video_id);
@@ -2574,6 +2574,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             video={chapterWatch}
             onExit={() => setChapterWatch(null)}
             onSave={(score) => saveChapterBaseline(chapterWatch, score)}
+            // Straight to the sentences: no baseline saved, the video is not
+            // marked as watched, so the chapter still starts at step 1 next time.
+            onSkip={() => { const v = chapterWatch; setChapterWatch(null); startPass(v, "discovery", false); }}
           />
         )}
         {chapterFinal && (
@@ -3199,11 +3202,13 @@ function ChapterWatch({
   video,
   onExit,
   onSave,
+  onSkip,
   final = false,
 }: {
   video: any;
   onExit: () => void;
   onSave: (score: number) => Promise<void>;
+  onSkip?: () => void;
   // Step 4 "Final Uninterrupted Pass": same rules, different wording.
   final?: boolean;
 }) {
@@ -3291,7 +3296,14 @@ function ChapterWatch({
         <button onClick={onExit} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/15">
           ✕ Exit
         </button>
-        <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200">{final ? "🎬 Final pass" : "🎬 Watch for meaning"}</span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200">{final ? "🎬 Final pass" : "🎬 Watch for meaning"}</span>
+          {onSkip && (
+            <button onClick={onSkip} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/15">
+              Skip ›
+            </button>
+          )}
+        </div>
       </div>
 
       {phase === "intro" && (
