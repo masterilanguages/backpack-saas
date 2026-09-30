@@ -1434,9 +1434,10 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
     const seg = discSegments[i];
     const next = discSegments[i + 1];
     // Most edges are real fragment/word edges; a small tail keeps the last
-    // syllable from being clipped, but never runs into the next sentence.
+    // syllable from being clipped, but stays clear of the next sentence: the
+    // YouTube player keeps sounding ~0.2 s after pauseVideo().
     if (seg?.end) {
-      const tail = next?.start != null ? Math.max(seg.end, Math.min(seg.end + 0.4, next.start)) : seg.end + 0.4;
+      const tail = next?.start != null ? Math.max(seg.end, Math.min(seg.end + 0.15, next.start - 0.25)) : seg.end + 0.3;
       return Math.min(tail, CHAPTER_MAX_SECONDS);
     }
     const start = seg?.start ?? 0;
@@ -1461,11 +1462,12 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
       const p = shellPlayerRef.current;
       const stopAt = discStopAtRef.current;
       if (stopAt == null || !p?.getCurrentTime) return;
-      if (p.getCurrentTime() >= stopAt - 0.05) {
+      // Checked often and a hair early: pausing takes effect ~0.1 s later.
+      if (p.getCurrentTime() >= stopAt - 0.08) {
         discStopAtRef.current = null;
         p.pauseVideo?.();
       }
-    }, 100);
+    }, 40);
     return () => clearInterval(t);
   }, [discovery]);
   // Each new sentence plays on its own (translation hidden).
@@ -3466,14 +3468,14 @@ function DiscoveryPanel({
         </div>
 
         {/* 1 · phonetic (top) */}
-        <p className="mt-2 overflow-hidden whitespace-nowrap italic text-indigo-500" style={{ fontSize: fit(phonetic, 14, 0.5) }}>
+        <p className="mt-2 overflow-hidden whitespace-nowrap text-center italic text-indigo-500" style={{ fontSize: fit(phonetic, 14, 0.5) }}>
           {phonetic || (translating ? "…" : " ")}
         </p>
 
         {/* 2 · the sentence in the target language, one line, every word tappable */}
         <p
           dir={rtl ? "rtl" : "ltr"}
-          className={`mt-0.5 overflow-hidden whitespace-nowrap leading-snug text-slate-900 ${rtl ? "text-right" : ""}`}
+          className="mt-0.5 overflow-hidden whitespace-nowrap text-center leading-snug text-slate-900"
           style={{ fontSize: fit(main.replace(/[֑-ׇ]/g, ""), 24, 0.62) }}
         >
           {tokens.map((tok: string, wi: number) => {
@@ -3499,7 +3501,7 @@ function DiscoveryPanel({
 
         {/* 3 · translation, revealed after the student has tried */}
         {revealed ? (
-          <p className="mt-1 overflow-hidden whitespace-nowrap text-slate-600" style={{ fontSize: fit(english, 14, 0.5) }}>
+          <p className="mt-1 overflow-hidden whitespace-nowrap text-center text-slate-600" style={{ fontSize: fit(english, 14, 0.5) }}>
             {english || (translating ? "translating…" : "—")}
           </p>
         ) : (
