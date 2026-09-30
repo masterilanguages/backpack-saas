@@ -2748,7 +2748,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {tab === "path" && !shellVideo && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
             <div className="flex flex-shrink-0 items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">🛤️ Your path</h2>
+              <h2 className="text-lg font-bold text-slate-800">🛤️ Learn</h2>
               <span className="text-xs font-semibold text-indigo-500">
                 {shellVideos.filter((v: any) => watchedIds.has(v.video_id)).length} / {shellVideos.length}
               </span>
@@ -2757,8 +2757,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               {shellVideos.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-indigo-200 bg-white/60 px-4 py-10 text-center">
                   <span className="text-3xl">🛤️</span>
-                  <p className="text-sm font-medium text-slate-700">Your path is empty</p>
-                  <p className="text-xs text-slate-500">Publish videos in the Library — each one becomes a step on your path.</p>
+                  <p className="text-sm font-medium text-slate-700">Nothing to learn yet</p>
+                  <p className="text-xs text-slate-500">Publish videos in the Library — each one becomes a chapter here.</p>
                 </div>
               ) : (
                 <div className="relative">
@@ -3242,7 +3242,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
           {/* PATH is deliberately FIRST (bottom-left): it's the student's
               primary surface and the tab shown right after sign-in. */}
           {[
-            { key: "path", Icon: Route, label: "PATH", onTap: () => { closeShellVideo(); setTab("path"); } },
+            { key: "path", Icon: Route, label: "LEARN", onTap: () => { closeShellVideo(); setTab("path"); } },
             { key: "learning", Icon: Backpack, label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
             { key: "library", Icon: Library, label: "LIBRARY", onTap: () => { closeShellVideo(); setLibView("grid"); setTab("library"); } },
             { key: "account", Icon: CircleUser, label: "ACCOUNT", onTap: () => { closeShellVideo(); setTab("account"); } },
