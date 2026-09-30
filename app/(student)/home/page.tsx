@@ -1432,7 +1432,10 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
   const discSeg: any = discSegments[discIdx] || null;
   const discEnd = (i: number) => {
     const seg = discSegments[i];
-    if (seg?.end) return Math.min(seg.end + 0.35, CHAPTER_MAX_SECONDS); // end (+ a hair so the last syllable isn't clipped)
+    // Sentence edges inside a transcript fragment are estimated (±0.5 s), so
+    // play a little past the end: hearing the next word's onset beats
+    // clipping the last one.
+    if (seg?.end) return Math.min(seg.end + 0.6, CHAPTER_MAX_SECONDS);
     const next = discSegments[i + 1];
     const start = seg?.start ?? 0;
     return Math.min(next ? next.start : start + 8, CHAPTER_MAX_SECONDS);
@@ -1442,7 +1445,7 @@ Return JSON: { "items": [ { "i": number, "transliteration": string, "english": s
     const p = shellPlayerRef.current;
     if (!seg || !p?.seekTo) return;
     discStopAtRef.current = discEnd(i);
-    p.seekTo(Math.max(0, (seg.start ?? 0) - 0.2), true); // a hair early so the first syllable isn't clipped
+    p.seekTo(Math.max(0, (seg.start ?? 0) - 0.3), true); // a hair early so the first syllable isn't clipped
     p.playVideo?.();
   };
   // Stop playback at the end of the current sentence.
