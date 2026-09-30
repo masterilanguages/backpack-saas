@@ -14,6 +14,11 @@
 //
 // Server-side YouTube audio download is blocked from datacenter IPs, which is
 // why we go through Supadata rather than fetching the stream ourselves.
+//
+// Exceptions, only when the audio route can't give the requested language
+// (auto-dubbed videos, songs): the video's own caption track in that language,
+// from Supadata and then SerpApi (optional, SERPAPI_API_KEY) — always
+// validated by script.
 import type {
   MediaSource,
   TranscribeOptions,
@@ -21,6 +26,7 @@ import type {
   TranscriptionProvider,
   TranscriptSegment,
 } from "./types.ts";
+import { fetchSerpapiCaptions } from "./serpapi.ts";
 
 const SUPADATA_BASE = "https://api.supadata.ai/v1";
 
@@ -178,6 +184,17 @@ export const supadataProvider: TranscriptionProvider = {
           generated = captions;
           content = capContent;
           source_id = "youtube_captions_validated";
+        } else {
+          // Supadata has no track in the requested language. SerpApi can
+          // still return YouTube's own caption track (manual or auto).
+          const serp = await fetchSerpapiCaptions(videoId, reqCode, (x) => matchesRequestedScript(x, reqCode), steps);
+          if (serp.length > 0) {
+            steps.push("complete");
+            return { transcript: serp, language: reqCode, source: "youtube_captions_serpapi", steps };
+          }
+        }
+        if (source_id === "youtube_captions_validated") {
+          // accepted above
         } else if (opts.allowTimingOnly) {
           // The caller only wants real timings. Captions keep the timing of
           // the original track, so prefer them over the dub's ASR.
@@ -207,6 +224,11 @@ export const supadataProvider: TranscriptionProvider = {
     const transcript = toSegments(content);
     if (transcript.length === 0) {
       steps.push(`audio_generate_failed:${generated?.error || "empty"}`);
+      const serp = await fetchSerpapiCaptions(videoId, reqCode, (x) => matchesRequestedScript(x, reqCode), steps);
+      if (serp.length > 0) {
+        steps.push("complete");
+        return { transcript: serp, language: reqCode || "unknown", source: "youtube_captions_serpapi", steps };
+      }
       return {
         transcript: [],
         language: reqCode || "unknown",
