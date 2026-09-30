@@ -7,6 +7,16 @@ export interface LyricSegment {
   end: number;
 }
 
+/** Rehydrates usable ASR text/timestamps from a previously saved video. */
+export function timedSegmentsFromSavedTranscript(saved: any[]): Array<{ text: string; start: number }> {
+  return (Array.isArray(saved) ? saved : [])
+    .map((segment: any) => ({
+      text: String(segment?.text || segment?.hebrew || segment?.transliteration || "").trim(),
+      start: Number(segment?.start) || 0,
+    }))
+    .filter((segment) => segment.text);
+}
+
 /** Turns canonical lyric lines plus aligned starts into chapter-ready segments. */
 export function buildLyricSegments(lines: string[], starts: number[], finalEnd: number): LyricSegment[] {
   const cleanLines = lines.map((line) => line.trim()).filter(Boolean);

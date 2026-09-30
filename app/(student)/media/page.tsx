@@ -30,7 +30,7 @@ import PostVideoFlashcards from "@/components/video/PostVideoFlashcards";
 import { languageLabel, isRTLText } from "@/lib/language";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
-import { buildLyricSegments } from "@/lib/songLyrics";
+import { buildLyricSegments, timedSegmentsFromSavedTranscript } from "@/lib/songLyrics";
 
 // Shared, memoized loader for the YouTube IFrame API. The YT API calls the single
 // global window.onYouTubeIframeAPIReady ONCE at script load — a single
@@ -1074,6 +1074,9 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
   const handleEdit = (video: any) => {
     setEditingVideo(video);
     setMediaType(video.video_url?.endsWith('.mp3') || video.video_url?.includes('audio') ? "audio" : "video");
+    // Edits don't auto-transcribe again. Rehydrate the existing timed source so
+    // a newly supplied lyrics URL can align against it during this update.
+    const savedTiming = timedSegmentsFromSavedTranscript(video.processed_transcript || []);
     setFormData({
       title: video.title,
       language: video.language,
@@ -1089,7 +1092,8 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
       notes: video.notes || "",
       default_day: video.default_day || "",
       transcript_phonetics: video.transcript_phonetics || "",
-      lyrics_url: ""
+      lyrics_url: "",
+      _auto_segments: savedTiming,
     });
     setShowAddDialog(true);
   };
