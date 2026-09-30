@@ -29,6 +29,8 @@ import AddVideoDialog from "@/components/media/AddVideoDialog";
 import PostVideoFlashcards from "@/components/video/PostVideoFlashcards";
 import { languageLabel, isRTLText } from "@/lib/language";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
+import { fetchLetrasLyrics } from "@/lib/lyrics";
+import { buildLyricSegments } from "@/lib/songLyrics";
 
 // Shared, memoized loader for the YouTube IFrame API. The YT API calls the single
 // global window.onYouTubeIframeAPIReady ONCE at script load — a single
@@ -202,7 +204,8 @@ export default function MediaLibrary() {
     thumbnail_url: "",
     notes: "",
     default_day: "",
-    transcript_phonetics: ""
+    transcript_phonetics: "",
+    lyrics_url: ""
   });
 
   useEffect(() => {
@@ -684,6 +687,7 @@ export default function MediaLibrary() {
       notes: "",
       default_day: "",
       transcript_phonetics: "",
+      lyrics_url: "",
       assign_to_user: "",
       assigned_users: [],
     });
@@ -772,8 +776,49 @@ export default function MediaLibrary() {
 
     let processedTranscript: any = undefined;
 
-    const autoSegments: any[] = Array.isArray(formData._auto_segments) ? formData._auto_segments : [];
-    const autoUnedited = autoSegments.length > 0 && (formData.transcript_phonetics || "").trim() === (formData._auto_text || "").trim();
+    let autoSegments: any[] = Array.isArray(formData._auto_segments) ? formData._auto_segments : [];
+    let autoUnedited = autoSegments.length > 0 && (formData.transcript_phonetics || "").trim() === (formData._auto_text || "").trim();
+
+    // A song's published lyrics are the canonical words. ASR is retained only
+    // for timestamps, then each canonical line is aligned before translation.
+    if (formData.lyrics_url?.trim()) {
+      if (!autoSegments.length) {
+        toast.error("Load the video and wait for auto-transcription before importing lyrics.");
+        return false;
+      }
+      try {
+        toast.info("Importing and aligning published lyrics...");
+        const imported = await fetchLetrasLyrics(formData.lyrics_url.trim());
+        const lines = imported.lines.slice(0, 120);
+        const timed = autoSegments
+          .map((segment: any, i: number) => ({ i, text: String(segment.text || "").trim(), start: Number(segment.start) || 0 }))
+          .filter((segment: any) => segment.text);
+        if (!lines.length || !timed.length) throw new Error("No lyric lines or timestamps were available.");
+        const aligned: any = await base44.integrations.Core.InvokeLLM({
+          prompt: `Match published song lyrics (A) to timed speech-to-text fragments (B). The ASR may be inaccurate, but both lists describe the same song. Return only the timed fragment where each lyric line starts. Values must be non-decreasing. Do not rewrite either list.\n\nA:\n${lines.map((line, i) => `${i}: ${line}`).join("\n")}\n\nB:\n${timed.slice(0, 160).map((segment: any, i: number) => `${i}: ${segment.text}`).join("\n")}\n\nReturn JSON: { "starts": [{ "line": number, "fragment": number }] }`,
+          response_json_schema: { type: "object", properties: { starts: { type: "array", items: { type: "object", properties: { line: { type: "number" }, fragment: { type: "number" } } } } } },
+          max_tokens: 4000,
+        });
+        const matches = new Map<number, number>();
+        for (const item of aligned?.starts || []) {
+          const line = Math.round(Number(item?.line));
+          const fragment = Math.round(Number(item?.fragment));
+          if (line >= 0 && line < lines.length && fragment >= 0 && fragment < timed.length) matches.set(line, fragment);
+        }
+        let previous = 0;
+        const starts = lines.map((_, line) => {
+          const fallback = Math.min(timed.length - 1, Math.floor((line * timed.length) / lines.length));
+          previous = Math.max(previous, matches.get(line) ?? fallback);
+          return timed[previous].start;
+        });
+        const finalEnd = Math.max(starts[starts.length - 1] || 0, timed[timed.length - 1].start) + 5;
+        autoSegments = buildLyricSegments(lines, starts, finalEnd);
+        autoUnedited = true;
+      } catch (error: any) {
+        toast.error(error?.message || "Could not import lyrics from Letras.com.");
+        return false;
+      }
+    }
 
     if (autoUnedited) {
       // From Auto-transcribe and not edited: keep each segment with its REAL
@@ -865,7 +910,7 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
       }
     }
 
-    const { _auto_segments, _auto_text, ...formFields } = formData;
+    const { _auto_segments, _auto_text, lyrics_url, ...formFields } = formData;
     const data: any = {
       ...formFields,
       duration_minutes: formData.duration_minutes ? parseFloat(formData.duration_minutes) : null,
@@ -1043,7 +1088,8 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
       thumbnail_url: video.thumbnail_url || "",
       notes: video.notes || "",
       default_day: video.default_day || "",
-      transcript_phonetics: video.transcript_phonetics || ""
+      transcript_phonetics: video.transcript_phonetics || "",
+      lyrics_url: ""
     });
     setShowAddDialog(true);
   };

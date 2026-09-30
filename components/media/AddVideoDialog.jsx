@@ -226,6 +226,19 @@ export default function AddVideoDialog({ open, onOpenChange, editingVideo, formD
             />
           </div>
 
+          {canManageCatalog && (
+            <div>
+              <label className={labelCls}>Lyrics URL <span className="text-slate-500">(optional · songs)</span></label>
+              <input
+                value={formData.lyrics_url || ""}
+                onChange={(e) => setFormData(p => ({ ...p, lyrics_url: e.target.value }))}
+                placeholder="https://www.letras.com/artist/song/"
+                className={inputCls}
+              />
+              <p className="mt-1 text-xs text-slate-500">When present, published lyrics replace the speech-to-text words while preserving audio timings.</p>
+            </div>
+          )}
+
           {canManageCatalog && allUsers.length > 0 && (
             <div>
               <label className={labelCls}>Assign to Users <span className="text-slate-500">(optional)</span></label>
