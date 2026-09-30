@@ -33,7 +33,7 @@ import PhotoWordCapture from "@/components/home/PhotoWordCapture";
 import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/transcription";
 import { splitIntoSentences } from "@/lib/chapterSentences";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
-import { buildLyricSegments, chapterContentKey } from "@/lib/songLyrics";
+import { buildLyricSegments, chapterContentKey, splitScriptLine } from "@/lib/songLyrics";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
 // left over from YouTube's wrong-language caption tracks (e.g. "[موسيقى]").
@@ -1565,12 +1565,14 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
           .map((segment: any, index: number, all: any[]) => {
             const start = Number(segment?.start) || 0;
             const nextStart = Number(all[index + 1]?.start);
+            // Lyrics imported before the fix can hold "Hebrew+romanization" in one line.
+            const { native, latin } = splitScriptLine(stripCaptionNoise(segment?.hebrew || segment?.text));
             return {
               start,
               end: Number.isFinite(nextStart) && nextStart > start ? nextStart : start + 5,
-              hebrew: stripCaptionNoise(segment?.hebrew || segment?.text),
-              text: stripCaptionNoise(segment?.hebrew || segment?.text),
-              transliteration: segment?.transliteration || "",
+              hebrew: native,
+              text: native,
+              transliteration: segment?.transliteration || latin,
               english: segment?.english || "",
               words: segment?.words,
             };
@@ -3910,13 +3912,15 @@ function DiscoveryPanel({
     return <p className="py-10 text-center text-sm text-slate-500">No sentences available for this video.</p>;
   }
   const seg = segments[Math.min(idx, segments.length - 1)];
-  const main = seg.hebrew || seg.text || seg.transliteration || "";
+  // Older lyric imports glued the romanization onto the Hebrew line.
+  const split = splitScriptLine(seg.hebrew || seg.text || "");
+  const main = split.native || seg.transliteration || "";
   const rtl = isRTLText(main);
   const tokens = main.split(/\s+/).filter(Boolean);
   const english = seg.english || translation?.english || "";
   const phonetic =
     (seg.transliteration && !isRTLText(seg.transliteration) && seg.transliteration !== main ? seg.transliteration : "") ||
-    translation?.phonetic || "";
+    split.latin || translation?.phonetic || "";
   const last = idx >= segments.length - 1;
   const popupKeyPrefix = `d${idx}_`;
   const popupOpen = wordPopup && String(wordPopup.key || "").startsWith(popupKeyPrefix);

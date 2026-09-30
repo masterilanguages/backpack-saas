@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildLyricSegments, chapterContentKey, shouldRefreshChapter, timedSegmentsFromSavedTranscript } from "./songLyrics.ts";
+import { buildLyricSegments, chapterContentKey, shouldRefreshChapter, splitScriptLine, timedSegmentsFromSavedTranscript } from "./songLyrics.ts";
 
 Deno.test("buildLyricSegments assigns lyric lines to non-decreasing source timings", () => {
   const result = buildLyricSegments(
@@ -40,4 +40,17 @@ Deno.test("shouldRefreshChapter only invalidates cached chapters after a lyric i
 Deno.test("chapterContentKey uses the table primary key before an optional entity id", () => {
   assertEquals(chapterContentKey({ video_id: "abc", id: "wrong" }), "abc");
   assertEquals(chapterContentKey({ id: "legacy" }), "legacy");
+});
+
+Deno.test("splitScriptLine separates a Hebrew verse glued to its romanization", () => {
+  assertEquals(splitScriptLine("קום קרא בתחנוניםkum kara b'tachanunim"), {
+    native: "קום קרא בתחנונים",
+    latin: "kum kara b'tachanunim",
+  });
+  assertEquals(splitScriptLine("מה לך נרדם? ma lecha nirdam?"), {
+    native: "מה לך נרדם?",
+    latin: "ma lecha nirdam?",
+  });
+  assertEquals(splitScriptLine("שלום"), { native: "שלום", latin: "" });
+  assertEquals(splitScriptLine("only latin"), { native: "only latin", latin: "" });
 });
