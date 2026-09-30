@@ -93,35 +93,78 @@ function vividTint(r: number, g: number, b: number) {
 }
 
 // A YouTube title ("Avinu Music & Productions - Chaim Shelly Lyrics - Mark
-// Levine cover") split into a short name and the artist, as the designs show.
-// Asked once per video and kept in this browser; the full title shows until then.
-function useDisplayTitle(video: any) {
+// Levine cover") turned into what the designs show: a short name in Latin
+// letters ("Chaim Shelly"), a subtitle (artist, or a short description for a
+// lesson) and whether it's a song or a lesson. Asked once per video and kept in
+// the browser; the full title shows until then.
+type VideoMeta = { name: string; artist: string; kind: "song" | "lesson" };
+const META_KEY = (vid: string) => `bp_meta_v2_${vid}`;
+const metaInflight = new Map<string, Promise<VideoMeta | null>>();
+const readMeta = (vid?: string): VideoMeta | null => {
+  if (!vid) return null;
+  try { return JSON.parse(localStorage.getItem(META_KEY(vid)) || "null"); } catch { return null; }
+};
+const clean = (t: any) => {
+  const v = String(t || "").trim();
+  return /^(<?unknown>?|n\/a|none|null|all|-)$/i.test(v) ? "" : v;
+};
+function fetchVideoMeta(video: any): Promise<VideoMeta | null> {
   const vid = video?.video_id;
-  const key = vid ? `bp_title_${vid}` : "";
-  const [parts, setParts] = useState<{ name: string; artist: string } | null>(() => {
-    try { return key ? JSON.parse(localStorage.getItem(key) || "null") : null; } catch { return null; }
-  });
-  useEffect(() => {
-    if (!key || !video?.title) return;
-    try {
-      const cached = JSON.parse(localStorage.getItem(key) || "null");
-      if (cached?.name) { setParts(cached); return; }
-    } catch {}
-    let off = false;
-    base44.integrations.Core.InvokeLLM({
-      prompt: `This is a YouTube video title: "${video.title}". Return JSON with "name": the song or lesson name only (no channel, "lyrics", "official video", production credits), and "artist": the performer or creator, keeping words like "cover" (empty string if there is none). Keep the language the name is written in.`,
-      response_json_schema: { type: "object", properties: { name: { type: "string" }, artist: { type: "string" } } },
+  if (!vid || !video?.title) return Promise.resolve(null);
+  const cached = readMeta(vid);
+  if (cached) return Promise.resolve(cached);
+  if (!metaInflight.has(vid)) {
+    metaInflight.set(vid, base44.integrations.Core.InvokeLLM({
+      prompt: `A YouTube video in a language-learning app. Title: "${video.title}". Return JSON:
+- "name": the song or lesson name only, in Latin letters: the English title if the title gives one, else a transliteration. No channel name, "lyrics", "official video" or production credits. Short (1-5 words).
+- "artist": for a song, the performer in Latin letters (keep words like "cover"), then " · " and the song name in its original script if that script isn't Latin. For a lesson, a short description (2-5 words, e.g. "Easy Hebrew for beginners"). Never "unknown".
+- "kind": "song" or "lesson".
+Examples: "שמואל - תן לי תפילה | Shmuel - Give Me One Prayer" -> {"name":"Give Me One Prayer","artist":"Shmuel · תן לי תפילה","kind":"song"}; "Avinu Music & Productions - Chaim Shelly Lyrics - Mark Levine cover" -> {"name":"Chaim Shelly","artist":"Mark Levine cover","kind":"song"}.`,
+      response_json_schema: {
+        type: "object",
+        properties: { name: { type: "string" }, artist: { type: "string" }, kind: { type: "string", enum: ["song", "lesson"] } },
+      },
     })
       .then((r: any) => {
-        if (off || !r?.name) return;
-        const v = { name: String(r.name).trim(), artist: String(r.artist || "").trim() };
-        try { localStorage.setItem(key, JSON.stringify(v)); } catch {}
-        setParts(v);
+        const name = clean(r?.name);
+        if (!name) return null;
+        const meta: VideoMeta = { name, artist: clean(r?.artist), kind: r?.kind === "song" ? "song" : "lesson" };
+        try { localStorage.setItem(META_KEY(vid), JSON.stringify(meta)); } catch {}
+        return meta;
       })
-      .catch(() => {});
+      .catch(() => null)
+      .finally(() => metaInflight.delete(vid)));
+  }
+  return metaInflight.get(vid)!;
+}
+function useDisplayTitle(video: any) {
+  const [meta, setMeta] = useState<VideoMeta | null>(() => readMeta(video?.video_id));
+  useEffect(() => {
+    let off = false;
+    setMeta(readMeta(video?.video_id));
+    fetchVideoMeta(video).then((m) => { if (!off && m) setMeta(m); });
     return () => { off = true; };
-  }, [key, video?.title]);
-  return parts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [video?.video_id, video?.title]);
+  return meta;
+}
+// The same for a list (Library filters need every video's kind).
+function useVideoMetas(videos: any[]) {
+  const [metas, setMetas] = useState<Record<string, VideoMeta>>({});
+  const ids = videos.map((v) => v?.video_id).filter(Boolean).join(",");
+  useEffect(() => {
+    let off = false;
+    const start: Record<string, VideoMeta> = {};
+    for (const v of videos) { const m = readMeta(v?.video_id); if (m) start[v.video_id] = m; }
+    setMetas(start);
+    for (const v of videos) {
+      if (!v?.video_id || start[v.video_id]) continue;
+      fetchVideoMeta(v).then((m) => { if (!off && m) setMetas((prev) => ({ ...prev, [v.video_id]: m })); });
+    }
+    return () => { off = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids]);
+  return metas;
 }
 
 // "No pausing": a pause sign struck through.
@@ -384,7 +427,7 @@ export default function Home() {
   // Library tab add-flow: search YouTube (query or pasted link, with topic
   // suggestion chips) → results by popularity → publish screen (level+topics).
   const [libView, setLibView] = useState<"grid" | "search" | "publish">("grid");
-  const [libFilter, setLibFilter] = useState<"all" | "mine">("all");
+  const [libFilter, setLibFilter] = useState<"all" | "song" | "lesson" | "mine">("all");
   const [libSearch, setLibSearch] = useState("");
   const [libResults, setLibResults] = useState<any[]>([]);
   const [libSearching, setLibSearching] = useState(false);
@@ -1674,6 +1717,7 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
   }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, shellSegments]);
   const discSeg: any = discSegments[discIdx] || null;
   const coverTint = useCoverTint(discovery ? shellVideo?.video_id : undefined);
+  const libMetas = useVideoMetas(tab === "library" ? (shellVideos as any[]) : []);
   const discProgressInSentence = discSeg?.end > discSeg?.start
     ? Math.min(1, Math.max(0, (shellTime - discSeg.start) / (discSeg.end - discSeg.start)))
     : 0;
@@ -3174,7 +3218,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {/* Design L6: compact cards in a vertical list — thumbnail on the left,
             name + artist, the chapter's 4-step progress and Start / Continue. */}
         {tab === "library" && !shellVideo && libView === "grid" && (
-          <div className="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,#F6F5FB,#fff_40%)] [font-family:var(--font-body)]">
+          <div className="flex min-h-0 flex-1 flex-col [font-family:var(--font-body)]" style={{ background: "linear-gradient(180deg, #F6F5FB, #fff 40%), #fff" }}>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4">
               <div className="flex items-end justify-between">
                 <div>
@@ -3193,13 +3237,15 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
 
               <div className="mt-4 flex gap-2">
                 {[
-                  { key: "all", label: "All videos" },
+                  { key: "all", label: "All" },
+                  { key: "song", label: "Songs" },
+                  { key: "lesson", label: "Lessons" },
                   { key: "mine", label: "My videos" },
                 ].map((f) => (
                   <button
                     key={f.key}
                     onClick={() => setLibFilter(f.key as any)}
-                    className={`rounded-full px-4 py-2 text-xs font-bold transition ${
+                    className={`rounded-full px-3.5 py-2 text-xs font-bold transition ${
                       libFilter === f.key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:text-slate-900"
                     }`}
                   >
@@ -3209,12 +3255,15 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               </div>
 
               {(() => {
-                const visible = libFilter === "mine" ? shellVideos.filter((v: any) => v._mine) : shellVideos;
+                const visible =
+                  libFilter === "mine" ? shellVideos.filter((v: any) => v._mine)
+                  : libFilter === "song" || libFilter === "lesson" ? shellVideos.filter((v: any) => libMetas[v.video_id]?.kind === libFilter)
+                  : shellVideos;
                 if (visible.length === 0) {
                   return (
                     <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
                       <p className="text-sm font-semibold text-slate-700">
-                        {libFilter === "mine" ? "You haven't added any videos yet" : "No videos yet"}
+                        {libFilter === "mine" ? "You haven't added any videos yet" : libFilter === "song" ? "No songs yet" : libFilter === "lesson" ? "No lessons yet" : "No videos yet"}
                       </p>
                       <p className="text-xs text-slate-500">Search YouTube and publish a video to start learning from real content.</p>
                       <button
@@ -3232,6 +3281,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       <LibraryCard
                         key={`${v._mine ? "mine" : "cat"}_${v.id}`}
                         video={v}
+                        meta={libMetas[v.video_id] || null}
                         step={v.video_id ? chapterStep(chapterByVideo.get(v.video_id)) : 1}
                         onOpen={() => (v.video_id ? openChapter(v) : openShellVideo(v))}
                       />
@@ -3764,8 +3814,8 @@ function ChapterWatch({
 // Recommended words (picked by the system) are underlined and starred.
 // ---------------------------------------------------------------------------
 // Library card (design L6). Opens the video's chapter where the student left it.
-function LibraryCard({ video, step, onOpen }: { video: any; step: number; onOpen: () => void }) {
-  const short = useDisplayTitle(video);
+function LibraryCard({ video, meta, step, onOpen }: { video: any; meta: VideoMeta | null; step: number; onOpen: () => void }) {
+  const short = meta;
   const vid = video.video_id || "";
   const thumb = video.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/mqdefault.jpg` : "");
   const dur = fmtMinutes(video.duration_minutes);
@@ -3784,7 +3834,7 @@ function LibraryCard({ video, step, onOpen }: { video: any; step: number; onOpen
             {short?.name || video.title}
           </span>
           <span className="mt-0.5 block truncate text-[13px] text-slate-500">
-            {short ? short.artist || video.difficulty_level || "" : video.difficulty_level || ""}
+            {short?.artist || ""}
           </span>
         </span>
         <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-white">
