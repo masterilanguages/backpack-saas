@@ -72,6 +72,63 @@ const cleanGlosses = (words: any) =>
     .filter((g: any) => g?.w && g?.meaning)
     .map((g: any) => ({ w: String(g.w), phonetic: String(g.phonetic || ""), meaning: String(g.meaning) }));
 const normGloss = (t: string) => cleanToken(t || "").replace(/[\u0591-\u05C7]/g, "");
+// An averaged colour is muddy; keep its hue but give it some saturation and a
+// mid lightness so the tinted screens read as "the cover's colour".
+function vividTint(r: number, g: number, b: number) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  let h = 0;
+  const d = mx - mn;
+  if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = (h * 60 + 360) % 360;
+  let l = (mx + mn) / 2;
+  let sat = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+  sat = Math.min(0.5, Math.max(sat, 0.28));
+  l = Math.min(0.55, Math.max(l, 0.42));
+  const c = (1 - Math.abs(2 * l - 1)) * sat, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  const [R, G, B] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return `${Math.round((R + m) * 255)},${Math.round((G + m) * 255)},${Math.round((B + m) * 255)}`;
+}
+
+// A YouTube title ("Avinu Music & Productions - Chaim Shelly Lyrics - Mark
+// Levine cover") split into a short name and the artist, as the designs show.
+// Asked once per video and kept in this browser; the full title shows until then.
+function useDisplayTitle(video: any) {
+  const vid = video?.video_id;
+  const key = vid ? `bp_title_${vid}` : "";
+  const [parts, setParts] = useState<{ name: string; artist: string } | null>(() => {
+    try { return key ? JSON.parse(localStorage.getItem(key) || "null") : null; } catch { return null; }
+  });
+  useEffect(() => {
+    if (!key || !video?.title) return;
+    try {
+      const cached = JSON.parse(localStorage.getItem(key) || "null");
+      if (cached?.name) { setParts(cached); return; }
+    } catch {}
+    let off = false;
+    base44.integrations.Core.InvokeLLM({
+      prompt: `This is a YouTube video title: "${video.title}". Return JSON with "name": the song or lesson name only (no channel, "lyrics", "official video", production credits), and "artist": the performer or creator, keeping words like "cover" (empty string if there is none). Keep the language the name is written in.`,
+      response_json_schema: { type: "object", properties: { name: { type: "string" }, artist: { type: "string" } } },
+    })
+      .then((r: any) => {
+        if (off || !r?.name) return;
+        const v = { name: String(r.name).trim(), artist: String(r.artist || "").trim() };
+        try { localStorage.setItem(key, JSON.stringify(v)); } catch {}
+        setParts(v);
+      })
+      .catch(() => {});
+    return () => { off = true; };
+  }, [key, video?.title]);
+  return parts;
+}
+
+// "No pausing": a pause sign struck through.
+const NoPauseIcon = ({ className = "" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className={className} aria-hidden="true">
+    <path d="M9 6v12M15 6v12M4 4l16 16" />
+  </svg>
+);
+
 // The cover's average colour (like Spotify's now-playing screen), as "r,g,b".
 // YouTube thumbnails are served with CORS, so the canvas can read them.
 function useCoverTint(videoId?: string) {
@@ -97,7 +154,7 @@ function useCoverTint(videoId?: string) {
           const w = 1 + (mx - mn) / 48;       // favour coloured pixels over grey
           r += d[i] * w; g += d[i + 1] * w; b += d[i + 2] * w; n += w;
         }
-        if (n && !off) setTint(`${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)}`);
+        if (n && !off) setTint(vividTint(r / n, g / n, b / n));
       } catch {}
     };
     img.src = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
@@ -3438,6 +3495,7 @@ function ChapterWatch({
   const playerRef = useRef<any>(null);
   const endedRef = useRef(false);
   const tint = useCoverTint(video?.video_id);
+  const shortTitle = useDisplayTitle(video);
 
   useEffect(() => {
     if (phase !== "watching") return;
@@ -3512,7 +3570,7 @@ function ChapterWatch({
     const step = final ? 4 : 1;
     return (
       <div
-        className="absolute inset-0 z-30 flex flex-col px-5 pb-6 text-slate-900"
+        className="absolute inset-0 z-30 flex flex-col px-5 pb-6 text-slate-900 [font-family:var(--font-body)]"
         style={{ background: `linear-gradient(180deg, rgba(${t},.5) 0%, rgba(${t},.18) 40%, #fff 70%), #fff` }}
       >
         <div className="flex flex-shrink-0 items-center justify-between pt-9">
@@ -3542,11 +3600,18 @@ function ChapterWatch({
             <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-600">
               {final ? "Step 4 — Final pass" : "Step 1 — First listen"}
             </p>
-            <p className="mt-1.5 line-clamp-4 text-lg font-extrabold leading-snug tracking-tight">{video.title}</p>
+            {shortTitle ? (
+              <>
+                <p className="mt-1.5 line-clamp-2 text-[28px] font-extrabold leading-none tracking-[-0.03em] [font-family:var(--font-display)]">{shortTitle.name}</p>
+                {shortTitle.artist && <p className="mt-1.5 truncate text-sm italic text-slate-500">{shortTitle.artist}</p>}
+              </>
+            ) : (
+              <p className="mt-1.5 line-clamp-4 text-lg font-extrabold leading-snug tracking-tight [font-family:var(--font-display)]">{video.title}</p>
+            )}
           </div>
         </div>
 
-        <p className="mt-6 flex-shrink-0 text-[28px] font-extrabold leading-[1.1] tracking-tight">
+        <p className="mt-6 flex-shrink-0 text-[30px] font-extrabold leading-[1.1] tracking-[-0.02em] [font-family:var(--font-display)]">
           {final ? "How much do you understand now?" : "How much can you understand without help?"}
         </p>
 
@@ -3571,9 +3636,9 @@ function ChapterWatch({
           {[
             { Icon: CaptionsOff, label: "No subtitles" },
             { Icon: Languages, label: "No translation" },
-            { Icon: Pause, label: "No pausing" },
+            { Icon: NoPauseIcon, label: "No pausing" },
           ].map(({ Icon, label }) => (
-            <span key={label} className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-[0_1px_0_rgba(15,18,34,.06)]">
+            <span key={label} className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 shadow-[0_1px_0_rgba(15,18,34,.06)]">
               <Icon className="h-3.5 w-3.5" /> {label}
             </span>
           ))}
