@@ -105,6 +105,13 @@ function useCoverTint(videoId?: string) {
   }, [videoId]);
   return tint;
 }
+// A chapter's position in the 4-step PATH: 1–4, or 5 when it's complete.
+const chapterStep = (p: any) =>
+  !p?.baseline_score ? 1 : !p.discovery_completed_at ? 2 : !p.comprehension_completed_at ? 3 : !p.final_score ? 4 : 5;
+const fmtMinutes = (m: any) => {
+  const sec = Math.round(Number(m) * 60);
+  return sec > 0 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}` : "";
+};
 const fmtTime = (sec: number) => {
   const t = Math.max(0, Math.floor(sec || 0));
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
@@ -1503,6 +1510,16 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
   }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, shellSegments]);
   const discSeg: any = discSegments[discIdx] || null;
   const coverTint = useCoverTint(discovery ? shellVideo?.video_id : undefined);
+  // Library: the chapter the student is in the middle of (else the first one
+  // not started) is featured on top, tinted with its cover's colour.
+  const libFeatured = useMemo(() => {
+    const withVid = (shellVideos as any[]).filter((v) => v.video_id);
+    const inProgress = withVid
+      .filter((v) => { const st = chapterStep(chapterByVideo.get(v.video_id)); return st > 1 && st < 5; })
+      .sort((a, b) => String(chapterByVideo.get(b.video_id)?.updated_date || "").localeCompare(String(chapterByVideo.get(a.video_id)?.updated_date || "")));
+    return inProgress[0] || withVid.find((v) => chapterStep(chapterByVideo.get(v.video_id)) === 1) || null;
+  }, [shellVideos, chapterByVideo]);
+  const libTint = useCoverTint(tab === "library" && !shellVideo ? libFeatured?.video_id : undefined);
   const discProgressInSentence = discSeg?.end > discSeg?.start
     ? Math.min(1, Math.max(0, (shellTime - discSeg.start) / (discSeg.end - discSeg.start)))
     : 0;
@@ -3000,85 +3017,143 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         )}
 
         {/* ================= LIBRARY ================= */}
+        {/* Design L2: the chapter in progress featured on top (tinted with its
+            cover), then every video as a vertical list to scroll through. */}
         {tab === "library" && !shellVideo && libView === "grid" && (
-          <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
-            <div className="flex flex-shrink-0 items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">📚 Library</h2>
-              <button
-                onClick={() => { setLibSearch(""); setLibResults([]); setLibLang(""); setLibView("search"); }}
-                className="rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-purple-300/60"
-              >
-                + Add video
-              </button>
-            </div>
-
-            {/* All videos / My videos */}
-            <div className="mt-3 flex flex-shrink-0 gap-1 rounded-full border border-indigo-100 bg-white p-1 shadow-md shadow-indigo-100/70">
-              {[
-                { key: "all", label: "All videos" },
-                { key: "mine", label: "My Videos" },
-              ].map((f) => (
+          <div
+            className="flex min-h-0 flex-1 flex-col"
+            style={{ background: `linear-gradient(180deg, rgba(${libTint || "196,190,240"},.42) 0%, rgba(${libTint || "196,190,240"},.14) 34%, #fff 58%)` }}
+          >
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4">
+              <div className="flex items-end justify-between">
+                <div>
+                  <h2 className="text-[28px] font-extrabold leading-none tracking-tight text-slate-900">Library</h2>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {shellVideos.length} video{shellVideos.length === 1 ? "" : "s"} · {languageLabel(language)}
+                  </p>
+                </div>
                 <button
-                  key={f.key}
-                  onClick={() => setLibFilter(f.key as any)}
-                  className={`flex-1 rounded-full py-1.5 text-xs font-semibold transition ${
-                    libFilter === f.key ? "bg-gradient-to-r from-fuchsia-500 to-indigo-500 text-white shadow-md shadow-purple-300/60" : "text-slate-500 hover:text-slate-700"
-                  }`}
+                  onClick={() => { setLibSearch(""); setLibResults([]); setLibLang(""); setLibView("search"); }}
+                  className="flex items-center gap-1.5 rounded-full bg-slate-900 px-3.5 py-2 text-xs font-bold text-white"
                 >
-                  {f.label}
+                  <Plus className="h-3.5 w-3.5" /> Add video
                 </button>
-              ))}
-            </div>
+              </div>
 
-            <div className="mt-3 min-h-0 flex-1 overflow-y-auto pb-3">
+              {/* featured: continue (or start) the chapter */}
+              {libFeatured && libFilter === "all" && (() => {
+                const v = libFeatured;
+                const st = chapterStep(chapterByVideo.get(v.video_id));
+                const started = st > 1;
+                return (
+                  <button
+                    onClick={() => openChapter(v)}
+                    className="mt-4 block w-full overflow-hidden rounded-3xl bg-white text-left"
+                    style={{ boxShadow: `0 22px 44px -22px rgba(${libTint || "99,102,241"},.95)` }}
+                  >
+                    <div
+                      className="aspect-video w-full bg-slate-200 bg-cover bg-center"
+                      style={{ backgroundImage: `url(https://i.ytimg.com/vi/${v.video_id}/hqdefault.jpg)` }}
+                    />
+                    <div className="px-4 pb-4 pt-3">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.12em]" style={{ color: `rgb(${libTint || "79,70,229"})`, filter: "brightness(.7)" }}>
+                        {started ? `Continue · step ${st} of 4` : "Start your next chapter"}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-lg font-extrabold leading-snug text-slate-900">{v.title}</p>
+                      <div className="mt-3 flex items-center justify-between">
+                        <span className="flex gap-1">
+                          {[1, 2, 3, 4].map((n) => (
+                            <span key={n} className={`h-1.5 w-6 rounded-full ${n < st ? "bg-slate-900" : "bg-slate-200"}`} />
+                          ))}
+                        </span>
+                        <span className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white">
+                          <Play className="h-3.5 w-3.5 fill-current" /> {started ? "Continue" : "Start"}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })()}
+
+              {/* All videos / My videos */}
+              <div className="mt-4 flex gap-2">
+                {[
+                  { key: "all", label: "All videos" },
+                  { key: "mine", label: "My videos" },
+                ].map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => setLibFilter(f.key as any)}
+                    className={`rounded-full px-4 py-2 text-xs font-bold transition ${
+                      libFilter === f.key ? "bg-slate-900 text-white" : "bg-white/80 text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
               {(() => {
                 const visible = libFilter === "mine" ? shellVideos.filter((v: any) => v._mine) : shellVideos;
                 if (visible.length === 0) {
                   return (
-                    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-indigo-200 bg-white/60 px-4 py-10 text-center">
-                      <span className="text-3xl">📺</span>
-                      <p className="text-sm font-medium text-slate-700">
+                    <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-10 text-center">
+                      <p className="text-sm font-semibold text-slate-700">
                         {libFilter === "mine" ? "You haven't added any videos yet" : "No videos yet"}
                       </p>
                       <p className="text-xs text-slate-500">Search YouTube and publish a video to start learning from real content.</p>
                       <button
                         onClick={() => { setLibSearch(""); setLibResults([]); setLibView("search"); }}
-                        className="mt-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow"
+                        className="mt-1 flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-sm font-bold text-white"
                       >
-                        + Add video
+                        <Plus className="h-4 w-4" /> Add video
                       </button>
                     </div>
                   );
                 }
                 return (
-                  <div className="grid grid-cols-2 gap-3">
-                    {visible.map((v: any) => {
-                      const vid = v.video_id || "";
-                      const thumb = v.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : "");
-                      return (
-                        <button
-                          key={`${v._mine ? "mine" : "cat"}_${v.id}`}
-                          onClick={() => openShellVideo(v)}
-                          className="overflow-hidden rounded-2xl border border-indigo-100 bg-white text-left shadow-md shadow-indigo-100/70 transition hover:shadow-md"
-                        >
-                          <div className="aspect-video w-full bg-indigo-100">
-                            {thumb && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={thumb} alt={v.title} className="h-full w-full object-cover" onError={(e: any) => { e.target.style.display = "none"; }} />
-                            )}
-                          </div>
-                          <div className="p-2.5">
-                            <p className="line-clamp-2 text-xs font-semibold leading-snug text-slate-800">{v.title}</p>
-                            <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                              {v.difficulty_level && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.difficulty_level}</span>}
-                              {v.duration_minutes && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{v.duration_minutes} min</span>}
-                              {v._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">My video</span>}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <>
+                    <p className="mb-1 mt-5 text-[11px] font-extrabold uppercase tracking-[0.1em] text-slate-400">
+                      {libFilter === "mine" ? "My videos" : "All videos"}
+                    </p>
+                    <div className="flex flex-col">
+                      {visible.map((v: any) => {
+                        const vid = v.video_id || "";
+                        const thumb = v.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/mqdefault.jpg` : "");
+                        const st = vid ? chapterStep(chapterByVideo.get(vid)) : 1;
+                        const dur = fmtMinutes(v.duration_minutes);
+                        return (
+                          <button
+                            key={`${v._mine ? "mine" : "cat"}_${v.id}`}
+                            onClick={() => openShellVideo(v)}
+                            className="flex items-center gap-3 border-b border-slate-900/[.06] py-2.5 text-left last:border-0"
+                          >
+                            <span className="relative h-[66px] w-[118px] flex-shrink-0 overflow-hidden rounded-xl bg-slate-200">
+                              {thumb && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={thumb} alt="" className="h-full w-full object-cover" onError={(e: any) => { e.target.style.display = "none"; }} />
+                              )}
+                              {dur && <span className="absolute bottom-1 right-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-bold text-white">{dur}</span>}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="line-clamp-2 text-sm font-bold leading-snug text-slate-900">{v.title}</span>
+                              <span className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                                {v.difficulty_level || "All levels"}
+                                {v._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-700">My video</span>}
+                              </span>
+                            </span>
+                            <span
+                              className={`flex-shrink-0 rounded-lg px-2 py-1 text-[10px] font-extrabold ${
+                                st === 5 ? "bg-emerald-50 text-emerald-700" : st > 1 ? "bg-indigo-50 text-indigo-600" : "bg-fuchsia-50 text-fuchsia-600"
+                              }`}
+                            >
+                              {st === 5 ? "Done" : st > 1 ? `Step ${st} of 4` : "New"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
                 );
               })()}
             </div>
