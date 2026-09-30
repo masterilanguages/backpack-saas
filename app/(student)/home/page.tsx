@@ -1299,41 +1299,79 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
           .map((f: any) => ({ text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0) }))
           .filter((f: any) => f.text && f.start < CHAPTER_MAX_SECONDS);
         if (!frags.length) throw new Error(res?.error || "no timed transcript");
-        const r: any = await base44.integrations.Core.InvokeLLM({
-          prompt: `These are numbered caption fragments of a ${languageLabel(lang)} video, in order:
+
+        // 1 · Group fragments into sentences. The model only returns fragment
+        // numbers (a short answer); if that fails, group without AI (until a
+        // sentence-ending mark or ~12 s). Timings are the real ones either way.
+        let groups: { from: number; to: number }[] = [];
+        try {
+          const g: any = await base44.integrations.Core.InvokeLLM({
+            prompt: `These are numbered caption fragments of a ${languageLabel(lang)} video, in order:
 ${frags.map((f: any, i: number) => `${i}: ${f.text}`).join("\n")}
 
-Group consecutive fragments into complete, natural sentences (merge fragments that belong to the same sentence; don't split a fragment). Cover every fragment exactly once, in order.
-For each sentence return: from (first fragment number), to (last fragment number), hebrew (the sentence in ${languageLabel(lang)} script, exactly as spoken), transliteration (Latin letters), english (natural translation).
-Return JSON: { "sentences": [ { "from", "to", "hebrew", "transliteration", "english" } ] }`,
-          response_json_schema: {
-            type: "object",
-            properties: {
-              sentences: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    from: { type: "number" }, to: { type: "number" },
-                    hebrew: { type: "string" }, transliteration: { type: "string" }, english: { type: "string" },
-                  },
-                },
-              },
+Group consecutive fragments into complete, natural sentences (merge fragments that belong to the same sentence; never split a fragment). Cover every fragment exactly once, in order, from 0 to ${frags.length - 1}.
+Return JSON: { "groups": [ { "from": first fragment number, "to": last fragment number } ] }`,
+            response_json_schema: {
+              type: "object",
+              properties: { groups: { type: "array", items: { type: "object", properties: { from: { type: "number" }, to: { type: "number" } } } } },
             },
-          },
+            max_tokens: 4000,
+          });
+          let next = 0;
+          for (const x of g?.groups || []) {
+            const from = Math.round(Number(x?.from)), to = Math.round(Number(x?.to));
+            if (from !== next || to < from || to >= frags.length) { groups = []; break; }
+            groups.push({ from, to });
+            next = to + 1;
+          }
+          if (next !== frags.length) groups = [];
+        } catch (e) {
+          console.warn("[chapter] AI grouping failed, grouping by punctuation", e);
+        }
+        if (!groups.length) {
+          let from = 0;
+          frags.forEach((f: any, i: number) => {
+            const endsSentence = /[.?!׃…]["'”»]?$/.test(f.text.trim());
+            const long = f.end - frags[from].start >= 12;
+            if (endsSentence || long || i === frags.length - 1) { groups.push({ from, to: i }); from = i + 1; }
+          });
+        }
+        const sentences: any[] = groups.map(({ from, to }) => {
+          const text = frags.slice(from, to + 1).map((f: any) => f.text).join(" ").replace(/\s+/g, " ").trim();
+          return {
+            start: frags[from].start,
+            end: Math.min(frags[to].end, CHAPTER_MAX_SECONDS),
+            hebrew: text,
+            text,
+            transliteration: "",
+            english: "",
+          };
         });
-        const sentences = (r?.sentences || [])
-          .filter((x: any) => Number.isInteger(x?.from) && Number.isInteger(x?.to) && x.from <= x.to && frags[x.from] && frags[x.to] && x.hebrew)
-          .map((x: any) => ({
-            start: frags[x.from].start,
-            end: Math.min(frags[x.to].end, CHAPTER_MAX_SECONDS),
-            hebrew: x.hebrew,
-            text: x.hebrew,
-            transliteration: x.transliteration || "",
-            english: x.english || "",
-          }))
-          .sort((a: any, b: any) => a.start - b.start);
         if (!sentences.length) throw new Error("no sentences");
+
+        // 2 · Phonetic + English in batches of 12 (short answers). A failed batch
+        // is filled per sentence when shown.
+        for (let b = 0; b < sentences.length; b += 12) {
+          const batch = sentences.slice(b, b + 12);
+          try {
+            const t: any = await base44.integrations.Core.InvokeLLM({
+              prompt: `For each ${languageLabel(lang)} sentence below give its Latin-letter transliteration and a natural English translation, in the same order.
+${batch.map((x: any, i: number) => `${i}: ${x.text}`).join("\n")}
+Return JSON: { "items": [ { "i": number, "transliteration": string, "english": string } ] }`,
+              response_json_schema: {
+                type: "object",
+                properties: { items: { type: "array", items: { type: "object", properties: { i: { type: "number" }, transliteration: { type: "string" }, english: { type: "string" } } } } },
+              },
+              max_tokens: 4000,
+            });
+            for (const it of t?.items || []) {
+              const x = batch[Math.round(Number(it?.i))];
+              if (x) { x.transliteration = it.transliteration || ""; x.english = it.english || ""; }
+            }
+          } catch (e) {
+            console.warn("[chapter] translation batch failed", e);
+          }
+        }
         await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences, source: res?.source || "" });
         queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
       } catch (e) {
