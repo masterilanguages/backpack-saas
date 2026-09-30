@@ -1567,16 +1567,6 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
   }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, shellSegments]);
   const discSeg: any = discSegments[discIdx] || null;
   const coverTint = useCoverTint(discovery ? shellVideo?.video_id : undefined);
-  // Library: the chapter the student is in the middle of (else the first one
-  // not started) is featured on top, tinted with its cover's colour.
-  const libFeatured = useMemo(() => {
-    const withVid = (shellVideos as any[]).filter((v) => v.video_id);
-    const inProgress = withVid
-      .filter((v) => { const st = chapterStep(chapterByVideo.get(v.video_id)); return st > 1 && st < 5; })
-      .sort((a, b) => String(chapterByVideo.get(b.video_id)?.updated_date || "").localeCompare(String(chapterByVideo.get(a.video_id)?.updated_date || "")));
-    return inProgress[0] || withVid.find((v) => chapterStep(chapterByVideo.get(v.video_id)) === 1) || null;
-  }, [shellVideos, chapterByVideo]);
-  const libTint = useCoverTint(tab === "library" && !shellVideo ? libFeatured?.video_id : undefined);
   const discProgressInSentence = discSeg?.end > discSeg?.start
     ? Math.min(1, Math.max(0, (shellTime - discSeg.start) / (discSeg.end - discSeg.start)))
     : 0;
@@ -3074,18 +3064,15 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         )}
 
         {/* ================= LIBRARY ================= */}
-        {/* Design L2: the chapter in progress featured on top (tinted with its
-            cover), then every video as a vertical list to scroll through. */}
+        {/* Design L6: compact cards in a vertical list — thumbnail on the left,
+            name + artist, the chapter's 4-step progress and Start / Continue. */}
         {tab === "library" && !shellVideo && libView === "grid" && (
-          <div
-            className="flex min-h-0 flex-1 flex-col"
-            style={{ background: `linear-gradient(180deg, rgba(${libTint || "196,190,240"},.42) 0%, rgba(${libTint || "196,190,240"},.14) 34%, #fff 58%)` }}
-          >
+          <div className="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,#F6F5FB,#fff_40%)] [font-family:var(--font-body)]">
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4">
               <div className="flex items-end justify-between">
                 <div>
-                  <h2 className="text-[28px] font-extrabold leading-none tracking-tight text-slate-900">Library</h2>
-                  <p className="mt-1 text-xs text-slate-600">
+                  <h2 className="text-[30px] font-extrabold leading-none tracking-[-0.03em] text-slate-900 [font-family:var(--font-display)]">Library</h2>
+                  <p className="mt-1 text-xs text-slate-500">
                     {shellVideos.length} video{shellVideos.length === 1 ? "" : "s"} · {languageLabel(language)}
                   </p>
                 </div>
@@ -3097,42 +3084,6 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 </button>
               </div>
 
-              {/* featured: continue (or start) the chapter */}
-              {libFeatured && libFilter === "all" && (() => {
-                const v = libFeatured;
-                const st = chapterStep(chapterByVideo.get(v.video_id));
-                const started = st > 1;
-                return (
-                  <button
-                    onClick={() => openChapter(v)}
-                    className="mt-4 block w-full overflow-hidden rounded-3xl bg-white text-left"
-                    style={{ boxShadow: `0 22px 44px -22px rgba(${libTint || "99,102,241"},.95)` }}
-                  >
-                    <div
-                      className="aspect-video w-full bg-slate-200 bg-cover bg-center"
-                      style={{ backgroundImage: `url(https://i.ytimg.com/vi/${v.video_id}/hqdefault.jpg)` }}
-                    />
-                    <div className="px-4 pb-4 pt-3">
-                      <p className="text-[10px] font-extrabold uppercase tracking-[0.12em]" style={{ color: `rgb(${libTint || "79,70,229"})`, filter: "brightness(.7)" }}>
-                        {started ? `Continue · step ${st} of 4` : "Start your next chapter"}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-lg font-extrabold leading-snug text-slate-900">{v.title}</p>
-                      <div className="mt-3 flex items-center justify-between">
-                        <span className="flex gap-1">
-                          {[1, 2, 3, 4].map((n) => (
-                            <span key={n} className={`h-1.5 w-6 rounded-full ${n < st ? "bg-slate-900" : "bg-slate-200"}`} />
-                          ))}
-                        </span>
-                        <span className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white">
-                          <Play className="h-3.5 w-3.5 fill-current" /> {started ? "Continue" : "Start"}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })()}
-
-              {/* All videos / My videos */}
               <div className="mt-4 flex gap-2">
                 {[
                   { key: "all", label: "All videos" },
@@ -3142,7 +3093,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     key={f.key}
                     onClick={() => setLibFilter(f.key as any)}
                     className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                      libFilter === f.key ? "bg-slate-900 text-white" : "bg-white/80 text-slate-600 hover:text-slate-900"
+                      libFilter === f.key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:text-slate-900"
                     }`}
                   >
                     {f.label}
@@ -3154,7 +3105,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 const visible = libFilter === "mine" ? shellVideos.filter((v: any) => v._mine) : shellVideos;
                 if (visible.length === 0) {
                   return (
-                    <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-10 text-center">
+                    <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
                       <p className="text-sm font-semibold text-slate-700">
                         {libFilter === "mine" ? "You haven't added any videos yet" : "No videos yet"}
                       </p>
@@ -3169,48 +3120,16 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   );
                 }
                 return (
-                  <>
-                    <p className="mb-1 mt-5 text-[11px] font-extrabold uppercase tracking-[0.1em] text-slate-400">
-                      {libFilter === "mine" ? "My videos" : "All videos"}
-                    </p>
-                    <div className="flex flex-col">
-                      {visible.map((v: any) => {
-                        const vid = v.video_id || "";
-                        const thumb = v.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/mqdefault.jpg` : "");
-                        const st = vid ? chapterStep(chapterByVideo.get(vid)) : 1;
-                        const dur = fmtMinutes(v.duration_minutes);
-                        return (
-                          <button
-                            key={`${v._mine ? "mine" : "cat"}_${v.id}`}
-                            onClick={() => openShellVideo(v)}
-                            className="flex items-center gap-3 border-b border-slate-900/[.06] py-2.5 text-left last:border-0"
-                          >
-                            <span className="relative h-[66px] w-[118px] flex-shrink-0 overflow-hidden rounded-xl bg-slate-200">
-                              {thumb && (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={thumb} alt="" className="h-full w-full object-cover" onError={(e: any) => { e.target.style.display = "none"; }} />
-                              )}
-                              {dur && <span className="absolute bottom-1 right-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-bold text-white">{dur}</span>}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="line-clamp-2 text-sm font-bold leading-snug text-slate-900">{v.title}</span>
-                              <span className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400">
-                                {v.difficulty_level || "All levels"}
-                                {v._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-700">My video</span>}
-                              </span>
-                            </span>
-                            <span
-                              className={`flex-shrink-0 rounded-lg px-2 py-1 text-[10px] font-extrabold ${
-                                st === 5 ? "bg-emerald-50 text-emerald-700" : st > 1 ? "bg-indigo-50 text-indigo-600" : "bg-fuchsia-50 text-fuchsia-600"
-                              }`}
-                            >
-                              {st === 5 ? "Done" : st > 1 ? `Step ${st} of 4` : "New"}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
+                  <div className="mt-4 flex flex-col gap-3.5">
+                    {visible.map((v: any) => (
+                      <LibraryCard
+                        key={`${v._mine ? "mine" : "cat"}_${v.id}`}
+                        video={v}
+                        step={v.video_id ? chapterStep(chapterByVideo.get(v.video_id)) : 1}
+                        onOpen={() => (v.video_id ? openChapter(v) : openShellVideo(v))}
+                      />
+                    ))}
+                  </div>
                 );
               })()}
             </div>
@@ -3737,6 +3656,47 @@ function ChapterWatch({
 // sentence replays), then "Show translation" reveals it and replays once more.
 // Recommended words (picked by the system) are underlined and starred.
 // ---------------------------------------------------------------------------
+// Library card (design L6). Opens the video's chapter where the student left it.
+function LibraryCard({ video, step, onOpen }: { video: any; step: number; onOpen: () => void }) {
+  const short = useDisplayTitle(video);
+  const vid = video.video_id || "";
+  const thumb = video.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/mqdefault.jpg` : "");
+  const dur = fmtMinutes(video.duration_minutes);
+  const cta = step === 5 ? "Review" : step > 1 ? "Continue" : "Start";
+  return (
+    <button
+      onClick={onOpen}
+      className="grid grid-cols-[130px_minmax(0,1fr)] overflow-hidden rounded-[22px] bg-white text-left shadow-[0_0_0_1px_#ECECF3] transition active:scale-[.99]"
+    >
+      <span className="relative row-span-2 min-h-[96px] bg-slate-200 bg-cover bg-center" style={thumb ? { backgroundImage: `url(${thumb})` } : undefined}>
+        {dur && <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-bold text-white">{dur}</span>}
+      </span>
+      <span className="flex items-center gap-2.5 px-3 pt-2.5">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[17px] font-extrabold leading-tight tracking-[-0.01em] text-slate-900 [font-family:var(--font-display)]">
+            {short?.name || video.title}
+          </span>
+          <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+            {short ? short.artist || video.difficulty_level || "" : video.difficulty_level || ""}
+          </span>
+        </span>
+        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-white">
+          {step === 5 ? <Check className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
+        </span>
+      </span>
+      <span className="flex items-center gap-2.5 px-3 pb-2.5 pt-1.5">
+        <span className="flex gap-1">
+          {[1, 2, 3, 4].map((n) => (
+            <span key={n} className={`h-[5px] w-[22px] rounded-full ${n < step ? "bg-slate-900" : "bg-slate-200"}`} />
+          ))}
+        </span>
+        {video._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">Mine</span>}
+        <span className="ml-auto text-xs font-extrabold text-slate-900">{cta}</span>
+      </span>
+    </button>
+  );
+}
+
 function DiscoveryPanel({
   mode = "discovery", loading, preparing = false, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
   onTapWord, onAddWord, onClosePopup, onReplay, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
