@@ -32,12 +32,17 @@ export interface TranscriptResult {
   processingTime?: string;
   error?: string;
   details?: string;
+  // Set when `transcript` is in another language and only its timings count
+  // (returned only when allowTimingOnly was requested).
+  timing_only?: boolean;
 }
 
 export interface TranscribeOptions {
   // Target language as a NAME ("hebrew", "spanish", ...) or ISO code; the edge
   // function normalizes it.
   language?: string;
+  // Accept a wrong-language result for its timings (see timing_only).
+  allowTimingOnly?: boolean;
 }
 
 // Transcribe any supported media source. Resolves to a TranscriptResult
@@ -49,6 +54,7 @@ export async function transcribeMediaSource(
   const result = await base44.functions.invoke("transcribeMedia", {
     source,
     language: opts.language || "",
+    ...(opts.allowTimingOnly ? { allow_timing_only: true } : {}),
   });
   return (result?.data || { transcript: [], language: "unknown", source: "none", error: "No response from transcription service" }) as TranscriptResult;
 }

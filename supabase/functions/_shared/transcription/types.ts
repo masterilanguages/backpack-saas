@@ -38,6 +38,9 @@ export interface TranscriptResult {
   details?: string;
   // Breadcrumb of what the provider did, surfaced for debugging.
   steps: string[];
+  // True when `transcript` is in the wrong language and only its timings are
+  // meaningful (returned only with allowTimingOnly).
+  timingOnly?: boolean;
 }
 
 export interface TranscribeOptions {
@@ -47,6 +50,10 @@ export interface TranscribeOptions {
   // Wall-clock budget. Supabase edge functions hard-stop around 150s, so the
   // registry passes a conservative budget and providers must respect it.
   budgetMs?: number;
+  // Opt-in: when the text comes back in the wrong language, return it anyway
+  // (flagged timingOnly) so the caller can use its REAL timings and pair them
+  // with a transcript it already has. Never used as the transcript itself.
+  allowTimingOnly?: boolean;
 }
 
 // A pluggable engine. `supports` gates on the source kind AND on the provider

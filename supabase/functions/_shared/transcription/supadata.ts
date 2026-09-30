@@ -152,19 +152,44 @@ export const supadataProvider: TranscriptionProvider = {
       const sample = content.slice(0, 40).map((s: any) => s?.text || "").join(" ");
       if (!matchesRequestedScript(sample, reqCode)) {
         steps.push(`wrong_language:${normLang(generated?.lang) || "unknown"}`);
-        const captions = await fetchSupadata(
+        let captions = await fetchSupadata(
           apiKey,
           videoId,
           { mode: "native", lang: reqCode },
           Math.max(20_000, genBudget - firstBudget),
         );
         steps.push("native_captions_fallback");
-        const capContent: any[] = Array.isArray(captions?.content) ? captions.content : [];
-        const capSample = capContent.slice(0, 40).map((s: any) => s?.text || "").join(" ");
+        let capContent: any[] = Array.isArray(captions?.content) ? captions.content : [];
+        let capSample = capContent.slice(0, 40).map((s: any) => s?.text || "").join(" ");
+        // YouTube still tags Hebrew tracks with the legacy code "iw"; asking
+        // for "he" can fall through to another language's track.
+        if (reqCode === "he" && !(capContent.length > 0 && matchesRequestedScript(capSample, reqCode))) {
+          const iw = await fetchSupadata(apiKey, videoId, { mode: "native", lang: "iw" }, 20_000);
+          steps.push("native_captions_iw");
+          const iwContent: any[] = Array.isArray(iw?.content) ? iw.content : [];
+          const iwSample = iwContent.slice(0, 40).map((s: any) => s?.text || "").join(" ");
+          if (iwContent.length > 0 && matchesRequestedScript(iwSample, reqCode)) {
+            captions = iw;
+            capContent = iwContent;
+            capSample = iwSample;
+          }
+        }
         if (capContent.length > 0 && matchesRequestedScript(capSample, reqCode)) {
           generated = captions;
           content = capContent;
           source_id = "youtube_captions_validated";
+        } else if (opts.allowTimingOnly) {
+          // The caller only wants real timings. Captions keep the timing of
+          // the original track, so prefer them over the dub's ASR.
+          const timed = toSegments(capContent.length > 0 ? capContent : content);
+          steps.push(`timing_only:${capContent.length > 0 ? "captions" : "audio"}`);
+          return {
+            transcript: timed,
+            language: normLang((capContent.length > 0 ? captions : generated)?.lang) || "unknown",
+            source: capContent.length > 0 ? "youtube_captions_timing" : "supadata_ai_timing",
+            steps,
+            timingOnly: true,
+          };
         } else {
           steps.push("wrong_language_unrecoverable");
           return {

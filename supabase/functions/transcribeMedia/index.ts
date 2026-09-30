@@ -73,7 +73,10 @@ Deno.serve(async (req) => {
     const requestedLanguage = String(body?.language || "").toLowerCase();
     const reqCode = normLang(LANGUAGE_CODE[requestedLanguage] || requestedLanguage);
 
-    const result = await transcribeMediaSource(source, { language: reqCode || undefined });
+    const result = await transcribeMediaSource(source, {
+      language: reqCode || undefined,
+      allowTimingOnly: body?.allow_timing_only === true,
+    });
 
     return json({
       data: {
@@ -85,6 +88,7 @@ Deno.serve(async (req) => {
         video_id: sourceLabel(source),
         steps: result.steps,
         processingTime: elapsed(),
+        ...(result.timingOnly ? { timing_only: true } : {}),
         ...(result.error ? { error: result.error } : {}),
         ...(result.details ? { details: result.details } : {}),
       },

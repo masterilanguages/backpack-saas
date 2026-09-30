@@ -1294,12 +1294,79 @@ ${chunk.map((s: any, j: number) => `${j + 1}. Source: "${s.hebrew || s.translite
       setChapterPreparing(true);
       try {
         const lang = shellVideo.language || language;
-        const res: any = await transcribeMediaSource(youtubeSource(vid), { language: lang });
+        const res: any = await transcribeMediaSource(youtubeSource(vid), { language: lang, allowTimingOnly: true });
         const frags = (res?.transcript || [])
           .map((f: any) => ({ text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0) }))
           .filter((f: any) => f.text && f.start < CHAPTER_MAX_SECONDS);
         if (!frags.length) throw new Error(res?.error || "no timed transcript");
 
+        let sentences: any[] = [];
+        if (res?.timing_only) {
+          // The only timed track is in another language (e.g. a French dub —
+          // checked: it follows the original speech sentence by sentence). Pair
+          // its timings with the video's stored transcript: the model returns
+          // only index ranges, the Hebrew text is ours.
+          const lines = (Array.isArray(shellVideo.processed_transcript) ? shellVideo.processed_transcript : [])
+            .map((s: any) => stripCaptionNoise(s?.hebrew || s?.text))
+            .filter(Boolean);
+          if (!lines.length) throw new Error("no stored transcript to pair with the timings");
+          // The model only says in which fragment each line STARTS (asking for
+          // ranges on both sides made it produce overlapping ranges).
+          const a: any = await base44.integrations.Core.InvokeLLM({
+            prompt: `A ${languageLabel(lang)} video. List A: its original ${languageLabel(lang)} lines, in order. List B: timed fragments of a translation of the same video (${res.language || "other language"}), in order. B covers only the beginning of the video, so the last A lines may not be in B at all.
+A:
+${lines.map((t: string, i: number) => `${i}: ${t}`).join("\n")}
+
+B:
+${frags.map((f: any, i: number) => `${i}: ${f.text}`).join("\n")}
+
+For every A line that is said within B, give the number of the B fragment where that line STARTS being said. Several A lines can start in the same fragment. Numbers never go backwards. Leave out A lines that come after the end of B.
+Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
+            response_json_schema: {
+              type: "object",
+              properties: { starts: { type: "array", items: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } } } } },
+            },
+            max_tokens: 4000,
+          });
+          const given = new Map<number, number>();
+          for (const x of a?.starts || []) {
+            const ai = Math.round(Number(x?.a)), bi = Math.round(Number(x?.b));
+            if (ai >= 0 && ai < lines.length && bi >= 0 && bi < frags.length) given.set(ai, bi);
+          }
+          const lastLine = given.size ? Math.max(...Array.from(given.keys())) : -1;
+          // Fragment each line starts in: a skipped line inherits the previous
+          // one's, and it never goes backwards.
+          const lineFrag: number[] = [];
+          for (let i = 0; i <= lastLine; i++) {
+            const prev = i ? lineFrag[i - 1] : 0;
+            lineFrag.push(Math.max(prev, given.get(i) ?? prev));
+          }
+          // Lines starting in the same fragment share its time by length.
+          const starts: number[] = [];
+          for (let i = 0; i <= lastLine; ) {
+            let j = i;
+            while (j + 1 <= lastLine && lineFrag[j + 1] === lineFrag[i]) j++;
+            const f = frags[lineFrag[i]];
+            const lens = lines.slice(i, j + 1).map((t: string) => Math.max(1, t.length));
+            const total = lens.reduce((x: number, y: number) => x + y, 0);
+            let t = f.start;
+            for (let k = i; k <= j; k++) { starts.push(t); t += ((f.end - f.start) * lens[k - i]) / total; }
+            i = j + 1;
+          }
+          for (let i = 0; i <= lastLine; i++) {
+            const end = i < lastLine ? starts[i + 1] : frags[frags.length - 1].end;
+            sentences.push({
+              start: starts[i],
+              end: Math.min(end, CHAPTER_MAX_SECONDS),
+              hebrew: lines[i],
+              text: lines[i],
+              transliteration: "",
+              english: "",
+            });
+          }
+          sentences = sentences.filter((x: any) => x.start < CHAPTER_MAX_SECONDS && x.end > x.start);
+          if (!sentences.length) throw new Error("could not pair the transcript with the timings");
+        } else {
         // 1 · Group fragments into sentences. The model only returns fragment
         // numbers (a short answer); if that fails, group without AI (until a
         // sentence-ending mark or ~12 s). Timings are the real ones either way.
@@ -1336,7 +1403,7 @@ Return JSON: { "groups": [ { "from": first fragment number, "to": last fragment 
             if (endsSentence || long || i === frags.length - 1) { groups.push({ from, to: i }); from = i + 1; }
           });
         }
-        const sentences: any[] = groups.map(({ from, to }) => {
+        sentences = groups.map(({ from, to }) => {
           const text = frags.slice(from, to + 1).map((f: any) => f.text).join(" ").replace(/\s+/g, " ").trim();
           return {
             start: frags[from].start,
@@ -1347,6 +1414,7 @@ Return JSON: { "groups": [ { "from": first fragment number, "to": last fragment 
             english: "",
           };
         });
+        }
         if (!sentences.length) throw new Error("no sentences");
 
         // 2 · Phonetic + English in batches of 12 (short answers). A failed batch
