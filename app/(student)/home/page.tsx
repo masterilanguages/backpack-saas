@@ -2362,7 +2362,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             {discovery ? (
               <DiscoveryPanel
                 mode={passKind}
-                loading={shellSegsLoading || chapterPreparing}
+                loading={shellSegsLoading || chapterPreparing || !chapterContentFetched}
                 segments={discSegments}
                 idx={discIdx}
                 revealed={discRevealed}
