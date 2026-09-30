@@ -16,7 +16,7 @@ import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
@@ -72,6 +72,44 @@ const cleanGlosses = (words: any) =>
     .filter((g: any) => g?.w && g?.meaning)
     .map((g: any) => ({ w: String(g.w), phonetic: String(g.phonetic || ""), meaning: String(g.meaning) }));
 const normGloss = (t: string) => cleanToken(t || "").replace(/[\u0591-\u05C7]/g, "");
+// The cover's average colour (like Spotify's now-playing screen), as "r,g,b".
+// YouTube thumbnails are served with CORS, so the canvas can read them.
+function useCoverTint(videoId?: string) {
+  const [tint, setTint] = useState<string | null>(null);
+  useEffect(() => {
+    setTint(null);
+    if (!videoId) return;
+    let off = false;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = 32; c.height = 18;
+        const ctx = c.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0, 32, 18);
+        const d = ctx.getImageData(0, 0, 32, 18).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+          if (mx < 35 || mn > 230) continue; // skip black bars and blown-out white
+          const w = 1 + (mx - mn) / 48;       // favour coloured pixels over grey
+          r += d[i] * w; g += d[i + 1] * w; b += d[i + 2] * w; n += w;
+        }
+        if (n && !off) setTint(`${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)}`);
+      } catch {}
+    };
+    img.src = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+    return () => { off = true; };
+  }, [videoId]);
+  return tint;
+}
+const fmtTime = (sec: number) => {
+  const t = Math.max(0, Math.floor(sec || 0));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+};
+
 const findGloss = (words: any[] | undefined, token: string) => {
   const t = normGloss(token);
   return t ? (words || []).find((g: any) => normGloss(g.w) === t) || null : null;
@@ -1464,6 +1502,10 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     return shellSegments.filter((s: any) => (s.start ?? 0) < CHAPTER_MAX_SECONDS);
   }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, shellSegments]);
   const discSeg: any = discSegments[discIdx] || null;
+  const coverTint = useCoverTint(discovery ? shellVideo?.video_id : undefined);
+  const discProgressInSentence = discSeg?.end > discSeg?.start
+    ? Math.min(1, Math.max(0, (shellTime - discSeg.start) / (discSeg.end - discSeg.start)))
+    : 0;
   // Word glosses of a sentence: saved with it, or (chapters prepared before
   // glosses existed) fetched once while the sentence is on screen.
   const glossCacheRef = useRef<Record<string, any[]>>({});
@@ -2390,23 +2432,38 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
 
         {/* ================= LIBRARY / VIDEO PLAYER ================= */}
         {(tab === "library" || tab === "path") && shellVideo && (
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div
+            className="flex min-h-0 flex-1 flex-col"
+            // Sentence passes: Spotify-style, tinted with the cover's colour and fading to white.
+            style={discovery ? { background: `linear-gradient(180deg, rgba(${coverTint || "196,190,240"},.5) 0%, rgba(${coverTint || "196,190,240"},.2) 40%, #fff 72%)` } : undefined}
+          >
             {/* Header */}
-            <div className="flex flex-shrink-0 items-center gap-2 px-4 pt-2 pb-2">
+            <div className={`flex flex-shrink-0 items-center gap-2 px-4 ${discovery ? "pt-3 pb-1" : "pt-2 pb-2"}`}>
               <button
                 onClick={closeShellVideo}
                 aria-label="Back"
-                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                className={`rounded-lg p-1 ${discovery ? "text-slate-700 hover:bg-white/60" : "text-slate-400 hover:bg-white hover:text-slate-700"}`}
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">
-                {discovery ? (passKind === "discovery" ? "🔍 Sentence discovery" : "👂 Comprehension pass") : shellVideo.title}
-              </span>
+              {discovery ? (
+                <span className="min-w-0 flex-1 truncate text-center leading-tight">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-600">
+                    {passKind === "discovery" ? "Sentence discovery" : "Comprehension pass"}
+                  </span>
+                  <span className="block truncate text-[13px] font-bold text-slate-900">{shellVideo.title}</span>
+                </span>
+              ) : (
+                <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">{shellVideo.title}</span>
+              )}
+              {discovery && <span className="w-7 flex-shrink-0" />}
             </div>
 
             {/* Player */}
-            <div className="relative w-full flex-shrink-0 bg-black" style={discovery ? { height: 150 } : { aspectRatio: "16/9" }}>
+            <div
+              className={`relative flex-shrink-0 bg-black ${discovery ? "mx-4 mt-2 overflow-hidden rounded-2xl shadow-[0_22px_40px_-20px_rgba(15,18,34,.6)]" : "w-full"}`}
+              style={{ aspectRatio: "16/9" }}
+            >
               <div id="shell-yt-player" className="h-full w-full" />
               {discovery && (
                 <>
@@ -2449,6 +2506,10 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onPause={pauseDisc}
                 onResume={resumeDisc}
                 onReveal={revealDiscTranslation}
+                onHideTranslation={() => setDiscRevealed(false)}
+                title={shellVideo.title}
+                progress={discProgressInSentence}
+                recommendedWords={recommendedWords}
                 onPrev={() => { setWordPopup(null); setDiscIdx((i) => Math.max(0, i - 1)); }}
                 onNext={() => { setWordPopup(null); setDiscIdx((i) => i + 1); }}
                 onFinish={finishDiscovery}
@@ -3473,7 +3534,8 @@ function ChapterWatch({
 // ---------------------------------------------------------------------------
 function DiscoveryPanel({
   mode = "discovery", loading, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
-  onTapWord, onAddWord, onClosePopup, onReplay, playing, onPause, onResume, onReveal, onPrev, onNext, onFinish,
+  onTapWord, onAddWord, onClosePopup, onReplay, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
+  title, progress, recommendedWords,
 }: {
   // "discovery" (step 2): words tappable, recommended words marked.
   // "comprehension" (step 3): less help — words not tappable.
@@ -3495,20 +3557,25 @@ function DiscoveryPanel({
   onPause: () => void;
   onResume: () => void;
   onReveal: () => void;
+  onHideTranslation: () => void;
   onPrev: () => void;
   onNext: () => void;
   onFinish: () => void;
+  title?: string;
+  // How far the video is through the current sentence, 0–1.
+  progress: number;
+  recommendedWords: any[];
 }) {
   if (loading) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10">
-        <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
-        <p className="text-xs text-slate-500">Preparing the sentences…</p>
+        <Loader2 className="h-6 w-6 animate-spin text-slate-700" />
+        <p className="text-xs text-slate-600">Preparing the sentences…</p>
       </div>
     );
   }
   if (!segments.length) {
-    return <p className="py-10 text-center text-sm text-slate-400">No sentences available for this video.</p>;
+    return <p className="py-10 text-center text-sm text-slate-500">No sentences available for this video.</p>;
   }
   const seg = segments[Math.min(idx, segments.length - 1)];
   const main = seg.hebrew || seg.text || seg.transliteration || "";
@@ -3523,49 +3590,23 @@ function DiscoveryPanel({
   const popupOpen = wordPopup && String(wordPopup.key || "").startsWith(popupKeyPrefix);
   const popupRec = popupOpen ? recommendedFor(wordPopup.clean) : null;
   const tappable = mode === "discovery";
-
-  // One line each, never wrapping: long lines shrink their font to fit.
-  const fit = (text: string, max: number, k: number) =>
-    `max(10px, min(${max}px, calc(100cqw / ${((text || "").length + 2) * k})))`;
+  const chips = tappable ? recommendedWords.slice(0, 4) : [];
+  const sideBtn = "relative flex h-11 w-11 items-center justify-center rounded-full transition active:scale-95";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-3 pb-2 pt-2">
-      {/* progress through the sentences */}
-      <div className="flex flex-shrink-0 gap-[2px]">
-        {segments.map((_: any, i: number) => (
-          <span key={i} className={`h-1 flex-1 rounded-full ${i < idx ? "bg-teal-500" : i === idx ? "bg-indigo-500" : "bg-slate-200"}`} />
-        ))}
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-3">
+      {/* title + position */}
+      <div className="mt-4 flex flex-shrink-0 items-end justify-between gap-3">
+        <p className="line-clamp-2 min-w-0 text-[19px] font-extrabold leading-tight tracking-tight text-slate-900">{title}</p>
+        <span className="flex-shrink-0 rounded-lg bg-white/75 px-2.5 py-1 text-xs font-extrabold text-slate-700">
+          {idx + 1} / {segments.length}
+        </span>
       </div>
 
-      <div className="mt-2 flex-shrink-0 rounded-3xl bg-white px-4 py-3 shadow-lg shadow-indigo-100/70" style={{ containerType: "inline-size" }}>
-        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          <span>Sentence {idx + 1} of {segments.length}{tappable ? " · tap any word" : " · try to understand it"}</span>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={playing ? onPause : onResume}
-              className="flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600"
-            >
-              {playing ? <Pause className="h-3 w-3 fill-current" /> : <Play className="h-3 w-3 fill-current" />}
-              {playing ? "Pause" : "Play"}
-            </button>
-            <button onClick={onReplay} className="flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold normal-case tracking-normal text-indigo-600">
-              <RotateCcw className="h-3 w-3" />
-              Replay
-            </button>
-          </div>
-        </div>
-
-        {/* 1 · phonetic (top) */}
-        <p className="mt-2 overflow-hidden whitespace-nowrap text-center italic text-indigo-500" style={{ fontSize: fit(phonetic, 14, 0.5) }}>
-          {phonetic || (translating ? "…" : " ")}
-        </p>
-
-        {/* 2 · the sentence in the target language, one line, every word tappable */}
-        <p
-          dir={rtl ? "rtl" : "ltr"}
-          className="mt-0.5 overflow-hidden whitespace-nowrap text-center leading-snug text-slate-900"
-          style={{ fontSize: fit(main.replace(/[֑-ׇ]/g, ""), 24, 0.62) }}
-        >
+      {/* the sentence: phonetic, native line (words tappable), translation */}
+      <div className="mt-3 flex-shrink-0 text-center">
+        <p className="text-sm italic text-slate-600">{phonetic || (translating ? "…" : " ")}</p>
+        <p dir={rtl ? "rtl" : "ltr"} className="mt-1 text-[24px] font-medium leading-[1.45] text-slate-900">
           {tokens.map((tok: string, wi: number) => {
             const key = `${popupKeyPrefix}${wi}`;
             const open = wordPopup?.key === key;
@@ -3575,8 +3616,8 @@ function DiscoveryPanel({
               <span key={key}>
                 <span
                   onClick={() => onTapWord(key, tok, main)}
-                  className={`cursor-pointer rounded-md px-0.5 transition ${open ? "bg-indigo-100" : "hover:bg-indigo-50"} ${
-                    rec ? "border-b-2 border-fuchsia-400" : "border-b-2 border-dotted border-indigo-200"
+                  className={`cursor-pointer rounded-md px-0.5 transition ${open ? "bg-white" : "hover:bg-white/60"} ${
+                    rec ? "bg-[linear-gradient(transparent_64%,rgba(217,70,239,.3)_64%)]" : "border-b-2 border-dotted border-slate-400/50"
                   }`}
                 >
                   {tok}
@@ -3586,57 +3627,106 @@ function DiscoveryPanel({
             );
           })}
         </p>
-
-        {/* 3 · translation, revealed after the student has tried */}
-        {revealed ? (
-          <p className="mt-1 overflow-hidden whitespace-nowrap text-center text-slate-600" style={{ fontSize: fit(english, 14, 0.5) }}>
-            {english || (translating ? "translating…" : "—")}
-          </p>
-        ) : (
-          <button onClick={onReveal} className="mt-1.5 w-full rounded-xl border border-dashed border-indigo-200 py-1.5 text-xs font-semibold text-indigo-600">
-            👁 Show translation
-          </button>
-        )}
-
-        {/* tapped word: meaning at once + add to Backpack */}
-        {tappable && popupOpen && (
-          <div className="mt-2 flex items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-2">
-                <span dir={rtl ? "rtl" : "ltr"} className="text-lg font-bold text-indigo-950">{wordPopup.clean}</span>
-                {wordPopup.phonetic && <span className="truncate text-xs italic text-indigo-500">{wordPopup.phonetic}</span>}
-                {popupRec && <span className="text-xs" title="Recommended">⭐</span>}
-              </div>
-              <p className="truncate text-xs text-slate-700">
-                {wordPopup.loading ? "translating…" : `= ${wordPopup.translation || popupRec?.meaning || "—"}`}
-              </p>
-            </div>
-            <button
-              onClick={onAddWord}
-              disabled={wordPopup.saving || wordPopup.added}
-              className="flex-shrink-0 rounded-xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-70"
-            >
-              {wordPopup.added ? "✓ Added" : wordPopup.saving ? "…" : "＋ Add"}
-            </button>
-            <button onClick={onClosePopup} aria-label="Close" className="flex-shrink-0 px-1 text-slate-400">✕</button>
-          </div>
+        {revealed && (
+          <p className="mt-1.5 text-sm text-slate-600">{english || (translating ? "translating…" : "—")}</p>
         )}
       </div>
 
-      <div className="mt-2 flex flex-shrink-0 gap-2">
-        <button onClick={onPrev} disabled={idx === 0} className="flex-1 rounded-2xl border border-indigo-100 bg-white py-2.5 text-sm font-semibold text-indigo-600 disabled:opacity-40">
-          ‹ Previous
+      {/* tapped word: meaning at once + add to Backpack */}
+      {tappable && popupOpen && (
+        <div className="mt-3 flex flex-shrink-0 items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-sm">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <span dir={rtl ? "rtl" : "ltr"} className="text-lg font-bold text-slate-900">{wordPopup.clean}</span>
+              {wordPopup.phonetic && <span className="truncate text-xs italic text-slate-500">{wordPopup.phonetic}</span>}
+              {popupRec && <span className="text-[10px] font-bold uppercase tracking-wider text-fuchsia-600">Recommended</span>}
+            </div>
+            <p className="truncate text-xs text-slate-700">
+              {wordPopup.loading ? "translating…" : `= ${wordPopup.translation || popupRec?.meaning || "—"}`}
+            </p>
+          </div>
+          <button
+            onClick={onAddWord}
+            disabled={wordPopup.saving || wordPopup.added}
+            className="flex-shrink-0 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+          >
+            {wordPopup.added ? "Added" : wordPopup.saving ? "…" : "+ Add"}
+          </button>
+          <button onClick={onClosePopup} aria-label="Close" className="flex-shrink-0 p-1 text-slate-400"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* scrubber: one tick per sentence, the current one fills as it plays */}
+      <div className="mt-4 flex-shrink-0">
+        <div className="flex h-1 gap-[2px]">
+          {segments.map((_: any, i: number) => (
+            <span key={i} className="h-full flex-1 overflow-hidden rounded-full bg-slate-900/15">
+              <span
+                className="block h-full bg-slate-900"
+                style={{ width: i < idx ? "100%" : i === idx ? `${Math.round(progress * 100)}%` : "0%" }}
+              />
+            </span>
+          ))}
+        </div>
+        <div className="mt-2 flex justify-between text-[11px] font-semibold tabular-nums text-slate-500">
+          <span>{fmtTime(seg.start)}</span>
+          <span>{fmtTime(seg.end)}</span>
+        </div>
+      </div>
+
+      {/* transport: Translate · Previous · Play · Next · Replay */}
+      <div className="mt-1 flex flex-shrink-0 items-center justify-between">
+        <button
+          onClick={revealed ? onHideTranslation : onReveal}
+          aria-label={revealed ? "Hide translation" : "Show translation"}
+          aria-pressed={revealed}
+          className={`${sideBtn} ${revealed ? "text-slate-900" : "text-slate-500"}`}
+        >
+          <Languages className="h-[22px] w-[22px]" />
+          {revealed && <span className="absolute bottom-0 h-1 w-1 rounded-full bg-current" />}
+        </button>
+        <button onClick={onPrev} disabled={idx === 0} aria-label="Previous sentence" className="flex h-12 w-12 items-center justify-center text-slate-900 disabled:opacity-30">
+          <SkipBack className="h-7 w-7 fill-current" />
+        </button>
+        <button
+          onClick={playing ? onPause : onResume}
+          aria-label={playing ? "Pause" : "Play"}
+          className="flex h-[68px] w-[68px] items-center justify-center rounded-full bg-slate-900 text-white shadow-[0_14px_30px_-10px_rgba(15,18,34,.6)] transition active:scale-95"
+        >
+          {playing ? <Pause className="h-7 w-7 fill-current" /> : <Play className="ml-1 h-7 w-7 fill-current" />}
         </button>
         {last ? (
-          <button onClick={onFinish} className="flex-[1.4] rounded-2xl bg-gradient-to-r from-teal-500 to-indigo-500 py-2.5 text-sm font-bold text-white shadow-md">
-            {tappable ? "✓ Finish discovery" : "✓ Finish pass"}
+          <button onClick={onFinish} aria-label={tappable ? "Finish discovery" : "Finish pass"} className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
+            <Check className="h-6 w-6" />
           </button>
         ) : (
-          <button onClick={onNext} className="flex-[1.4] rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-2.5 text-sm font-bold text-white shadow-md">
-            Next sentence ›
+          <button onClick={onNext} aria-label="Next sentence" className="flex h-12 w-12 items-center justify-center text-slate-900">
+            <SkipForward className="h-7 w-7 fill-current" />
           </button>
         )}
+        <button onClick={onReplay} aria-label="Replay sentence" className={`${sideBtn} text-slate-500`}>
+          <RotateCcw className="h-[22px] w-[22px]" />
+        </button>
       </div>
+      <div className="flex flex-shrink-0 justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
+        <span className="w-11 text-center">Translate</span>
+        <span className="w-12 text-center">{last ? "" : ""}</span>
+        <span />
+        <span className="w-12 text-center text-emerald-600">{last ? "Finish" : ""}</span>
+        <span className="w-11 text-center">Replay</span>
+      </div>
+
+      {/* the chapter's recommended words */}
+      {chips.length > 0 && (
+        <div className="mt-4 flex flex-shrink-0 gap-2">
+          {chips.map((w: any) => (
+            <span key={w.hebrew} className="min-w-0 flex-1 rounded-xl bg-white px-1.5 py-2 text-center shadow-[0_1px_0_rgba(15,18,34,.06)]">
+              <span dir="rtl" className="block truncate text-base text-slate-900">{w.hebrew}</span>
+              <span className="block truncate text-[10px] text-slate-500">{w.meaning}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
