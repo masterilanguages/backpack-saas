@@ -845,7 +845,7 @@ export default function MediaLibrary() {
           try {
             const ask = (extra: any) => base44.integrations.Core.InvokeLLM({ ...extra,
               prompt: `For each ${languageLabel(lang)} line below give ${isHebrew ? "its Latin-letter transliteration and " : ""}a natural English translation, in the same order.${isHebrew ? `
-Transliterate exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as sung): "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, an apostrophe between separate vowels, every spoken vowel; the real pronunciation of each word, never a letter-by-letter guess (נכנסת לחיי = nichnast lechayai).` : ""}
+Transliterate exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as sung): "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, an apostrophe between separate vowels, every spoken vowel; work out each word's grammatical form from context (person, gender, tense) and use its real pronunciation, never a letter-by-letter guess (נכנסת לחיי = nichnast lechayai).` : ""}
 ${batch.map((x: any, k: number) => `${k}: ${x.text}`).join("\n")}
 Return JSON: { "items": [ { "i": number, ${isHebrew ? '"transliteration": string, ' : ""}"english": string } ] }`,
               response_json_schema: {
@@ -855,7 +855,7 @@ Return JSON: { "items": [ { "i": number, ${isHebrew ? '"transliteration": string
               max_tokens: 4000,
             });
             // Stronger model for what students read; the default one if it errors.
-            const r: any = await ask({ model: "claude-sonnet-5-5" }).catch(() => ask({}));
+            const r: any = await ask({ model: "claude-opus-5-5" }).catch(() => ask({}));
             for (const it of r?.items || []) {
               const x = batch[Math.round(Number(it?.i))];
               if (!x) continue;

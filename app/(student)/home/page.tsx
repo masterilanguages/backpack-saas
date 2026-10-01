@@ -52,12 +52,12 @@ const cleanToken = (t: string) => t.replace(/[.,!?;:"'()\[\]{}«»„“”…׀
 // vowels, it guessed "Nikansta lekhayay" for נכנסת לחיי = "Nichnast lechayai").
 // Translations shown to students use the stronger model, with the cheap one as
 // a fallback so nothing is left untranslated if it errors.
-const QUALITY_MODEL = "claude-sonnet-5-5";
+const QUALITY_MODEL = "claude-opus-5-5"; // measured: Sonnet 5.5 still misreads forms (sheviatarti)
 async function invokeQuality(args: any) {
   try { return await base44.integrations.Core.InvokeLLM({ ...args, model: QUALITY_MODEL }); }
   catch { return await base44.integrations.Core.InvokeLLM(args); }
 }
-const HEBREW_TRANSLIT_RULES = `Transliterate Hebrew exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as it is sung), so a learner can read it aloud: "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, an apostrophe between separate vowels (ha'olam), and every vowel that is actually spoken. Use the real pronunciation of each word in context, never a letter-by-letter guess. Examples: נכנסת לחיי = nichnast lechayai; לפני שוויתרתי = lifnei shevitarti; הערת את הלב = he'arta et halev; בן אדם, מה לך נרדם = ben adam, ma lecha nirdam.`;
+const HEBREW_TRANSLIT_RULES = `Transliterate Hebrew exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as it is sung), so a learner can read it aloud: "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, an apostrophe between separate vowels (ha'olam), and every vowel that is actually spoken. Work out each word's grammatical form from the context (person, gender, tense) before transliterating it, and use its real pronunciation, never a letter-by-letter guess. Examples: נכנסת לחיי = nichnast lechayai; לפני שוויתרתי = lifnei shevitarti; הערת את הלב = he'arta et halev; בן אדם, מה לך נרדם = ben adam, ma lecha nirdam.`;
 const translitRules = (label: string) => (/hebrew/i.test(label) ? `
 ${HEBREW_TRANSLIT_RULES}` : "");
 

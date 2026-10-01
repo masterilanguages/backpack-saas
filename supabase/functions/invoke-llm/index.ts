@@ -39,7 +39,11 @@ Deno.serve(async (req) => {
     if (!prompt) return json({ error: "Missing 'prompt'" }, 400);
 
     const chosenModel = model || MODEL_DEFAULT;
-    const maxTokens = max_tokens || 4096;
+    // The newest models (Sonnet 5.5, Opus 5.5, Fable 5.1…) reject a forced
+    // tool_choice and always think, so they get the tool on "auto" plus an
+    // explicit instruction, more output room and medium effort.
+    const noForcedTool = /sonnet-5-5|opus-5-5|fable-5-1|mythos-5-1/.test(chosenModel);
+    const maxTokens = noForcedTool ? Math.max(max_tokens || 0, 16000) : max_tokens || 4096;
 
     // Optionally enrich the prompt with fresh web context (works with or without a schema).
     let webContext = "";
@@ -64,6 +68,7 @@ Deno.serve(async (req) => {
       messages: [{ role: "user", content: userContent }],
     };
     if (system) params.system = system;
+    if (noForcedTool) params.output_config = { effort: "medium" };
 
     if (response_json_schema) {
       // Structured output via a forced tool call — lenient and model-agnostic
@@ -75,7 +80,12 @@ Deno.serve(async (req) => {
           input_schema: response_json_schema,
         },
       ];
-      params.tool_choice = { type: "tool", name: "format_response" };
+      if (noForcedTool) {
+        params.tool_choice = { type: "auto" };
+        userContent.push({ type: "text", text: "Give your answer by calling the format_response tool." });
+      } else {
+        params.tool_choice = { type: "tool", name: "format_response" };
+      }
       const resp: any = await client.messages.create(params);
       const toolUse = resp.content.find((b: any) => b.type === "tool_use");
       if (toolUse) return json(toolUse.input);
@@ -83,6 +93,9 @@ Deno.serve(async (req) => {
         .filter((b: any) => b.type === "text")
         .map((b: any) => b.text)
         .join("");
+      // "auto" doesn't guarantee the call: accept a JSON object written as text.
+      const m = text.match(/\{[\s\S]*\}/);
+      if (m) { try { return json(JSON.parse(m[0])); } catch { /* fall through */ } }
       return json({ response: text });
     }
 
