@@ -35,6 +35,8 @@ import { splitIntoSentences } from "@/lib/chapterSentences";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
 import { buildLyricSegments, chapterContentKey, splitScriptLine } from "@/lib/songLyrics";
 import { alignLinesToWords, fitSungLines, wordsFromFragments } from "@/lib/lyricAlign";
+import { QUALITY_MODEL, translitRules, glossPrompt, GLOSS_SCHEMA, cleanGlosses } from "@/lib/chapterPrompts";
+import { requestChapterPrep } from "@/lib/prepareChapter";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
 // left over from YouTube's wrong-language caption tracks (e.g. "[موسيقى]").
@@ -48,47 +50,12 @@ import { generateLessonAudio } from "@/lib/audio/lessonAudio";
 // Strip punctuation from a tapped transcript token, keeping native letters.
 const cleanToken = (t: string) => t.replace(/[.,!?;:"'()\[\]{}«»„“”…׀׃־]+/g, "").trim();
 
-// Transliteration is where a small model fails in Hebrew (written without
-// vowels, it guessed "Nikansta lekhayay" for נכנסת לחיי = "Nichnast lechayai").
-// Translations shown to students use the stronger model, with the cheap one as
-// a fallback so nothing is left untranslated if it errors.
-const QUALITY_MODEL = "claude-opus-5-5"; // measured: Sonnet 5.5 still misreads forms (sheviatarti)
+// Student-facing translations use the stronger model (lib/chapterPrompts),
+// with the default one as a fallback so nothing is left untranslated.
 async function invokeQuality(args: any) {
   try { return await base44.integrations.Core.InvokeLLM({ ...args, model: QUALITY_MODEL }); }
   catch { return await base44.integrations.Core.InvokeLLM(args); }
 }
-// Simple style, like the lyric videos students compare with: no hyphens or
-// apostrophes, one-letter prefixes joined to their word (Mark's choice).
-const HEBREW_TRANSLIT_RULES = `Transliterate Hebrew exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as it is sung), in a simple everyday style: "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, every vowel that is actually spoken, and no hyphens or apostrophes. Work out each word's grammatical form from the context (person, gender, tense) before transliterating it, and use its real pronunciation, never a letter-by-letter guess. Keep one Latin word per Hebrew word, with a one-letter prefix (ו ה ב כ ל מ ש) joined to its word. Examples: נכנסת לחיי = nichnast lechayai; לפני שוויתרתי = lifnei shevitarti; הערת את הלב בים של צבעים = heart et halev beyam shel tzvaim; בן אדם, מה לך נרדם = ben adam, ma lecha nirdam.`;
-const translitRules = (label: string) => (/hebrew/i.test(label) ? `
-${HEBREW_TRANSLIT_RULES}` : "");
-
-// Chapter sentences carry a gloss per word ({ w, phonetic, meaning }), made
-// with the sentence translation, so a tapped word shows its meaning at once.
-const glossPrompt = (label: string, texts: string[]) => `For each ${label} sentence below give its Latin-letter transliteration, a natural English translation, and every word of it (split on spaces, in order) with its transliteration and its English meaning in this context (1-4 words).${translitRules(label)}
-${texts.map((t, i) => `${i}: ${t}`).join("\n")}
-Return JSON: { "items": [ { "i": number, "transliteration": string, "english": string, "words": [ { "w": the word exactly as written, "phonetic": string, "meaning": string } ] } ] }`;
-const GLOSS_SCHEMA = {
-  type: "object",
-  properties: {
-    items: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          i: { type: "number" },
-          transliteration: { type: "string" },
-          english: { type: "string" },
-          words: { type: "array", items: { type: "object", properties: { w: { type: "string" }, phonetic: { type: "string" }, meaning: { type: "string" } } } },
-        },
-      },
-    },
-  },
-};
-const cleanGlosses = (words: any) =>
-  (Array.isArray(words) ? words : [])
-    .filter((g: any) => g?.w && g?.meaning)
-    .map((g: any) => ({ w: String(g.w), phonetic: String(g.phonetic || ""), meaning: String(g.meaning) }));
 const normGloss = (t: string) => cleanToken(t || "").replace(/[\u0591-\u05C7]/g, "");
 // An averaged colour is muddy; keep its hue but give it some saturation and a
 // mid lightness so the tinted screens read as "the cover's colour".
@@ -1451,6 +1418,7 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
       const existingChapters = await base44.entities.ChapterContent.filter({ video_id: shellVideo.video_id });
       await Promise.all((existingChapters || []).map((chapter: any) => base44.entities.ChapterContent.delete(chapterContentKey(chapter))));
       prepareTried.current.delete(shellVideo.video_id);
+      requestChapterPrep(shellVideo.video_id, shellVideo.language || language, true);
       queryClient.invalidateQueries({ queryKey: ["chapterContent", shellVideo.video_id] });
       toast.success(`${segments.length} lyric lines imported. Start the chapter to translate them.`);
     } catch (error: any) {
@@ -2151,6 +2119,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
       } else {
         await base44.entities.UserSavedVideo.create({ ...data, tags: libPick.channel || "" });
       }
+      requestChapterPrep(vid, data.language); // ready before anyone opens it
       queryClient.invalidateQueries({ queryKey: ["mediaLibrary"] });
       queryClient.invalidateQueries({ queryKey: ["userSavedVideos"] });
       toast.success("Video added to the library!");

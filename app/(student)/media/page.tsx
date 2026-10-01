@@ -30,6 +30,7 @@ import PostVideoFlashcards from "@/components/video/PostVideoFlashcards";
 import { languageLabel, isRTLText } from "@/lib/language";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
+import { requestChapterPrep } from "@/lib/prepareChapter";
 import { buildLyricSegments, chapterContentKey, shouldRefreshChapter, timedSegmentsFromSavedTranscript } from "@/lib/songLyrics";
 
 // Shared, memoized loader for the YouTube IFrame API. The YT API calls the single
@@ -358,7 +359,11 @@ export default function MediaLibrary() {
     .map((d: any) => ({ day_number: d.day_number, count: (d.subsections || []).length }));
 
   const createVideoMutation = useMutation({
-    mutationFn: (data: any) => base44.entities.MediaLibrary.create(data),
+    mutationFn: async (data: any) => {
+      const created = await base44.entities.MediaLibrary.create(data);
+      requestChapterPrep(data.video_id, data.language); // ready before any student opens it
+      return created;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mediaLibrary'] });
       setShowAddDialog(false);
@@ -382,7 +387,11 @@ export default function MediaLibrary() {
   };
 
   const createSavedVideoMutation = useMutation({
-    mutationFn: (data: any) => base44.entities.UserSavedVideo.create(data),
+    mutationFn: async (data: any) => {
+      const created = await base44.entities.UserSavedVideo.create(data);
+      requestChapterPrep(data.video_id, data.language);
+      return created;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userSavedVideos'] });
       toast.success("Video added to your library!");
@@ -429,6 +438,7 @@ export default function MediaLibrary() {
         is_active: true,
       });
       await base44.entities.UserSavedVideo.delete(video.id);
+      requestChapterPrep(video.video_id, video.language);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mediaLibrary'] });
@@ -572,6 +582,7 @@ export default function MediaLibrary() {
   const addToLibraryMutation = useMutation({
     mutationFn: async (video: any) => {
       const videoId = video.youtube_id || video.youtube_video_id || extractYouTubeId(video.video_url || `https://youtube.com/watch?v=${video.youtube_id}`);
+      requestChapterPrep(videoId, userProfile?.language || "hebrew");
       return base44.entities.MediaLibrary.create({
         title: video.title,
         language: userProfile?.language || "hebrew",
@@ -1021,17 +1032,12 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
         return false;
       }
       // Sentence Discovery reads ChapterContent before it reads the video
-      // transcript. Remove the old prepared chapter so it is rebuilt from the
+      // transcript. Rebuild the prepared chapter on the server from the
       // imported canonical lyrics rather than showing stale ASR lines.
       if (shouldRefreshChapter(importingLyrics, processedTranscript?.length || 0) && editingVideo.video_id) {
-        try {
-          const chapters = await base44.entities.ChapterContent.filter({ video_id: editingVideo.video_id });
-          await Promise.all((chapters || []).map((chapter: any) => base44.entities.ChapterContent.delete(chapterContentKey(chapter))));
-          queryClient.invalidateQueries({ queryKey: ["chapterContent", editingVideo.video_id] });
-        } catch (error) {
-          console.warn("Could not refresh the prepared chapter after lyric import", error);
-          toast.warning("Lyrics were saved, but reopen the chapter to refresh its prepared sentences.");
-        }
+        await requestChapterPrep(editingVideo.video_id, data.language || editingVideo.language, true);
+        queryClient.invalidateQueries({ queryKey: ["chapterContent", editingVideo.video_id] });
+        toast.info("Preparing the chapter with the imported lyrics — ready in about a minute.");
       }
       // If a transcript was just processed, extract vocab words
       if (processedTranscript?.length) {
@@ -1048,7 +1054,8 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
         return false;
       }
       queryClient.invalidateQueries({ queryKey: ['mediaLibrary'] });
-      toast.success("Added to library!");
+      toast.success("Added to library! Its chapter is being prepared — ready in about a minute.");
+      requestChapterPrep(data.video_id, data.language);
       // Assign to multiple users with their individual session numbers
       const assignedUsers = formData.assigned_users || [];
       // Sessions we were asked to put the video on but couldn't (missing day row,
@@ -1978,6 +1985,23 @@ Return a JSON with a "videos" array. Each video must have:
                 className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-400"
               >
                 <Plus className="h-4 w-4" /> {canEdit ? "Add New Content" : "Add Video"}
+              </button>
+            )}
+            {/* Prepare every video's chapter on the server (already prepared
+                ones are skipped), so no student meets "Preparing the sentences…". */}
+            {canEdit && (
+              <button
+                onClick={async () => {
+                  const list = (videos as any[]).filter((v) => v.video_id);
+                  toast.info(`Preparing chapters for ${list.length} videos in the background…`);
+                  for (const v of list) {
+                    await requestChapterPrep(v.video_id, v.language);
+                    await new Promise((r) => setTimeout(r, 1500)); // don't start them all at once
+                  }
+                }}
+                className="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+              >
+                Prepare all chapters
               </button>
             )}
 
