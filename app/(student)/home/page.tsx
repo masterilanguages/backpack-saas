@@ -57,7 +57,7 @@ async function invokeQuality(args: any) {
   try { return await base44.integrations.Core.InvokeLLM({ ...args, model: QUALITY_MODEL }); }
   catch { return await base44.integrations.Core.InvokeLLM(args); }
 }
-const HEBREW_TRANSLIT_RULES = `Transliterate Hebrew exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as it is sung), so a learner can read it aloud: "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, an apostrophe between separate vowels (ha'olam), and every vowel that is actually spoken. Work out each word's grammatical form from the context (person, gender, tense) before transliterating it, and use its real pronunciation, never a letter-by-letter guess. Examples: נכנסת לחיי = nichnast lechayai; לפני שוויתרתי = lifnei shevitarti; הערת את הלב = he'arta et halev; בן אדם, מה לך נרדם = ben adam, ma lecha nirdam.`;
+const HEBREW_TRANSLIT_RULES = `Transliterate Hebrew exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as it is sung), so a learner can read it aloud: "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, an apostrophe between separate vowels (ha'olam), and every vowel that is actually spoken. Work out each word's grammatical form from the context (person, gender, tense) before transliterating it, and use its real pronunciation, never a letter-by-letter guess. Keep one Latin word per Hebrew word, and join a one-letter prefix (ו ה ב כ ל מ ש) to its word with a hyphen so the parts show. Examples: נכנסת לחיי = nichnast le-chayai; לפני שוויתרתי = lifnei she-vitarti; הערת את הלב בים = he'art et ha-lev be-yam; בן אדם, מה לך נרדם = ben adam, ma lecha nirdam.`;
 const translitRules = (label: string) => (/hebrew/i.test(label) ? `
 ${HEBREW_TRANSLIT_RULES}` : "");
 
@@ -2715,29 +2715,24 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               className={`relative flex-shrink-0 bg-black ${discovery ? "mx-4 mt-2 overflow-hidden rounded-2xl shadow-[0_22px_40px_-20px_rgba(15,18,34,.6)]" : "w-full"}`}
               style={{ aspectRatio: "16/9" }}
             >
-              <div id="shell-yt-player" className="h-full w-full" />
+              {/* Sentence passes: the player is taller than the frame, so YouTube's
+                  own top bar (title, share) and pause screen ("More videos")
+                  fall in the cropped black bands — the frame shows only the
+                  video, also when paused. */}
+              <div className={discovery ? "absolute inset-x-0 -bottom-[40%] -top-[40%]" : "h-full w-full"}>
+                <div id="shell-yt-player" className="h-full w-full" />
+              </div>
               {discovery && (
                 <>
                   {/* Taps never reach YouTube (its own buttons don't know about
                       sentences): tapping the video pauses / resumes it instead.
-                      Paused, a blurred thumbnail covers YouTube's pause screen —
-                      blurred because many thumbnails have other lyric lines
-                      printed on them, which looked like extra sentences. */}
+                      Paused, the frozen frame stays visible (no thumbnail: many
+                      have other lyric lines printed on them). */}
                   <button
                     onClick={shellPlaying ? pauseDisc : resumeDisc}
                     aria-label={shellPlaying ? "Pause" : "Play"}
                     className="absolute inset-0 flex items-center justify-center overflow-hidden"
                   >
-                    {!shellPlaying && (
-                      <>
-                        <span
-                          aria-hidden="true"
-                          className="absolute inset-0 scale-110 bg-cover bg-center blur-xl"
-                          style={{ backgroundImage: `url(https://i.ytimg.com/vi/${shellVideo.video_id}/mqdefault.jpg)` }}
-                        />
-                        <span aria-hidden="true" className="absolute inset-0 bg-slate-900/35" />
-                      </>
-                    )}
                     {!shellPlaying && (
                       <span className="relative flex h-12 w-12 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm">
                         <Play className="ml-0.5 h-5 w-5 fill-current" />
