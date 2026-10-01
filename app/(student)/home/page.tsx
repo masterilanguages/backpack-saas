@@ -57,7 +57,9 @@ async function invokeQuality(args: any) {
   try { return await base44.integrations.Core.InvokeLLM({ ...args, model: QUALITY_MODEL }); }
   catch { return await base44.integrations.Core.InvokeLLM(args); }
 }
-const HEBREW_TRANSLIT_RULES = `Transliterate Hebrew exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as it is sung), so a learner can read it aloud: "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, an apostrophe between separate vowels (ha'olam), and every vowel that is actually spoken. Work out each word's grammatical form from the context (person, gender, tense) before transliterating it, and use its real pronunciation, never a letter-by-letter guess. Keep one Latin word per Hebrew word, and join a one-letter prefix (ו ה ב כ ל מ ש) to its word with a hyphen so the parts show. Examples: נכנסת לחיי = nichnast le-chayai; לפני שוויתרתי = lifnei she-vitarti; הערת את הלב בים = he'art et ha-lev be-yam; בן אדם, מה לך נרדם = ben adam, ma lecha nirdam.`;
+// Simple style, like the lyric videos students compare with: no hyphens or
+// apostrophes, one-letter prefixes joined to their word (Mark's choice).
+const HEBREW_TRANSLIT_RULES = `Transliterate Hebrew exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as it is sung), in a simple everyday style: "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, every vowel that is actually spoken, and no hyphens or apostrophes. Work out each word's grammatical form from the context (person, gender, tense) before transliterating it, and use its real pronunciation, never a letter-by-letter guess. Keep one Latin word per Hebrew word, with a one-letter prefix (ו ה ב כ ל מ ש) joined to its word. Examples: נכנסת לחיי = nichnast lechayai; לפני שוויתרתי = lifnei shevitarti; הערת את הלב בים של צבעים = heart et halev beyam shel tzvaim; בן אדם, מה לך נרדם = ben adam, ma lecha nirdam.`;
 const translitRules = (label: string) => (/hebrew/i.test(label) ? `
 ${HEBREW_TRANSLIT_RULES}` : "");
 
