@@ -409,6 +409,9 @@ export default function Home() {
   const [shellSegments, setShellSegments] = useState<any[]>([]);
   const [shellSegsLoading, setShellSegsLoading] = useState(false);
   const [shellPlaying, setShellPlaying] = useState(false);
+  // Until the video has played once, YouTube shows its own thumbnail (often
+  // with other lyric lines printed on it): the sentence frame stays dark.
+  const [shellStarted, setShellStarted] = useState(false);
   const [shellSlow, setShellSlow] = useState(false);
   const [shellTime, setShellTime] = useState(0);
   // Transcript row visibility toggles (translation / transliteration)
@@ -1251,6 +1254,7 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
       });
     }
     setShellPlaying(false);
+    setShellStarted(false);
     setShellSlow(false);
     setShellTime(0);
 
@@ -1467,6 +1471,7 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
     setShellVideo(null);
     setShellSegments([]);
     setShellPlaying(false);
+    setShellStarted(false);
     setWordPopup(null);
   };
 
@@ -1494,6 +1499,7 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
             // Buffering (3) counts as playing: covering the video for a
             // loading hiccup flashed the thumbnail mid-sentence.
             setShellPlaying(event.data === 1 || event.data === 3);
+            if (event.data === 1) setShellStarted(true);
             if (discovery && event.data === 1) hideCaptions(event.target);
           },
         },
@@ -2733,7 +2739,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <button
                     onClick={shellPlaying ? pauseDisc : resumeDisc}
                     aria-label={shellPlaying ? "Pause" : "Play"}
-                    className="absolute inset-0 flex items-center justify-center overflow-hidden"
+                    className={`absolute inset-0 flex items-center justify-center overflow-hidden ${!shellStarted ? "bg-slate-900" : ""}`}
                   >
                     {!shellPlaying && (
                       <span className="relative flex h-12 w-12 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm">
