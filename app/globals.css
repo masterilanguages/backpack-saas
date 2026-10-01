@@ -8,8 +8,10 @@
   }
 }
 
-/* Hebrew letters always in one standard print font (Noto Sans Hebrew); the
-   font only covers Hebrew, so Latin text keeps the default font. */
-html {
-  font-family: var(--font-hebrew), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+/* Hebrew in one standard print font (Noto Sans Hebrew). The design fonts
+   (Figtree, Bricolage) have no Hebrew letters, so screens list Noto after
+   them; elsewhere, right-to-left blocks use it directly. Noto also has Latin
+   letters, so it never goes first in a mixed stack. */
+[dir="rtl"] {
+  font-family: var(--font-hebrew), sans-serif;
 }

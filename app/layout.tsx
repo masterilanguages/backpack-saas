@@ -5,8 +5,8 @@ import "./globals.css";
 // Design fonts of the student screens (display titles + body), exposed as CSS
 // variables so a screen opts in with [font-family:var(--font-display)] / (--font-body).
 const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["700", "800"], variable: "--font-display", display: "swap" });
-// Standard print Hebrew for every Hebrew text (only Hebrew letters use it:
-// the font covers the Hebrew range, Latin falls through to the next font).
+// Standard print Hebrew. It also has Latin letters, so it goes AFTER the design
+// fonts in a stack (they have no Hebrew, so Hebrew falls through to it).
 // No generated fallback face: it would cover Latin letters too and win over
 // the design fonts that follow it in the stack.
 const hebrew = Noto_Sans_Hebrew({ subsets: ["hebrew"], weight: ["400", "500", "600", "700", "800"], variable: "--font-hebrew", display: "swap", adjustFontFallback: false, fallback: [] });
