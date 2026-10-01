@@ -48,9 +48,22 @@ import { generateLessonAudio } from "@/lib/audio/lessonAudio";
 // Strip punctuation from a tapped transcript token, keeping native letters.
 const cleanToken = (t: string) => t.replace(/[.,!?;:"'()\[\]{}«»„“”…׀׃־]+/g, "").trim();
 
+// Transliteration is where a small model fails in Hebrew (written without
+// vowels, it guessed "Nikansta lekhayay" for נכנסת לחיי = "Nichnast lechayai").
+// Translations shown to students use the stronger model, with the cheap one as
+// a fallback so nothing is left untranslated if it errors.
+const QUALITY_MODEL = "claude-sonnet-5-5";
+async function invokeQuality(args: any) {
+  try { return await base44.integrations.Core.InvokeLLM({ ...args, model: QUALITY_MODEL }); }
+  catch { return await base44.integrations.Core.InvokeLLM(args); }
+}
+const HEBREW_TRANSLIT_RULES = `Transliterate Hebrew exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as it is sung), so a learner can read it aloud: "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, an apostrophe between separate vowels (ha'olam), and every vowel that is actually spoken. Use the real pronunciation of each word in context, never a letter-by-letter guess. Examples: נכנסת לחיי = nichnast lechayai; לפני שוויתרתי = lifnei shevitarti; הערת את הלב = he'arta et halev; בן אדם, מה לך נרדם = ben adam, ma lecha nirdam.`;
+const translitRules = (label: string) => (/hebrew/i.test(label) ? `
+${HEBREW_TRANSLIT_RULES}` : "");
+
 // Chapter sentences carry a gloss per word ({ w, phonetic, meaning }), made
 // with the sentence translation, so a tapped word shows its meaning at once.
-const glossPrompt = (label: string, texts: string[]) => `For each ${label} sentence below give its Latin-letter transliteration, a natural English translation, and every word of it (split on spaces, in order) with its transliteration and its English meaning in this context (1-4 words).
+const glossPrompt = (label: string, texts: string[]) => `For each ${label} sentence below give its Latin-letter transliteration, a natural English translation, and every word of it (split on spaces, in order) with its transliteration and its English meaning in this context (1-4 words).${translitRules(label)}
 ${texts.map((t, i) => `${i}: ${t}`).join("\n")}
 Return JSON: { "items": [ { "i": number, "transliteration": string, "english": string, "words": [ { "w": the word exactly as written, "phonetic": string, "meaning": string } ] } ] }`;
 const GLOSS_SCHEMA = {
@@ -1699,7 +1712,7 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
         for (let b = 0; b < sentences.length; b += 8) batches.push(sentences.slice(b, b + 8));
         await Promise.all(batches.map(async (batch) => {
           try {
-            const t: any = await base44.integrations.Core.InvokeLLM({
+            const t: any = await invokeQuality({
               prompt: glossPrompt(languageLabel(lang), batch.map((x: any) => x.text)),
               response_json_schema: GLOSS_SCHEMA,
               max_tokens: 8000,
@@ -1750,7 +1763,7 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     const main = discSeg ? discSeg.hebrew || discSeg.text || "" : "";
     if (!discovery || !main || discSeg?.words?.length || glossCacheRef.current[main]) return;
     glossCacheRef.current[main] = [];
-    base44.integrations.Core.InvokeLLM({
+    invokeQuality({
       prompt: glossPrompt(languageLabel(shellVideo?.language || language), [main]),
       response_json_schema: GLOSS_SCHEMA,
     })
@@ -1826,8 +1839,8 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     const main = seg.hebrew || seg.text || seg.transliteration || "";
     setDiscTranslating(true);
     try {
-      const r: any = await base44.integrations.Core.InvokeLLM({
-        prompt: `Translate this ${languageLabel(vidLang)} sentence into natural English and give its Latin-letter transliteration: "${main}". Return JSON with: english, phonetic.`,
+      const r: any = await invokeQuality({
+        prompt: `Translate this ${languageLabel(vidLang)} sentence into natural English and give its Latin-letter transliteration: "${main}". Return JSON with: english, phonetic.${translitRules(languageLabel(vidLang))}`,
         response_json_schema: { type: "object", properties: { english: { type: "string" }, phonetic: { type: "string" } } },
       });
       setDiscTranslations((prev) => ({ ...prev, [i]: { english: r?.english || "", phonetic: r?.phonetic || "" } }));
@@ -1966,8 +1979,8 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     }
     setWordPopup({ key, clean, sentence, translation: "", phonetic: "", loading: true, editing: false, saving: false, added: already });
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Translate the ${languageLabel(vidLang)} word "${clean}" as used in this sentence: "${sentence}". Return JSON with: translation (English meaning, 1-4 words), phonetic (Latin-letter transliteration of the word).`,
+      const result = await invokeQuality({
+        prompt: `Translate the ${languageLabel(vidLang)} word "${clean}" as used in this sentence: "${sentence}". Return JSON with: translation (English meaning, 1-4 words), phonetic (Latin-letter transliteration of the word).${translitRules(languageLabel(vidLang))}`,
         response_json_schema: {
           type: "object",
           properties: { translation: { type: "string" }, phonetic: { type: "string" } },
