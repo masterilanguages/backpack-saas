@@ -1549,6 +1549,13 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
     staleTime: Infinity,
   });
   const prepareTried = useRef<Set<string>>(new Set());
+  // Only a failed preparation falls back to the stored transcript (for lyric
+  // imports its times are rough). Once the sentences exist, a later deletion
+  // of them prepares them again instead of falling back.
+  const [chapterPrepFailed, setChapterPrepFailed] = useState<string | null>(null);
+  useEffect(() => {
+    if (chapterContent && shellVideo?.video_id) prepareTried.current.delete(shellVideo.video_id);
+  }, [chapterContent, shellVideo?.video_id]);
   useEffect(() => {
     const vid = shellVideo?.video_id;
     // Wait for the lookup: while it loads chapterContent is null too, and
@@ -1712,6 +1719,7 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
         queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
       } catch (e) {
         console.error("[chapter] could not prepare timed sentences, using the stored transcript", e);
+        setChapterPrepFailed(vid);
       }
       setChapterPreparing(false);
     })();
@@ -1721,9 +1729,9 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
   const discSegments = useMemo(() => {
     if (!discovery) return [];
     if (Array.isArray(chapterContent?.sentences) && chapterContent.sentences.length) return chapterContent.sentences;
-    if (chapterPreparing || !chapterContentFetched) return [];
+    if (chapterPreparing || !chapterContentFetched || chapterPrepFailed !== shellVideo?.video_id) return [];
     return shellSegments.filter((s: any) => (s.start ?? 0) < CHAPTER_MAX_SECONDS);
-  }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, shellSegments]);
+  }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, chapterPrepFailed, shellVideo?.video_id, shellSegments]);
   const discSeg: any = discSegments[discIdx] || null;
   const coverTint = useCoverTint(discovery ? shellVideo?.video_id : undefined);
   const libMetas = useVideoMetas(tab === "library" ? (shellVideos as any[]) : []);
@@ -2713,7 +2721,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             {discovery ? (
               <DiscoveryPanel
                 mode={passKind}
-                loading={shellSegsLoading || chapterPreparing || !chapterContentFetched}
+                loading={shellSegsLoading || chapterPreparing || !chapterContentFetched || (!chapterContent && chapterPrepFailed !== shellVideo?.video_id)}
                 preparing={chapterPreparing}
                 segments={discSegments}
                 idx={discIdx}
