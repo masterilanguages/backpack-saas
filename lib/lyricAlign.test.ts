@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { alignLinesToWords, normWord, wordsFromFragments } from "./lyricAlign.ts";
+import { alignLinesToWords, holdSungLines, normWord, wordsFromFragments } from "./lyricAlign.ts";
 
 // The real case: ElevenLabs heard line 1 right, line 2 completely wrong
 // ("כורכר בטח חלומי" for "קום קרא בתחנונים") and line 3 almost right.
@@ -39,4 +39,14 @@ Deno.test("normWord folds niqqud, punctuation and final letters", () => {
 
 Deno.test("wordsFromFragments spreads a fragment's words over its duration", () => {
   assertEquals(wordsFromFragments([{ text: "a b", start: 0, end: 2 }]), [{ text: "a", start: 0, end: 1 }, { text: "b", start: 1, end: 2 }]);
+});
+
+Deno.test("a sung line holds until just before the next one (at most 3 s more)", () => {
+  // Real case: ElevenLabs ended "נרדם" at 21.9, but it is sung until ~24.
+  const held = holdSungLines([
+    { start: 16.9, end: 21.9, anchors: 5 },
+    { start: 24.2, end: 29.3, anchors: 0 },
+    { start: 40, end: 44, anchors: 3 },
+  ]);
+  assertEquals(held.map((x) => +x.end.toFixed(2)), [23.95, 32.3, 46]);
 });

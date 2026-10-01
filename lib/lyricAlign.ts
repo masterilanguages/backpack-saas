@@ -127,6 +127,20 @@ function fillGaps(t: LineTiming[], first: number, last: number): LineTiming[] {
   return t;
 }
 
+/**
+ * Sung lines hold their last note well past the end the ASR gives the word
+ * (vowels are stretched), so the replay cut the line short. A line keeps
+ * sounding until just before the next one starts — at most maxHold seconds
+ * more, so an instrumental break isn't played as part of the line.
+ */
+export function holdSungLines(t: LineTiming[], maxHold = 3, gap = 0.25): LineTiming[] {
+  return t.map((x, i) => {
+    const next = t[i + 1];
+    const end = next ? Math.min(next.start - gap, x.end + maxHold) : x.end + Math.min(2, maxHold);
+    return { ...x, end: Math.max(x.end, end) };
+  });
+}
+
 /** ASR fragments without word timings (fallback engines): words spread evenly over each fragment. */
 export function wordsFromFragments(frags: { text: string; start: number; end: number }[]): TimedWord[] {
   const out: TimedWord[] = [];
