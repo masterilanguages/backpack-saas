@@ -7,7 +7,9 @@ import "./globals.css";
 const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["700", "800"], variable: "--font-display", display: "swap" });
 // Standard print Hebrew for every Hebrew text (only Hebrew letters use it:
 // the font covers the Hebrew range, Latin falls through to the next font).
-const hebrew = Noto_Sans_Hebrew({ subsets: ["hebrew"], weight: ["400", "500", "600", "700", "800"], variable: "--font-hebrew", display: "swap" });
+// No generated fallback face: it would cover Latin letters too and win over
+// the design fonts that follow it in the stack.
+const hebrew = Noto_Sans_Hebrew({ subsets: ["hebrew"], weight: ["400", "500", "600", "700", "800"], variable: "--font-hebrew", display: "swap", adjustFontFallback: false, fallback: [] });
 const body = Figtree({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], style: ["normal", "italic"], variable: "--font-body", display: "swap" });
 
 export const metadata: Metadata = {
