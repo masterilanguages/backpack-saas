@@ -128,16 +128,19 @@ function fillGaps(t: LineTiming[], first: number, last: number): LineTiming[] {
 }
 
 /**
- * Sung lines hold their last note well past the end the ASR gives the word
- * (vowels are stretched), so the replay cut the line short. A line keeps
- * sounding until just before the next one starts — at most maxHold seconds
- * more, so an instrumental break isn't played as part of the line.
+ * Fits aligned lines to how ASR times singing. Checked against YouTube's own
+ * word times on a real song: ElevenLabs starts sung words up to ~0.6 s late
+ * (more as the song goes on) and ends them early (stretched vowels). So a line
+ * starts `lead` seconds before its first heard word, and keeps sounding until
+ * the next line starts (at most maxHold seconds past its last word). Losing the
+ * tail of a held note is better than losing the next line's first syllable.
  */
-export function holdSungLines(t: LineTiming[], maxHold = 3, gap = 0.25): LineTiming[] {
+export function fitSungLines(t: LineTiming[], lead = 0.45, maxHold = 3, gap = 0.05): LineTiming[] {
+  const starts = t.map((x, i) => (i ? Math.max(x.start - lead, t[i - 1].start + 0.5) : Math.max(0, x.start - lead)));
   return t.map((x, i) => {
-    const next = t[i + 1];
-    const end = next ? Math.min(next.start - gap, x.end + maxHold) : x.end + Math.min(2, maxHold);
-    return { ...x, end: Math.max(x.end, end) };
+    const nextStart = starts[i + 1];
+    const end = nextStart != null ? Math.min(nextStart - gap, x.end + maxHold) : x.end + Math.min(2, maxHold);
+    return { ...x, start: starts[i], end: Math.max(starts[i] + 0.3, end) };
   });
 }
 

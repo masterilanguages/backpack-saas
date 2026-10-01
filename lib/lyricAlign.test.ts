@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { alignLinesToWords, holdSungLines, normWord, wordsFromFragments } from "./lyricAlign.ts";
+import { alignLinesToWords, fitSungLines, normWord, wordsFromFragments } from "./lyricAlign.ts";
 
 // The real case: ElevenLabs heard line 1 right, line 2 completely wrong
 // ("כורכר בטח חלומי" for "קום קרא בתחנונים") and line 3 almost right.
@@ -41,12 +41,13 @@ Deno.test("wordsFromFragments spreads a fragment's words over its duration", () 
   assertEquals(wordsFromFragments([{ text: "a b", start: 0, end: 2 }]), [{ text: "a", start: 0, end: 1 }, { text: "b", start: 1, end: 2 }]);
 });
 
-Deno.test("a sung line holds until just before the next one (at most 3 s more)", () => {
-  // Real case: ElevenLabs ended "נרדם" at 21.9, but it is sung until ~24.
-  const held = holdSungLines([
-    { start: 16.9, end: 21.9, anchors: 5 },
-    { start: 24.2, end: 29.3, anchors: 0 },
-    { start: 40, end: 44, anchors: 3 },
+Deno.test("sung lines start early and hold until the next line", () => {
+  // Shmuel lines 10-12 as ElevenLabs timed them; YouTube has "ribono" at 69.0
+  // and "ma" (line 12) at 72.9 — both lost before.
+  const fit = fitSungLines([
+    { start: 67.34, end: 69.0, anchors: 3 },
+    { start: 69.42, end: 73.3, anchors: 3 },
+    { start: 73.54, end: 76.8, anchors: 2 },
   ]);
-  assertEquals(held.map((x) => +x.end.toFixed(2)), [23.95, 32.3, 46]);
+  assertEquals(fit.map((x) => [+x.start.toFixed(2), +x.end.toFixed(2)]), [[66.89, 68.92], [68.97, 73.04], [73.09, 78.8]]);
 });

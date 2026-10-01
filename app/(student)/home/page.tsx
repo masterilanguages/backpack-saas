@@ -34,7 +34,7 @@ import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/t
 import { splitIntoSentences } from "@/lib/chapterSentences";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
 import { buildLyricSegments, chapterContentKey, splitScriptLine } from "@/lib/songLyrics";
-import { alignLinesToWords, holdSungLines, wordsFromFragments } from "@/lib/lyricAlign";
+import { alignLinesToWords, fitSungLines, wordsFromFragments } from "@/lib/lyricAlign";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
 // left over from YouTube's wrong-language caption tracks (e.g. "[موسيقى]").
@@ -1600,7 +1600,7 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
             : wordsFromFragments((res?.transcript || []).map((f: any) => ({
                 text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0),
               })));
-          const timing = holdSungLines(alignLinesToWords(lyricLines.map((l: any) => l.text), words));
+          const timing = fitSungLines(alignLinesToWords(lyricLines.map((l: any) => l.text), words));
           sentences = lyricLines
             .map((l: any, i: number) => ({
               start: timing[i].start,
