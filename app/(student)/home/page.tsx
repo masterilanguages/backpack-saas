@@ -1734,6 +1734,7 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
   }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, chapterPrepFailed, shellVideo?.video_id, shellSegments]);
   const discSeg: any = discSegments[discIdx] || null;
   const coverTint = useCoverTint(discovery ? shellVideo?.video_id : undefined);
+  const shellMeta = useDisplayTitle(discovery ? shellVideo : null);
   const libMetas = useVideoMetas(tab === "library" ? (shellVideos as any[]) : []);
   const discProgressInSentence = discSeg?.end > discSeg?.start
     ? Math.min(1, Math.max(0, (shellTime - discSeg.start) / (discSeg.end - discSeg.start)))
@@ -2667,7 +2668,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
           <div
             className="flex min-h-0 flex-1 flex-col"
             // Sentence passes: Spotify-style, tinted with the cover's colour and fading to white.
-            style={discovery ? { background: `linear-gradient(180deg, rgba(${coverTint || "196,190,240"},.5) 0%, rgba(${coverTint || "196,190,240"},.2) 40%, #fff 72%)` } : undefined}
+            style={discovery ? { background: `linear-gradient(180deg, rgba(${coverTint || "196,190,240"},.5) 0%, rgba(${coverTint || "196,190,240"},.2) 40%, #fff 72%), #fff`, fontFamily: "var(--font-body)" } : undefined}
           >
             {/* Header */}
             <div className={`flex flex-shrink-0 items-center gap-2 px-4 ${discovery ? "pt-3 pb-1" : "pt-2 pb-2"}`}>
@@ -2683,7 +2684,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-600">
                     {passKind === "discovery" ? "Sentence discovery" : "Comprehension pass"}
                   </span>
-                  <span className="block truncate text-[13px] font-bold text-slate-900">{shellVideo.title}</span>
+                  <span className="block truncate text-[13px] font-bold text-slate-900">{shellMeta?.name || shellVideo.title}</span>
                 </span>
               ) : (
                 <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">{shellVideo.title}</span>
@@ -2740,7 +2741,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onResume={resumeDisc}
                 onReveal={revealDiscTranslation}
                 onHideTranslation={() => setDiscRevealed(false)}
-                title={shellVideo.title}
+                title={shellMeta?.name || shellVideo.title}
+                artist={shellMeta?.artist || ""}
                 progress={discProgressInSentence}
                 recommendedWords={recommendedWords}
                 onPrev={() => { setWordPopup(null); setDiscIdx((i) => Math.max(0, i - 1)); }}
@@ -3874,7 +3876,7 @@ function LibraryCard({ video, meta, step, onOpen }: { video: any; meta: VideoMet
 function DiscoveryPanel({
   mode = "discovery", loading, preparing = false, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
   onTapWord, onAddWord, onClosePopup, onReplay, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
-  title, progress, recommendedWords,
+  title, artist, progress, recommendedWords,
 }: {
   // "discovery" (step 2): words tappable, recommended words marked.
   // "comprehension" (step 3): less help — words not tappable.
@@ -3904,6 +3906,7 @@ function DiscoveryPanel({
   onNext: () => void;
   onFinish: () => void;
   title?: string;
+  artist?: string;
   // How far the video is through the current sentence, 0–1.
   progress: number;
   recommendedWords: any[];
@@ -3948,7 +3951,10 @@ function DiscoveryPanel({
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-3">
       {/* title + position */}
       <div className="mt-4 flex flex-shrink-0 items-end justify-between gap-3">
-        <p className="line-clamp-2 min-w-0 text-[19px] font-extrabold leading-tight tracking-tight text-slate-900">{title}</p>
+        <div className="min-w-0">
+          <p className="line-clamp-2 text-[24px] font-extrabold leading-none tracking-[-0.02em] text-slate-900 [font-family:var(--font-display)]">{title}</p>
+          {artist && <p className="mt-1 truncate text-sm text-slate-600">{artist}</p>}
+        </div>
         <span className="flex-shrink-0 rounded-lg bg-white/75 px-2.5 py-1 text-xs font-extrabold text-slate-700">
           {idx + 1} / {segments.length}
         </span>
