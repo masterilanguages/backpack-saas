@@ -15,11 +15,12 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { requireUser, serviceClient } from "../_shared/auth.ts";
 import { transcribeMediaSource } from "../_shared/transcription/index.ts";
+import { fetchYoutubeCaptions } from "../_shared/transcription/supadata.ts";
 import { askJsonQuality } from "../_shared/llm.ts";
 import { splitIntoSentences } from "../../../lib/chapterSentences.ts";
 import { alignLinesToWords, fitSungLines, wordsFromFragments } from "../../../lib/lyricAlign.ts";
 import { splitScriptLine } from "../../../lib/songLyrics.ts";
-import { QUALITY_MODEL, glossPrompt, GLOSS_SCHEMA, cleanGlosses, promptLanguageLabel } from "../../../lib/chapterPrompts.ts";
+import { QUALITY_MODEL, glossPrompt, GLOSS_SCHEMA, reviewGlossPrompt, REVIEW_GLOSS_SCHEMA, cleanGlosses, promptLanguageLabel } from "../../../lib/chapterPrompts.ts";
 
 // A chapter's content is at most 3.5 minutes; longer videos use the first 3:30.
 const CHAPTER_MAX_SECONDS = 210;
@@ -31,7 +32,7 @@ const LANGUAGE_CODE: Record<string, string> = {
 const stripCaptionNoise = (text: unknown) =>
   String(text || "").replace(/\[[^\]]{1,60}\]/g, " ").replace(/[♪♫🎵🎶]/g, " ").replace(/\s+/g, " ").trim();
 
-async function prepare(videoId: string, language: string, force: boolean) {
+async function prepare(videoId: string, language: string, force: boolean, opts: { dryRun?: boolean; ignoreLyrics?: boolean } = {}) {
   const db = serviceClient();
   const tag = `[prepareChapter ${videoId}]`;
 
@@ -50,10 +51,16 @@ async function prepare(videoId: string, language: string, force: boolean) {
       return { text: native, transliteration: segment?.transliteration || latin, english: segment?.english || "", lyric: !!segment?.lyric, glued: !!latin };
     })
     .filter((line: any) => line.text);
-  const lyricLines = savedLines.some((l: any) => l.lyric) || savedLines.filter((l: any) => l.glued).length >= 3 ? savedLines : [];
+  const lyricLines = !opts.ignoreLyrics && (savedLines.some((l: any) => l.lyric) || savedLines.filter((l: any) => l.glued).length >= 3) ? savedLines : [];
 
-  // 1 · Hear the audio (ElevenLabs first, Supadata as fallback).
-  const res: any = await transcribeMediaSource({ kind: "youtube", videoId }, { language: LANGUAGE_CODE[language] || language });
+  // 1 · Hear the audio (ElevenLabs first, Supadata as fallback) and, in
+  // parallel, YouTube's own captions as a second hearing (not needed when the
+  // text comes from imported lyrics).
+  const code = LANGUAGE_CODE[language] || language;
+  const [res, captions]: [any, any[]] = await Promise.all([
+    transcribeMediaSource({ kind: "youtube", videoId }, { language: code }),
+    lyricLines.length ? Promise.resolve([]) : fetchYoutubeCaptions(videoId, code).catch(() => []),
+  ]);
   const allFrags = (res?.transcript || [])
     .map((f: any) => ({ text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0) }))
     .filter((f: any) => f.text);
@@ -78,15 +85,31 @@ async function prepare(videoId: string, language: string, force: boolean) {
   if (!sentences.length) throw new Error("no sentences");
 
   // 3 · Transliteration + English + word glosses, batches of 8 in parallel.
+  // Heard text (no imported lyrics) is first reviewed against the second
+  // hearing: clearly misheard words are fixed; what ElevenLabs heard is kept
+  // in `heard` for every line that changed.
   const label = promptLanguageLabel(language);
+  const review = !lyricLines.length;
+  const altFor = (x: any) => captions
+    .filter((c: any) => c.start < x.end + 0.5 && c.start + c.duration > x.start - 0.5)
+    .map((c: any) => stripCaptionNoise(c.text)).filter(Boolean).join(" ");
+  let fixedCount = 0;
   const batches: any[][] = [];
   for (let b = 0; b < sentences.length; b += 8) batches.push(sentences.slice(b, b + 8));
   await Promise.all(batches.map(async (batch) => {
     try {
-      const t = await askJsonQuality(glossPrompt(label, batch.map((x: any) => x.text)), GLOSS_SCHEMA, QUALITY_MODEL, 8000);
+      const t = review
+        ? await askJsonQuality(reviewGlossPrompt(label, batch.map((x: any) => ({ text: x.text, alt: altFor(x) }))), REVIEW_GLOSS_SCHEMA, QUALITY_MODEL, 12000)
+        : await askJsonQuality(glossPrompt(label, batch.map((x: any) => x.text)), GLOSS_SCHEMA, QUALITY_MODEL, 8000);
       for (const it of t?.items || []) {
         const x = batch[Math.round(Number(it?.i))];
         if (!x) continue;
+        const fixed = String(it?.fixed || "").trim();
+        if (review && fixed && fixed !== x.text) {
+          x.heard = x.text;
+          x.text = x.hebrew = fixed;
+          fixedCount++;
+        }
         x.transliteration = x.transliteration || it.transliteration || "";
         x.english = x.english || it.english || "";
         x.words = cleanGlosses(it.words);
@@ -95,6 +118,10 @@ async function prepare(videoId: string, language: string, force: boolean) {
       console.warn(`${tag} translation batch failed`, e);
     }
   }));
+  if (opts.dryRun) return { sentences, source: res?.source, captions: captions.length, fixed: fixedCount };
+  // Nothing translated (e.g. the AI account is out of credit): don't save a
+  // chapter without transliteration or English — it can be prepared again.
+  if (!sentences.some((x: any) => x.transliteration || x.english)) throw new Error("no sentence could be translated");
 
   // 4 · Save (replacing an older version only when asked to).
   if (force) await db.from("chapter_content").delete().eq("video_id", videoId);
@@ -105,7 +132,7 @@ async function prepare(videoId: string, language: string, force: boolean) {
     source: `${res?.source || ""}${lyricLines.length ? "+lyrics" : ""}`,
   });
   if (error) throw new Error(`save failed: ${error.message}`);
-  console.log(`${tag} ready: ${sentences.length} sentences (${res?.source})`);
+  console.log(`${tag} ready: ${sentences.length} sentences (${res?.source}; second hearing: ${captions.length ? "youtube captions" : "none"}; ${fixedCount} lines fixed)`);
 }
 
 Deno.serve(async (req) => {
@@ -118,6 +145,14 @@ Deno.serve(async (req) => {
   const videoId = String(body?.videoId || "").trim();
   const language = String(body?.language || "hebrew").toLowerCase();
   const force = body?.force === true;
+  // Testing: run the pipeline and return the result without saving anything.
+  if (body?.dryRun === true) {
+    try {
+      return json(await prepare(videoId, language, false, { dryRun: true, ignoreLyrics: body?.ignoreLyrics === true }));
+    } catch (e: any) {
+      return json({ error: e?.message || String(e) }, 500);
+    }
+  }
   if (!/^[\w-]{6,20}$/.test(videoId)) return json({ error: "Provide a YouTube videoId" }, 400);
 
   if (!force) {

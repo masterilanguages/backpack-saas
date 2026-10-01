@@ -48,3 +48,32 @@ export const promptLanguageLabel = (lang: string) => {
   const l = String(lang || "").trim();
   return l ? l.charAt(0).toUpperCase() + l.slice(1).toLowerCase() : "the target language";
 };
+
+// Same as glossPrompt, but each line may come with a second hearing of the
+// same seconds (YouTube's own captions). The model first fixes words that were
+// clearly misheard — choosing between the two hearings, never rewriting —
+// then transliterates, translates and glosses the corrected line.
+export const reviewGlossPrompt = (label: string, lines: { text: string; alt?: string }[]) => `Below are the lines of a ${label} video as heard by speech recognition (A), with a second independent hearing of the same seconds where available (B). For each line:
+1. "fixed": the line in ${label} script with only the words that were clearly misheard corrected — words that do not exist in ${label}, or that do not fit the grammar or meaning of the line (wrong person, gender, a letter swapped). Use B and the surrounding lines to choose the right word. Never rewrite, shorten, reorder or improve the line; if unsure, keep A's word. If nothing is wrong, return A unchanged.
+2. Its Latin-letter transliteration, a natural English translation, and every word of the fixed line (split on spaces, in order) with its transliteration and its English meaning in this context (1-4 words).${translitRules(label)}
+${lines.map((l, i) => `${i}: A: ${l.text}${l.alt ? `\n   B: ${l.alt}` : ""}`).join("\n")}
+Return JSON: { "items": [ { "i": number, "fixed": string, "transliteration": string, "english": string, "words": [ { "w": the word exactly as written in "fixed", "phonetic": string, "meaning": string } ] } ] }`;
+
+export const REVIEW_GLOSS_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          i: { type: "number" },
+          fixed: { type: "string" },
+          transliteration: { type: "string" },
+          english: { type: "string" },
+          words: { type: "array", items: { type: "object", properties: { w: { type: "string" }, phonetic: { type: "string" }, meaning: { type: "string" } } } },
+        },
+      },
+    },
+  },
+};

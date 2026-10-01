@@ -296,3 +296,24 @@ export const supadataProvider: TranscriptionProvider = {
     };
   },
 };
+
+/**
+ * YouTube's own (Google) captions for a video in the requested language, as a
+ * second, independent hearing to check ElevenLabs against. Empty when the
+ * video has none, when they are in another script, or on any error.
+ */
+export async function fetchYoutubeCaptions(videoId: string, language: string): Promise<TranscriptSegment[]> {
+  const apiKey = Deno.env.get("SUPADATA_API_KEY");
+  if (!apiKey) return [];
+  const reqCode = normLang(language);
+  // YouTube still tags Hebrew tracks with the legacy code "iw".
+  for (const lang of reqCode === "he" ? ["he", "iw"] : [reqCode]) {
+    try {
+      const r = await fetchSupadata(apiKey, videoId, { mode: "native", lang }, 20_000);
+      const content: any[] = Array.isArray(r?.content) ? r.content : [];
+      const sample = content.slice(0, 40).map((s: any) => s?.text || "").join(" ");
+      if (content.length && matchesRequestedScript(sample, reqCode)) return toSegments(content);
+    } catch { /* next */ }
+  }
+  return [];
+}

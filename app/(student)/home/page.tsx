@@ -1706,6 +1706,9 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
             console.warn("[chapter] translation batch failed", e);
           }
         }));
+        // Nothing translated (e.g. the AI account is out of credit): don't save
+        // a chapter without transliteration or English; it is retried later.
+        if (!sentences.some((x: any) => x.transliteration || x.english)) throw new Error("no sentence could be translated");
         await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences, source: `${res?.source || ""}${lyricLines.length ? "+lyrics" : ""}` });
         queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
       } catch (e) {
