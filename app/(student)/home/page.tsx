@@ -1489,7 +1489,9 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
           onReady: (event: any) => { if (discovery) hideCaptions(event.target); },
           onApiChange: (event: any) => { if (discovery) hideCaptions(event.target); },
           onStateChange: (event: any) => {
-            setShellPlaying(event.data === 1);
+            // Buffering (3) counts as playing: covering the video for a
+            // loading hiccup flashed the thumbnail mid-sentence.
+            setShellPlaying(event.data === 1 || event.data === 3);
             if (discovery && event.data === 1) hideCaptions(event.target);
           },
         },
@@ -2718,15 +2720,26 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 <>
                   {/* Taps never reach YouTube (its own buttons don't know about
                       sentences): tapping the video pauses / resumes it instead.
-                      Paused, the thumbnail covers YouTube's pause screen. */}
+                      Paused, a blurred thumbnail covers YouTube's pause screen —
+                      blurred because many thumbnails have other lyric lines
+                      printed on them, which looked like extra sentences. */}
                   <button
                     onClick={shellPlaying ? pauseDisc : resumeDisc}
                     aria-label={shellPlaying ? "Pause" : "Play"}
-                    className="absolute inset-0 flex items-center justify-center bg-cover bg-center"
-                    style={shellPlaying ? undefined : { backgroundImage: `linear-gradient(rgba(15,23,42,.4), rgba(15,23,42,.4)), url(https://i.ytimg.com/vi/${shellVideo.video_id}/hqdefault.jpg)` }}
+                    className="absolute inset-0 flex items-center justify-center overflow-hidden"
                   >
                     {!shellPlaying && (
-                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm">
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-0 scale-110 bg-cover bg-center blur-xl"
+                          style={{ backgroundImage: `url(https://i.ytimg.com/vi/${shellVideo.video_id}/mqdefault.jpg)` }}
+                        />
+                        <span aria-hidden="true" className="absolute inset-0 bg-slate-900/35" />
+                      </>
+                    )}
+                    {!shellPlaying && (
+                      <span className="relative flex h-12 w-12 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm">
                         <Play className="ml-0.5 h-5 w-5 fill-current" />
                       </span>
                     )}
