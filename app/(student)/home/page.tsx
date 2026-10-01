@@ -2668,7 +2668,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
           <div
             className="flex min-h-0 flex-1 flex-col"
             // Sentence passes: Spotify-style, tinted with the cover's colour and fading to white.
-            style={discovery ? { background: `linear-gradient(180deg, rgba(${coverTint || "196,190,240"},.5) 0%, rgba(${coverTint || "196,190,240"},.2) 40%, #fff 72%), #fff`, fontFamily: "var(--font-body)" } : undefined}
+            style={discovery ? { background: `linear-gradient(180deg, rgba(${coverTint || "196,190,240"},.5) 0%, rgba(${coverTint || "196,190,240"},.2) 40%, #fff 72%), #fff`, fontFamily: "var(--font-hebrew), var(--font-body)" } : undefined}
           >
             {/* Header */}
             <div className={`flex flex-shrink-0 items-center gap-2 px-4 ${discovery ? "pt-3 pb-1" : "pt-2 pb-2"}`}>
@@ -3237,11 +3237,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {/* Design L6: compact cards in a vertical list — thumbnail on the left,
             name + artist, the chapter's 4-step progress and Start / Continue. */}
         {tab === "library" && !shellVideo && libView === "grid" && (
-          <div className="flex min-h-0 flex-1 flex-col [font-family:var(--font-body)]" style={{ background: "linear-gradient(180deg, #F6F5FB, #fff 40%), #fff" }}>
+          <div className="flex min-h-0 flex-1 flex-col [font-family:var(--font-hebrew),var(--font-body)]" style={{ background: "linear-gradient(180deg, #F6F5FB, #fff 40%), #fff" }}>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4">
               <div className="flex items-end justify-between">
                 <div>
-                  <h2 className="text-[30px] font-extrabold leading-none tracking-[-0.03em] text-slate-900 [font-family:var(--font-display)]">Library</h2>
+                  <h2 className="text-[30px] font-extrabold leading-none tracking-[-0.03em] text-slate-900 [font-family:var(--font-hebrew),var(--font-display)]">Library</h2>
                   <p className="mt-1 text-xs text-slate-500">
                     {shellVideos.length} video{shellVideos.length === 1 ? "" : "s"} · {languageLabel(language)}
                   </p>
@@ -3665,7 +3665,7 @@ function ChapterWatch({
     const step = final ? 4 : 1;
     return (
       <div
-        className="absolute inset-0 z-30 flex flex-col px-5 pb-6 text-slate-900 [font-family:var(--font-body)]"
+        className="absolute inset-0 z-30 flex flex-col px-5 pb-6 text-slate-900 [font-family:var(--font-hebrew),var(--font-body)]"
         style={{ background: `linear-gradient(180deg, rgba(${t},.5) 0%, rgba(${t},.18) 40%, #fff 70%), #fff` }}
       >
         <div className="flex flex-shrink-0 items-center justify-between pt-9">
@@ -3697,16 +3697,16 @@ function ChapterWatch({
             </p>
             {shortTitle ? (
               <>
-                <p className="mt-1.5 line-clamp-2 text-[28px] font-extrabold leading-none tracking-[-0.03em] [font-family:var(--font-display)]">{shortTitle.name}</p>
+                <p className="mt-1.5 line-clamp-2 text-[28px] font-extrabold leading-none tracking-[-0.03em] [font-family:var(--font-hebrew),var(--font-display)]">{shortTitle.name}</p>
                 {shortTitle.artist && <p className="mt-1.5 truncate text-sm italic text-slate-500">{shortTitle.artist}</p>}
               </>
             ) : (
-              <p className="mt-1.5 line-clamp-4 text-lg font-extrabold leading-snug tracking-tight [font-family:var(--font-display)]">{video.title}</p>
+              <p className="mt-1.5 line-clamp-4 text-lg font-extrabold leading-snug tracking-tight [font-family:var(--font-hebrew),var(--font-display)]">{video.title}</p>
             )}
           </div>
         </div>
 
-        <p className="mt-6 flex-shrink-0 text-[30px] font-extrabold leading-[1.1] tracking-[-0.02em] [font-family:var(--font-display)]">
+        <p className="mt-6 flex-shrink-0 text-[30px] font-extrabold leading-[1.1] tracking-[-0.02em] [font-family:var(--font-hebrew),var(--font-display)]">
           {final ? "How much do you understand now?" : "How much can you understand without help?"}
         </p>
 
@@ -3849,7 +3849,7 @@ function LibraryCard({ video, meta, step, onOpen }: { video: any; meta: VideoMet
       </span>
       <span className="flex items-center gap-2.5 px-3 pt-2.5">
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[17px] font-extrabold leading-tight tracking-[-0.01em] text-slate-900 [font-family:var(--font-display)]">
+          <span className="block truncate text-[17px] font-extrabold leading-tight tracking-[-0.01em] text-slate-900 [font-family:var(--font-hebrew),var(--font-display)]">
             {short?.name || video.title}
           </span>
           <span className="mt-0.5 block truncate text-[13px] text-slate-500">
@@ -3952,7 +3952,7 @@ function DiscoveryPanel({
       {/* title + position */}
       <div className="mt-4 flex flex-shrink-0 items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="line-clamp-2 text-[24px] font-extrabold leading-none tracking-[-0.02em] text-slate-900 [font-family:var(--font-display)]">{title}</p>
+          <p className="line-clamp-2 text-[24px] font-extrabold leading-none tracking-[-0.02em] text-slate-900 [font-family:var(--font-hebrew),var(--font-display)]">{title}</p>
           {artist && <p className="mt-1 truncate text-sm text-slate-600">{artist}</p>}
         </div>
         <span className="flex-shrink-0 rounded-lg bg-white/75 px-2.5 py-1 text-xs font-extrabold text-slate-700">

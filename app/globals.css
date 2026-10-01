@@ -7,3 +7,9 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+/* Hebrew letters always in one standard print font (Noto Sans Hebrew); the
+   font only covers Hebrew, so Latin text keeps the default font. */
+html {
+  font-family: var(--font-hebrew), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
