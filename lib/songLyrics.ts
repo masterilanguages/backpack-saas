@@ -5,6 +5,8 @@ export interface LyricSegment {
   english: string;
   start: number;
   end: number;
+  // Published lyrics (not ASR text): timed word by word when the chapter is made.
+  lyric: true;
 }
 
 /** Rehydrates usable ASR text/timestamps from a previously saved video. */
@@ -58,6 +60,6 @@ export function buildLyricSegments(lines: string[], starts: number[], finalEnd: 
     const nextStart = Number(starts[index + 1]);
     const end = Number.isFinite(nextStart) && nextStart > start ? nextStart : Math.max(start + 0.1, finalEnd);
     const { native, latin } = splitScriptLine(line);
-    return { text: native, hebrew: native, transliteration: latin, english: "", start, end };
+    return { text: native, hebrew: native, transliteration: latin, english: "", start, end, lyric: true };
   });
 }

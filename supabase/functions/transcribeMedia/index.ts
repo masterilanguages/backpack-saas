@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
         steps: result.steps,
         processingTime: elapsed(),
         ...(result.timingOnly ? { timing_only: true } : {}),
+        ...(result.words?.length ? { words: result.words } : {}),
         ...(result.error ? { error: result.error } : {}),
         ...(result.details ? { details: result.details } : {}),
       },

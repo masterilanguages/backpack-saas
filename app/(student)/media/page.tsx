@@ -831,9 +831,11 @@ export default function MediaLibrary() {
       const segs = autoSegments.map((s: any) => ({
         text: String(s.text || "").trim(),
         hebrew: isHebrew ? String(s.text || "").trim() : undefined,
-        transliteration: isHebrew ? "" : String(s.text || "").trim(),
+        transliteration: isHebrew ? String(s.transliteration || "").trim() : String(s.text || "").trim(),
         english: "",
         start: Number(s.start) || 0,
+        // Published lyrics: the chapter times them word by word against the audio.
+        ...(s.lyric ? { lyric: true } : {}),
       })).filter((s: any) => s.text);
       const batches: any[][] = [];
       for (let i = 0; i < segs.length; i += 12) batches.push(segs.slice(i, i + 12));
@@ -854,7 +856,7 @@ Return JSON: { "items": [ { "i": number, ${isHebrew ? '"transliteration": string
             for (const it of r?.items || []) {
               const x = batch[Math.round(Number(it?.i))];
               if (!x) continue;
-              if (isHebrew) x.transliteration = it.transliteration || "";
+              if (isHebrew) x.transliteration = x.transliteration || it.transliteration || "";
               x.english = it.english || "";
             }
           } catch (e) {

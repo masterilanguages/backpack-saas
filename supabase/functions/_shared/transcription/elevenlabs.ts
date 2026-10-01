@@ -32,10 +32,12 @@ const ISO3_TO_1: Record<string, string> = { heb: "he", eng: "en", spa: "es", fra
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
+const spokenWords = (words: any[]) => (words || [])
+  .filter((w: any) => w?.type === "word" && String(w?.text ?? "").trim())
+  .map((w: any) => ({ text: String(w.text).trim(), start: round(Number(w.start) || 0), end: round(Number(w.end) || 0) }));
+
 function toSegments(words: any[]): TranscriptSegment[] {
-  const spoken = (words || [])
-    .filter((w: any) => w?.type === "word" && String(w?.text ?? "").trim())
-    .map((w: any) => ({ text: String(w.text).trim(), start: Number(w.start) || 0, end: Number(w.end) || 0 }));
+  const spoken = spokenWords(words);
 
   const out: TranscriptSegment[] = [];
   let cur: { words: string[]; start: number; end: number } | null = null;
@@ -113,6 +115,7 @@ export const elevenlabsProvider: TranscriptionProvider = {
       transcript,
       language: ISO3_TO_1[returned] || normLang(returned) || reqCode || "unknown",
       source: "elevenlabs_scribe",
+      words: spokenWords(payload?.words),
       steps,
     };
   },

@@ -34,6 +34,7 @@ import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/t
 import { splitIntoSentences } from "@/lib/chapterSentences";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
 import { buildLyricSegments, chapterContentKey, splitScriptLine } from "@/lib/songLyrics";
+import { alignLinesToWords, wordsFromFragments } from "@/lib/lyricAlign";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
 // left over from YouTube's wrong-language caption tracks (e.g. "[موسيقى]").
@@ -1558,31 +1559,17 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
       setChapterPreparing(true);
       try {
         const lang = shellVideo.language || language;
-        // Media has already produced the canonical transcript (and, for songs,
-        // aligned published lyrics) with timestamps. A fresh ASR pass must not
-        // replace it when preparing the learning chapter.
-        const saved = (Array.isArray(shellVideo.processed_transcript) ? shellVideo.processed_transcript : [])
-          .map((segment: any, index: number, all: any[]) => {
-            const start = Number(segment?.start) || 0;
-            const nextStart = Number(all[index + 1]?.start);
-            // Lyrics imported before the fix can hold "Hebrew+romanization" in one line.
+        // Songs with imported lyrics: the lyrics give the words, the audio the
+        // times. Lines are timed word by word against the transcription below.
+        // (Imports made before the marker existed are recognised by the
+        // Hebrew+romanization lines Letras.com produced.)
+        const savedLines = (Array.isArray(shellVideo.processed_transcript) ? shellVideo.processed_transcript : [])
+          .map((segment: any) => {
             const { native, latin } = splitScriptLine(stripCaptionNoise(segment?.hebrew || segment?.text));
-            return {
-              start,
-              end: Number.isFinite(nextStart) && nextStart > start ? nextStart : start + 5,
-              hebrew: native,
-              text: native,
-              transliteration: segment?.transliteration || latin,
-              english: segment?.english || "",
-              words: segment?.words,
-            };
+            return { text: native, transliteration: segment?.transliteration || latin, english: segment?.english || "", lyric: !!segment?.lyric, glued: !!latin };
           })
-          .filter((segment: any) => segment.text && segment.start < CHAPTER_MAX_SECONDS);
-        if (saved.length) {
-          await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences: saved, source: "saved_transcript" });
-          queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
-          return;
-        }
+          .filter((line: any) => line.text);
+        const lyricLines = savedLines.some((l: any) => l.lyric) || savedLines.filter((l: any) => l.glued).length >= 3 ? savedLines : [];
         // Supadata's free plan rejects simultaneous requests ("Limit Exceeded")
         // — e.g. the shell transcribing the same new video at the same time —
         // so wait and retry a couple of times.
@@ -1598,7 +1585,27 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
         if (!frags.length) throw new Error(res?.error || "no timed transcript");
 
         let sentences: any[] = [];
-        if (res?.timing_only) {
+        if (lyricLines.length) {
+          // Every spoken word with its time (ElevenLabs); other engines only
+          // time fragments, whose words are spread evenly.
+          const words = Array.isArray(res?.words) && res.words.length
+            ? res.words
+            : wordsFromFragments((res?.transcript || []).map((f: any) => ({
+                text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0),
+              })));
+          const timing = alignLinesToWords(lyricLines.map((l: any) => l.text), words);
+          sentences = lyricLines
+            .map((l: any, i: number) => ({
+              start: timing[i].start,
+              end: Math.min(timing[i].end, CHAPTER_MAX_SECONDS),
+              hebrew: l.text,
+              text: l.text,
+              transliteration: l.transliteration,
+              english: l.english,
+            }))
+            .filter((x: any) => x.start < CHAPTER_MAX_SECONDS - 1 && x.end > x.start);
+          if (!sentences.length) throw new Error("could not time the lyrics");
+        } else if (res?.timing_only) {
           // The only timed track is in another language (e.g. a French dub —
           // checked: it follows the original speech sentence by sentence). Pair
           // its timings with the video's stored transcript: the model returns
@@ -1693,15 +1700,15 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
             for (const it of t?.items || []) {
               const x = batch[Math.round(Number(it?.i))];
               if (!x) continue;
-              x.transliteration = it.transliteration || "";
-              x.english = it.english || "";
+              x.transliteration = x.transliteration || it.transliteration || "";
+              x.english = x.english || it.english || "";
               x.words = cleanGlosses(it.words);
             }
           } catch (e) {
             console.warn("[chapter] translation batch failed", e);
           }
         }));
-        await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences, source: res?.source || "" });
+        await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences, source: `${res?.source || ""}${lyricLines.length ? "+lyrics" : ""}` });
         queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
       } catch (e) {
         console.error("[chapter] could not prepare timed sentences, using the stored transcript", e);

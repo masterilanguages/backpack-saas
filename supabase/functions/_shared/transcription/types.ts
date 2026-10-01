@@ -38,6 +38,9 @@ export interface TranscriptResult {
   details?: string;
   // Breadcrumb of what the provider did, surfaced for debugging.
   steps: string[];
+  // Every spoken word with its own start/end (seconds), when the engine gives
+  // them (ElevenLabs). Used to time song lyrics word by word.
+  words?: { text: string; start: number; end: number }[];
   // True when `transcript` is in the wrong language and only its timings are
   // meaningful (returned only with allowTimingOnly).
   timingOnly?: boolean;
