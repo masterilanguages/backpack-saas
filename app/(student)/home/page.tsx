@@ -1813,7 +1813,10 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
       const stopAt = discStopAtRef.current;
       if (stopAt == null || !p?.getCurrentTime) return;
       // Checked often and a hair early: pausing takes effect ~0.1 s later.
-      if (p.getCurrentTime() >= stopAt - 0.08) {
+      // Right after a seek back (Replay / Previous) the player still reports
+      // the old, later position for a moment — that must not count as the end.
+      const ct = p.getCurrentTime();
+      if (ct >= stopAt - 0.08 && ct < stopAt + 1.5) {
         discStopAtRef.current = null;
         p.pauseVideo?.();
       }
