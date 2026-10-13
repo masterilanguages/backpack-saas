@@ -4290,8 +4290,17 @@ function DiscoveryPanel({
             );
           })}
         </p>
+        {/* The translation belongs to the sentence, not the audio controls:
+            Hebrew → ask for help → English appears right underneath. */}
+        <button
+          onClick={revealed ? onHideTranslation : onReveal}
+          aria-expanded={revealed}
+          className="mt-2 inline-flex items-center gap-1 rounded-full border border-slate-900/10 bg-white/60 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-white hover:text-slate-900 active:scale-95"
+        >
+          {revealed ? "Hide translation ↑" : "Translate ↓"}
+        </button>
         {revealed && (
-          <p className="mt-1.5 text-sm text-slate-600">{english || (translating ? "translating…" : "—")}</p>
+          <p className="mt-2 text-sm text-slate-600">{english || (translating ? "translating…" : "—")}</p>
         )}
       </div>
 
@@ -4337,17 +4346,9 @@ function DiscoveryPanel({
         </div>
       </div>
 
-      {/* transport: Translate · Previous · Play · Next · Replay */}
+      {/* transport: Previous · Play · Next · Replay (left slot keeps Play centred) */}
       <div className="mt-1 flex flex-shrink-0 items-center justify-between">
-        <button
-          onClick={revealed ? onHideTranslation : onReveal}
-          aria-label={revealed ? "Hide translation" : "Show translation"}
-          aria-pressed={revealed}
-          className={`${sideBtn} ${revealed ? "text-slate-900" : "text-slate-500"}`}
-        >
-          <Languages className="h-[22px] w-[22px]" />
-          {revealed && <span className="absolute bottom-0 h-1 w-1 rounded-full bg-current" />}
-        </button>
+        <span className="h-11 w-11" aria-hidden="true" />
         <button onClick={onPrev} disabled={idx === 0} aria-label="Previous sentence" className="flex h-12 w-12 items-center justify-center text-slate-900 disabled:opacity-30">
           <SkipBack className="h-7 w-7 fill-current" />
         </button>
@@ -4372,7 +4373,7 @@ function DiscoveryPanel({
         </button>
       </div>
       <div className="flex flex-shrink-0 justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
-        <span className="w-11 text-center">Translate</span>
+        <span className="w-11" />
         <span className="w-12 text-center">{last ? "" : ""}</span>
         <span />
         <span className="w-12 text-center text-emerald-600">{last ? "Finish" : ""}</span>
