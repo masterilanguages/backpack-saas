@@ -10,7 +10,7 @@
 //   ACCOUNT   profile menu — Progress and Schedule live here
 // The turtle mascot reacts (idle / happy / sad / cheer) like Duolingo's owl.
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
@@ -4199,6 +4199,53 @@ function LibraryCard({
   );
 }
 
+// Keeps a sentence on ONE line by shrinking its font to the available width.
+// Only a sentence still too wide at `min` px may wrap (smaller is unreadable).
+function FitLine({
+  fitKey, dir, className = "", max = 24, min = 15, children,
+}: {
+  fitKey: string; dir: "rtl" | "ltr"; className?: string; max?: number; min?: number; children: React.ReactNode;
+}) {
+  const boxRef = useRef<HTMLParagraphElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [fit, setFit] = useState({ size: max, wrap: false });
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const text = textRef.current;
+    if (!box || !text) return;
+    const measure = () => {
+      const avail = box.clientWidth;
+      const widthAt = (px: number) => {
+        text.style.fontSize = `${px}px`;
+        text.style.whiteSpace = "nowrap";
+        return text.getBoundingClientRect().width;
+      };
+      const natural = widthAt(max);
+      if (!natural || !avail || natural <= avail) return setFit({ size: max, wrap: false });
+      // Proportional first guess, then step down: word padding/underlines
+      // don't scale with the font, so the guess can be slightly too big.
+      let size = Math.min(max, Math.floor(((max * avail) / natural) * 10) / 10);
+      while (size > min && widthAt(size) > avail) size -= 0.5;
+      setFit(size >= min && widthAt(size) <= avail ? { size, wrap: false } : { size: min, wrap: true });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [fitKey, max, min]);
+  return (
+    <p ref={boxRef} dir={dir} className={className}>
+      <span
+        ref={textRef}
+        className="inline-block"
+        style={{ fontSize: `${fit.size}px`, whiteSpace: fit.wrap ? "normal" : "nowrap" }}
+      >
+        {children}
+      </span>
+    </p>
+  );
+}
+
 function DiscoveryPanel({
   mode = "discovery", loading, preparing = false, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
   onTapWord, onAddWord, onClosePopup, onReplay, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
@@ -4289,7 +4336,7 @@ function DiscoveryPanel({
       {/* the sentence: phonetic, native line (words tappable), translation */}
       <div className="mt-3 flex-shrink-0 text-center">
         <p className="text-sm italic text-slate-600">{phonetic || (translating ? "…" : " ")}</p>
-        <p dir={rtl ? "rtl" : "ltr"} className="mt-1 text-[24px] font-medium leading-[1.45] text-slate-900">
+        <FitLine fitKey={main} dir={rtl ? "rtl" : "ltr"} className="mt-1 font-medium leading-[1.45] text-slate-900">
           {tokens.map((tok: string, wi: number) => {
             const key = `${popupKeyPrefix}${wi}`;
             const open = wordPopup?.key === key;
@@ -4309,7 +4356,7 @@ function DiscoveryPanel({
               </span>
             );
           })}
-        </p>
+        </FitLine>
         {/* The translation belongs to the sentence, not the audio controls:
             Hebrew → ask for help → English appears right underneath. */}
         <button
