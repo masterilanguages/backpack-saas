@@ -4003,16 +4003,16 @@ function ChapterWatch({
         <p className="mt-3 flex-shrink-0 text-base font-semibold text-slate-700">
           Watch this video for {secs < 60 ? `${secs} seconds` : fmtTime(secs)} on your own.
         </p>
-        <p className="mt-3 flex-shrink-0 text-sm font-semibold text-slate-500">
+        <p className="mt-5 flex-shrink-0 text-center text-sm font-semibold text-slate-500">
           No subtitles · no translation · no pausing
         </p>
-        <p className="mt-3 flex-shrink-0 text-sm text-slate-500">
+        <p className="mt-5 flex-shrink-0 text-sm text-slate-500">
           Just see how much you understand. You’ll rate yourself at the end.
         </p>
 
         <button
           onClick={() => setPhase("watching")}
-          className="mt-auto flex h-14 flex-shrink-0 items-center justify-between rounded-full bg-slate-900 pl-2 pr-6 text-base font-extrabold text-white shadow-[0_16px_30px_-14px_rgba(15,18,34,.7)] transition active:scale-[.98]"
+          className="mt-8 flex h-14 flex-shrink-0 items-center justify-between rounded-full bg-slate-900 pl-2 pr-6 text-base font-extrabold text-white shadow-[0_16px_30px_-14px_rgba(15,18,34,.7)] transition active:scale-[.98]"
         >
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-900">
             <Play className="ml-0.5 h-4 w-4 fill-current" />
