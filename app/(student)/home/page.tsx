@@ -4396,6 +4396,31 @@ function ChapterWatch({
 // Recommended words (picked by the system) are underlined and starred.
 // ---------------------------------------------------------------------------
 // Library card (design L6). Opens the video's chapter where the student left it.
+// Loading state: the Backpack mark bobbing, with "thinking" dots.
+function BackpackThinking() {
+  return (
+    <div className="flex flex-col items-center" role="status" aria-label="Loading">
+      <motion.div
+        animate={{ y: [0, -6, 0], rotate: [0, -4, 4, 0] }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+        className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-indigo-600 shadow-[0_14px_30px_-12px_rgba(79,70,229,.5)]"
+      >
+        <Backpack className="h-8 w-8" />
+      </motion.div>
+      <div className="mt-3 flex gap-1.5">
+        {[0, 1, 2].map((i) => (
+          <motion.span
+            key={i}
+            className="h-1.5 w-1.5 rounded-full bg-indigo-500"
+            animate={{ opacity: [0.25, 1, 0.25] }}
+            transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // A Library item's identity (own videos and catalog rows can share an id).
 const libItemKey = (v: any) => `${v._mine ? "mine" : "cat"}_${v.id}`;
 
@@ -4570,14 +4595,12 @@ function DiscoveryPanel({
   if (loading) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-700" />
-        {preparing ? (
+        <BackpackThinking />
+        {preparing && (
           <>
-            <p className="text-xs font-semibold text-slate-700">Preparing the sentences…</p>
+            <p className="mt-2 text-xs font-semibold text-slate-700">Preparing the sentences…</p>
             <p className="max-w-[240px] text-center text-[11px] text-slate-500">First time for this video only — about a minute.</p>
           </>
-        ) : (
-          <p className="text-xs text-slate-600">Loading…</p>
         )}
       </div>
     );
