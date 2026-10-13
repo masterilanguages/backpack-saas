@@ -1321,6 +1321,11 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
       toast.error("Couldn't save your answer — please try again.");
       throw e;
     }
+  };
+
+  // After the First listen result: on to the episode's sentence-by-sentence pass.
+  const continueAfterBaseline = (v: any) => {
+    const ep = watchEpisode;
     setChapterWatch(null);
     setWatchEpisode(null);
     if (ep) startEpisodePass(v, ep, ep.eps);
@@ -1363,8 +1368,11 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
       toast.error("Couldn't save your answer — please try again.");
       throw e;
     }
+  };
+
+  const continueAfterFinal = (v: any, score: number) => {
     setChapterFinal(null);
-    setChapterResult({ title: v.title || "", before: existing.baseline_score, after: score });
+    setChapterResult({ title: v.title || "", before: chapterByVideo.get(v.video_id)?.baseline_score, after: score });
   };
 
   // Backpack Words · Select: Learn → the word joins study and Masteri builds its
@@ -3185,6 +3193,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             label={watchEpisode ? `Episode ${watchEpisode.number} of ${watchEpisode.count}` : undefined}
             onExit={() => { setChapterWatch(null); setWatchEpisode(null); }}
             onSave={(score) => saveChapterBaseline(chapterWatch, score)}
+            onContinue={() => continueAfterBaseline(chapterWatch)}
             // Straight to the episode's transcript, without a score.
             onSkip={() => skipFirstListen(chapterWatch)}
           />
@@ -3195,7 +3204,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             video={chapterChallenge.v}
             segment={{ start: 0, end: chapterChallenge.eps[chapterChallenge.eps.length - 1]?.end || CHAPTER_MAX_SECONDS }}
             onExit={() => setChapterChallenge(null)}
-            onSave={async (score) => setChapterChallenge((c: any) => (c ? { ...c, phase: "quiz", score } : c))}
+            // Saved after the quiz, together with its result.
+            onContinue={(score) => setChapterChallenge((c: any) => (c ? { ...c, phase: "quiz", score } : c))}
           />
         )}
         {chapterChallenge?.phase === "quiz" && (
@@ -3212,6 +3222,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             video={chapterFinal}
             onExit={() => setChapterFinal(null)}
             onSave={(score) => saveChapterFinal(chapterFinal, score)}
+            onContinue={(score) => continueAfterFinal(chapterFinal, score)}
           />
         )}
         {chapterResult && <ChapterResult {...chapterResult} onClose={() => setChapterResult(null)} />}
@@ -3849,6 +3860,7 @@ function ChapterWatch({
   video,
   onExit,
   onSave,
+  onContinue,
   onSkip,
   final = false,
   segment = null,
@@ -3856,7 +3868,10 @@ function ChapterWatch({
 }: {
   video: any;
   onExit: () => void;
-  onSave: (score: number) => Promise<void>;
+  // Saves the rating (on Save); the result screen shows after it succeeds.
+  onSave?: (score: number) => Promise<void>;
+  // Continue on the result screen.
+  onContinue: (score: number) => void;
   onSkip?: () => void;
   // The Full Source Challenge: same rules, different wording.
   final?: boolean;
@@ -4132,10 +4147,21 @@ function ChapterWatch({
             </div>
 
             <button
-              onClick={() => setPhase("result")}
-              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30"
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  await onSave?.(UNDERSTOOD_LEVELS[level].score);
+                  setPhase("result");
+                } catch {
+                  // the parent already told the student; they can try again
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30 disabled:opacity-60"
             >
-              Save
+              {saving ? "Saving…" : "Save"}
             </button>
           </div>
         </div>
@@ -4152,11 +4178,10 @@ function ChapterWatch({
             </p>
             {!final && <p className="mt-2 text-sm text-slate-500">Now let’s go through it together, one sentence at a time.</p>}
             <button
-              disabled={saving}
-              onClick={async () => { setSaving(true); try { await onSave(UNDERSTOOD_LEVELS[level].score); } finally { setSaving(false); } }}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30 disabled:opacity-60"
+              onClick={() => onContinue(UNDERSTOOD_LEVELS[level].score)}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30"
             >
-              {saving ? "Saving…" : <>Continue <ArrowRight className="h-5 w-5" /></>}
+              Continue <ArrowRight className="h-5 w-5" />
             </button>
           </div>
         </div>
