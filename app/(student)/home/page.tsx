@@ -3838,11 +3838,11 @@ function formatClock(s: number | null) {
 // Self-rating stops and the score each one saves. It's a self-assessment, so
 // the top is 95, not 100.
 const UNDERSTOOD_LEVELS = [
-  { label: "Almost nothing", score: 10, phrase: "almost nothing" },
-  { label: "A little", score: 25, phrase: "a little of it" },
-  { label: "About half", score: 50, phrase: "about half of it" },
-  { label: "Most", score: 80, phrase: "most of it" },
-  { label: "Almost everything", score: 95, phrase: "almost everything" },
+  { label: "Almost nothing", score: 10 },
+  { label: "A little", score: 25 },
+  { label: "About half", score: 50 },
+  { label: "Most", score: 80 },
+  { label: "Almost everything", score: 95 },
 ];
 
 // The whole source is kept and learned in ~30 s episodes (lib/chapterEpisodes);
@@ -3893,6 +3893,8 @@ function ChapterWatch({
   const endedRef = useRef(false);
   const tint = useCoverTint(video?.video_id);
   const shortTitle = useDisplayTitle(video);
+  // label reads "Episode N of M".
+  const episodeNumber = label?.match(/Episode (\d+)/)?.[1];
 
   useEffect(() => {
     if (phase !== "watching") return;
@@ -3975,8 +3977,6 @@ function ChapterWatch({
     // challenge is one step over the whole source.
     const steps = final ? 1 : label ? 2 : 4;
     const step = 1;
-    // label reads "Episode N of M"; the button names the episode.
-    const episodeNumber = label?.match(/Episode (\d+)/)?.[1];
     return (
       <div
         className="absolute inset-0 z-30 flex flex-col px-5 pb-6 text-slate-900 [font-family:var(--font-body),var(--font-hebrew)]"
@@ -4170,18 +4170,17 @@ function ChapterWatch({
       {phase === "result" && (
         <div className="flex flex-1 flex-col items-center justify-center px-5">
           <div className="w-full rounded-3xl bg-white p-6 text-center text-slate-900 shadow-2xl">
-            <p className="bg-gradient-to-r from-fuchsia-500 to-indigo-500 bg-clip-text text-5xl font-extrabold text-transparent">
-              About {UNDERSTOOD_LEVELS[level].score}%
+            <p className="text-3xl font-extrabold text-indigo-950">Nice work.</p>
+            <p className="mt-3 text-base font-semibold text-slate-700">
+              You understood about {UNDERSTOOD_LEVELS[level].score}% of{" "}
+              {final ? "the full video without help." : episodeNumber ? `Episode ${episodeNumber} on your first listen.` : "this video on your first listen."}
             </p>
-            <p className="mt-3 text-base font-semibold text-indigo-950">
-              You understood {UNDERSTOOD_LEVELS[level].phrase} {final ? "without help." : "on your first listen."}
-            </p>
-            {!final && <p className="mt-2 text-sm text-slate-500">Now let’s go through it together, one sentence at a time.</p>}
+            {!final && <p className="mt-2 text-sm text-slate-500">Now let’s break it down together.</p>}
             <button
               onClick={() => onContinue(UNDERSTOOD_LEVELS[level].score)}
               className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30"
             >
-              Continue <ArrowRight className="h-5 w-5" />
+              {final ? "Continue" : "Continue to Step 2"} <ArrowRight className="h-5 w-5" />
             </button>
           </div>
         </div>
