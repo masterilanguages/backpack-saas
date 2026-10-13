@@ -17,6 +17,7 @@ const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
 import { supabase } from "@/api/supabaseClient";
+import { BackpackLogo } from "@/components/AuthShell";
 import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight, Lock, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
@@ -4403,15 +4404,15 @@ function BackpackThinking() {
       <motion.div
         animate={{ y: [0, -6, 0], rotate: [0, -4, 4, 0] }}
         transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-        className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-indigo-600 shadow-[0_14px_30px_-12px_rgba(79,70,229,.5)]"
+        className="rounded-2xl shadow-[0_14px_30px_-12px_rgba(27,43,75,.6)]"
       >
-        <Backpack className="h-8 w-8" />
+        <BackpackLogo size={64} />
       </motion.div>
       <div className="mt-3 flex gap-1.5">
         {[0, 1, 2].map((i) => (
           <motion.span
             key={i}
-            className="h-1.5 w-1.5 rounded-full bg-indigo-500"
+            className="h-1.5 w-1.5 rounded-full bg-[#1B2B4B]"
             animate={{ opacity: [0.25, 1, 0.25] }}
             transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
           />
@@ -4596,12 +4597,6 @@ function DiscoveryPanel({
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10">
         <BackpackThinking />
-        {preparing && (
-          <>
-            <p className="mt-2 text-xs font-semibold text-slate-700">Preparing the sentences…</p>
-            <p className="max-w-[240px] text-center text-[11px] text-slate-500">First time for this video only — about a minute.</p>
-          </>
-        )}
       </div>
     );
   }
