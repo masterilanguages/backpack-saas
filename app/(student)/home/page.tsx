@@ -4446,7 +4446,7 @@ function LibraryCard({
   return (
     <button
       onClick={onOpen}
-      className="grid grid-cols-[130px_minmax(0,1fr)] overflow-hidden rounded-[22px] bg-white text-left shadow-[0_0_0_1px_#ECECF3] transition active:scale-[.99]"
+      className="grid w-full grid-cols-[130px_minmax(0,1fr)] overflow-hidden rounded-[22px] bg-white text-left shadow-[0_0_0_1px_#ECECF3] transition active:scale-[.99]"
     >
       <span className="relative row-span-2 min-h-[96px] bg-slate-200 bg-cover bg-center" style={thumb ? { backgroundImage: `url(${thumb})` } : undefined}>
         {dur && <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[10px] font-bold text-white">{dur}</span>}
