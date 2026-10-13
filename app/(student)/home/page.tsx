@@ -1664,6 +1664,17 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             {/* Player */}
             <div className="relative w-full flex-shrink-0 bg-black" style={{ aspectRatio: "16/9" }}>
               <div id="shell-yt-player" className="h-full w-full" />
+              {/* Burned-in subtitle mask. Many source videos have the translation
+                  hardcoded into the lower band of the image; we cover just that
+                  band with a solid black strip so learners read OUR synced
+                  transcript below instead. It sits ON TOP of the video (absolute,
+                  pointer-events-none) — the iframe is untouched, so the original
+                  aspect ratio and framing are unchanged (no cropping). */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-black"
+                style={{ height: "22%" }}
+              />
             </div>
 
             {/* Floating controls: play/pause + turtle slow mode */}
