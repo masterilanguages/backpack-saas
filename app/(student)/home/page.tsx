@@ -3962,20 +3962,18 @@ function EpisodeList({
                   <p className="font-extrabold">Episode {ep.number}</p>
                   <p className="text-xs tabular-nums text-slate-400">{fmtTime(ep.start)}–{fmtTime(ep.end)}</p>
                 </div>
-                {locked ? (
-                  <p className="mt-1.5 text-xs font-semibold">Locked</p>
-                ) : (
-                  <>
-                    <div className="mt-2 flex gap-1.5" aria-label={`${done} of ${EPISODE_ACTIVITIES.length} activities complete`}>
-                      {dots.map((on, i) => (
-                        <span key={i} title={EPISODE_ACTIVITIES[i]} className={`h-2 w-2 rounded-full ${on ? "bg-slate-900" : "bg-slate-900/15"}`} />
-                      ))}
-                    </div>
-                    <p className="mt-1.5 text-xs text-slate-500">
-                      {done === 0 ? "Not started" : done === EPISODE_ACTIVITIES.length ? "Complete" : `${done} of ${EPISODE_ACTIVITIES.length} activities complete`}
-                    </p>
-                  </>
-                )}
+                <div className={`mt-2 flex gap-2 ${locked ? "opacity-40" : ""}`} aria-label={`${done} of ${EPISODE_ACTIVITIES.length} activities complete`}>
+                  {dots.map((on, i) => (
+                    <span
+                      key={i}
+                      title={EPISODE_ACTIVITIES[i]}
+                      className={`h-3 w-3 rounded-full border-2 ${on ? "border-emerald-600 bg-emerald-600" : locked ? "border-slate-300" : "border-emerald-600/60"}`}
+                    />
+                  ))}
+                </div>
+                <p className="mt-1.5 text-xs text-slate-500">
+                  {locked ? "Locked" : done === 0 ? "Not started" : done === EPISODE_ACTIVITIES.length ? "Complete" : `${done} of ${EPISODE_ACTIVITIES.length} activities complete`}
+                </p>
               </div>
               {locked ? (
                 <Lock className="h-4 w-4 flex-shrink-0" />
