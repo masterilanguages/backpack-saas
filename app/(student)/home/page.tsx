@@ -32,6 +32,7 @@ import AddWordsSheet from "@/components/home/AddWordsSheet";
 import PhotoWordCapture from "@/components/home/PhotoWordCapture";
 import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/transcription";
 import { splitIntoSentences } from "@/lib/chapterSentences";
+import { splitIntoEpisodes, episodeKey, estimateEpisodeCount, type Episode } from "@/lib/chapterEpisodes";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
 import { buildLyricSegments, chapterContentKey, splitScriptLine } from "@/lib/songLyrics";
 import { alignLinesToWords, fitSungLines, wordsFromFragments } from "@/lib/lyricAlign";
@@ -190,9 +191,6 @@ function useCoverTint(videoId?: string) {
   }, [videoId]);
   return tint;
 }
-// A chapter's position in the 4-step PATH: 1–4, or 5 when it's complete.
-const chapterStep = (p: any) =>
-  !p?.baseline_score ? 1 : !p.discovery_completed_at ? 2 : !p.comprehension_completed_at ? 3 : !p.final_score ? 4 : 5;
 const fmtMinutes = (m: any) => {
   const sec = Math.round(Number(m) * 60);
   return sec > 0 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}` : "";
@@ -350,7 +348,19 @@ export default function Home() {
   const [passKind, setPassKind] = useState<"discovery" | "comprehension">("discovery");
   // Step 4 "Final Uninterrupted Pass" and the Before → After result.
   const [chapterFinal, setChapterFinal] = useState<any>(null);
-  const [chapterResult, setChapterResult] = useState<{ title: string; before: number; after: number } | null>(null);
+  const [chapterResult, setChapterResult] = useState<{
+    title: string; before: number | null; after: number; quiz?: { correct: number; total: number };
+  } | null>(null);
+  // Episodes: a source is learned in ~30 s parts (lib/chapterEpisodes). Each
+  // episode = First listen (no help, rated) → Interactive transcript; after
+  // the last one, the Full Source Challenge plays the whole source + AI quiz.
+  // activeEpisode: the episode whose sentences the transcript pass shows;
+  // { videoId, pending: true } while a source's sentences are still prepared.
+  const [activeEpisode, setActiveEpisode] = useState<any>(null);
+  // The episode the First listen screen plays (chapterWatch holds its video).
+  const [watchEpisode, setWatchEpisode] = useState<any>(null);
+  // { v, eps, phase: "watch" | "quiz", score? }
+  const [chapterChallenge, setChapterChallenge] = useState<any>(null);
   const [discIdx, setDiscIdx] = useState(0);
   const [discRevealed, setDiscRevealed] = useState(false);
   const [discTranslations, setDiscTranslations] = useState<Record<number, { english: string; phonetic: string }>>({});
@@ -512,6 +522,76 @@ export default function Home() {
       .map((v) => ({ ...v, _mine: true }));
     return [...own, ...catalog];
   }, [libraryVideos, myVideos, language, currentUser?.email]);
+
+  // Every listed source's prepared sentences, to split it into episodes.
+  const sourceIds = useMemo(
+    () => Array.from(new Set((shellVideos as any[]).map((v: any) => v.video_id).filter(Boolean))) as string[],
+    [shellVideos]
+  );
+  const { data: allChapterContent = [] } = useQuery({
+    queryKey: ["chapterContentAll", sourceIds.join(",")],
+    queryFn: () => base44.entities.ChapterContent.filter({ video_id: sourceIds }),
+    enabled: sourceIds.length > 0 && (tab === "path" || tab === "library"),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const episodesFor = (content: any, v: any): Episode[] => {
+    const sentences = Array.isArray(content?.sentences) ? content.sentences : [];
+    if (!sentences.length) return [];
+    const lastEnd = Number(sentences[sentences.length - 1]?.end) || 0;
+    // Let the last episode run to the real end (an outro), never far past the
+    // sentences — the listed duration is approximate.
+    const dur = Number(v?.duration_minutes) * 60 || 0;
+    return splitIntoEpisodes(sentences, dur > lastEnd && dur - lastEnd <= 20 ? dur : lastEnd);
+  };
+  const episodesByVideo = useMemo(() => {
+    const byId = new Map((shellVideos as any[]).map((v: any) => [v.video_id, v]));
+    return new Map(
+      (allChapterContent as any[]).map((c: any) => [c.video_id, episodesFor(c, byId.get(c.video_id))] as [string, Episode[]])
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allChapterContent, shellVideos]);
+  // Sources prepared before episodes existed stop at 3:30: prepare them again,
+  // whole, once (the source is never shortened).
+  useEffect(() => {
+    for (const c of allChapterContent as any[]) {
+      const s = Array.isArray(c?.sentences) ? c.sentences : [];
+      const lastEnd = Number(s[s.length - 1]?.end) || 0;
+      const v = (shellVideos as any[]).find((x: any) => x.video_id === c.video_id);
+      const dur = Number(v?.duration_minutes) * 60 || 0;
+      if (lastEnd < 209 || lastEnd > 211 || dur <= 215) continue;
+      const flag = `chapterReprep:${c.video_id}`;
+      try {
+        if (localStorage.getItem(flag)) continue;
+        localStorage.setItem(flag, "1");
+      } catch { continue; }
+      requestChapterPrep(c.video_id, c.language || v?.language, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allChapterContent]);
+
+  // Where a student is in a source: episodes done, the next one, the challenge.
+  const sourceProgressOf = (v: any) => {
+    const vid = v?.video_id || "";
+    const eps = episodesByVideo.get(vid) || null;
+    const count = eps?.length || estimateEpisodeCount(Number(v?.duration_minutes) * 60 || 0);
+    const parent = chapterByVideo.get(vid);
+    let done = 0;
+    let next: number | null = null;
+    let started = false;
+    for (let n = 1; n <= count; n++) {
+      const p = chapterByVideo.get(episodeKey(vid, n));
+      if (p) started = true;
+      if (p?.discovery_completed_at) done++;
+      else if (next == null) next = n;
+    }
+    const challengeDone = parent?.final_score != null;
+    return {
+      count, done, next, started, challengeDone,
+      before: parent?.baseline_score ?? null,
+      after: parent?.final_score ?? null,
+    };
+  };
 
   // Journal entries (in-shell journal). Legacy daily-journal rows are left out.
   const { data: journalEntries = [] } = useQuery({
@@ -1139,15 +1219,89 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
   // In-shell video player: open a library video inside the shell — YouTube
   // player on top, tap-to-seek transcript below, synced highlighting.
   // -------------------------------------------------------------------------
-  // From the PATH: a chapter without a baseline starts with step 1.
-  const openChapter = (v: any) => {
-    const progress = v?.video_id ? chapterByVideo.get(v.video_id) : null;
+  // From the PATH / Library: a source opens at its next unfinished episode,
+  // then the Full Source Challenge; a finished source opens the plain view.
+  const openChapter = async (v: any) => {
     if (!v?.video_id) { openShellVideo(v); return; }
-    if (!progress?.baseline_score) setChapterWatch(v);                         // 1 · Watch for meaning
-    else if (!progress.discovery_completed_at) startPass(v, "discovery");      // 2 · Discovery
-    else if (!progress.comprehension_completed_at) startPass(v, "comprehension"); // 3 · Comprehension
-    else if (!progress.final_score) setChapterFinal(v);                       // 4 · Final pass
-    else startPass(v, null);                                                   // chapter done: plain view
+    if (chapterByVideo.get(v.video_id)?.final_score != null) { startPass(v, null); return; }
+    let eps = episodesByVideo.get(v.video_id) || null;
+    if (!eps?.length) {
+      try {
+        const row = (await base44.entities.ChapterContent.filter({ video_id: v.video_id }))?.[0];
+        if (row) eps = episodesFor(row, v);
+      } catch {}
+    }
+    if (!eps?.length) {
+      // Not prepared yet: the sentence view prepares it, then episode 1 starts.
+      setActiveEpisode({ videoId: v.video_id, pending: true });
+      startPass(v, "discovery", false);
+      return;
+    }
+    continueChapter(v, eps);
+  };
+  // The next step from episode `fromNumber` on: an unfinished episode's First
+  // listen (or its transcript, if already listened), else the challenge.
+  const continueChapter = (v: any, eps: Episode[], fromNumber = 1) => {
+    const next = eps.find(
+      (e) => e.number >= fromNumber && !chapterByVideo.get(episodeKey(v.video_id, e.number))?.discovery_completed_at
+    );
+    if (!next) {
+      if (shellVideo) closeShellVideo();
+      setActiveEpisode(null);
+      setChapterChallenge({ v, eps, phase: "watch" });
+      return;
+    }
+    if (chapterByVideo.get(episodeKey(v.video_id, next.number))?.baseline_at) {
+      startEpisodePass(v, next, eps);
+      return;
+    }
+    if (shellVideo) closeShellVideo();
+    setActiveEpisode(null);
+    setWatchEpisode({ ...next, count: eps.length, eps });
+    setChapterWatch(v);
+  };
+  // An episode's Interactive transcript: its own sentences only. Reuses the
+  // open video view when it's already showing this source.
+  const startEpisodePass = (v: any, ep: Episode, eps: Episode[]) => {
+    setActiveEpisode({ videoId: v.video_id, ...ep, count: eps.length, eps });
+    if (shellVideo?.video_id === v.video_id && discovery) {
+      setPassKind("discovery");
+      setDiscIdx(0);
+      setDiscRevealed(false);
+      setDiscTranslations({});
+      setWordPopup(null);
+    } else {
+      startPass(v, "discovery");
+    }
+  };
+  // chapter_progress rows are unique per (student, key): find before creating.
+  const upsertChapterRow = async (key: string, data: any) => {
+    let row = chapterByVideo.get(key);
+    if (!row?.id) {
+      row = (await base44.entities.ChapterProgress.filter({ created_by: currentUser.email, video_id: key }))?.[0];
+    }
+    const saved = row?.id
+      ? await base44.entities.ChapterProgress.update(row.id, data)
+      : await base44.entities.ChapterProgress.create({ video_id: key, ...data });
+    queryClient.invalidateQueries({ queryKey: ["chapterProgress"] });
+    return saved;
+  };
+  // "Skip" on an episode's First listen: straight to its transcript. The row
+  // is still made (no score) so the episode's words and completion are kept.
+  const skipFirstListen = async (v: any) => {
+    const ep = watchEpisode;
+    setChapterWatch(null);
+    setWatchEpisode(null);
+    if (!ep) { startPass(v, "discovery", false); return; }
+    try {
+      await upsertChapterRow(episodeKey(v.video_id, ep.number), {
+        baseline_at: new Date().toISOString(),
+        video_title: `${v.title || ""} · ${ep.number}/${ep.count}`,
+      });
+    } catch (e) {
+      console.error("[chapter] could not save the skipped listen", e);
+    }
+    startEpisodePass(v, ep, ep.eps);
   };
   const startPass = (v: any, kind: "discovery" | "comprehension" | null, markWatched = true) => {
     setDiscovery(kind !== null);
@@ -1157,21 +1311,53 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     setDiscTranslations({});
     openShellVideo(v, markWatched);
   };
+  // An episode's First listen score: how much of these ~30 s the student
+  // understood with no help. Next: the episode's Interactive transcript.
   const saveChapterBaseline = async (v: any, score: number) => {
-    const existing = chapterByVideo.get(v.video_id);
-    const data = { baseline_score: score, baseline_at: new Date().toISOString(), video_title: v.title || null };
+    const ep = watchEpisode;
+    const key = ep ? episodeKey(v.video_id, ep.number) : v.video_id;
+    const data = {
+      baseline_score: score,
+      baseline_at: new Date().toISOString(),
+      video_title: ep ? `${v.title || ""} · ${ep.number}/${ep.count}` : v.title || null,
+    };
     try {
-      if (existing?.id) await base44.entities.ChapterProgress.update(existing.id, data);
-      else await base44.entities.ChapterProgress.create({ video_id: v.video_id, ...data });
-      queryClient.invalidateQueries({ queryKey: ["chapterProgress"] });
-      toast.success(`Baseline saved: ${score}%`);
+      await upsertChapterRow(key, data);
+      toast.success(`Saved: ${score}%`);
     } catch (e) {
       console.error("[chapter] could not save baseline", e);
       toast.error("Couldn't save your answer — please try again.");
       throw e;
     }
     setChapterWatch(null);
-    startPass(v, "discovery"); // next: step 2, sentence-by-sentence discovery
+    setWatchEpisode(null);
+    if (ep) startEpisodePass(v, ep, ep.eps);
+    else startPass(v, "discovery");
+  };
+
+  // Full Source Challenge: the whole source uninterrupted, a 1–100% rating,
+  // then the AI quiz. Before = the average First listen of its episodes.
+  const saveChallenge = async (v: any, eps: Episode[], score: number, quiz?: { correct: number; total: number }) => {
+    const firsts = eps
+      .map((e) => chapterByVideo.get(episodeKey(v.video_id, e.number))?.baseline_score)
+      .filter((x: any) => typeof x === "number" && x > 0);
+    const before = firsts.length ? Math.round(firsts.reduce((a: number, b: number) => a + b, 0) / firsts.length) : null;
+    const now = new Date().toISOString();
+    try {
+      await upsertChapterRow(v.video_id, {
+        ...(before != null ? { baseline_score: before, baseline_at: now } : {}),
+        final_score: score,
+        final_at: now,
+        video_title: v.title || null,
+      });
+    } catch (e) {
+      console.error("[chapter] could not save the challenge", e);
+      toast.error("Couldn't save your result — please try again.");
+      throw e;
+    }
+    setChapterChallenge(null);
+    setChapterResult({ title: v.title || "", before, after: score, quiz });
+    setMood("cheer");
   };
 
   const saveChapterFinal = async (v: any, score: number) => {
@@ -1431,6 +1617,7 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
 
   const closeShellVideo = () => {
     setDiscovery(false);
+    setActiveEpisode(null);
     discStopAtRef.current = null;
     shellVideoIdRef.current = null;
     try { shellPlayerRef.current?.destroy?.(); } catch (e) {}
@@ -1720,12 +1907,28 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discovery, shellVideo?.video_id, chapterContent, chapterContentFetched]);
 
+  // A source opened before its sentences existed: once they're ready, split it
+  // into episodes and start at the first unfinished one.
+  useEffect(() => {
+    if (!activeEpisode?.pending || !shellVideo || shellVideo.video_id !== activeEpisode.videoId) return;
+    const eps = episodesFor(chapterContent, shellVideo);
+    if (!eps.length) return;
+    queryClient.invalidateQueries({ queryKey: ["chapterContentAll"] });
+    continueChapter(shellVideo, eps);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEpisode, chapterContent, shellVideo]);
   const discSegments = useMemo(() => {
     if (!discovery) return [];
-    if (Array.isArray(chapterContent?.sentences) && chapterContent.sentences.length) return chapterContent.sentences;
+    if (Array.isArray(chapterContent?.sentences) && chapterContent.sentences.length) {
+      // An episode's transcript holds only its own ~30 s of sentences.
+      if (activeEpisode && !activeEpisode.pending && activeEpisode.videoId === shellVideo?.video_id) {
+        return chapterContent.sentences.slice(activeEpisode.first, activeEpisode.last + 1);
+      }
+      return chapterContent.sentences;
+    }
     if (chapterPreparing || !chapterContentFetched || chapterPrepFailed !== shellVideo?.video_id) return [];
     return shellSegments.filter((s: any) => (s.start ?? 0) < CHAPTER_MAX_SECONDS);
-  }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, chapterPrepFailed, shellVideo?.video_id, shellSegments]);
+  }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, chapterPrepFailed, shellVideo?.video_id, shellSegments, activeEpisode]);
   const discSeg: any = discSegments[discIdx] || null;
   const coverTint = useCoverTint(discovery ? shellVideo?.video_id : undefined);
   const shellMeta = useDisplayTitle(discovery ? shellVideo : null);
@@ -1758,12 +1961,13 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     // Most edges are real fragment/word edges; a small tail keeps the last
     // syllable from being clipped, but stays clear of the next sentence: the
     // YouTube player keeps sounding ~0.2 s after pauseVideo().
+    const limit = activeEpisode && !activeEpisode.pending ? activeEpisode.end : CHAPTER_MAX_SECONDS;
     if (seg?.end) {
       const tail = next?.start != null ? Math.max(seg.end, Math.min(seg.end + 0.15, next.start - 0.25)) : seg.end + 0.3;
-      return Math.min(tail, CHAPTER_MAX_SECONDS);
+      return Math.min(tail, limit);
     }
     const start = seg?.start ?? 0;
-    return Math.min(next ? next.start : start + 8, CHAPTER_MAX_SECONDS);
+    return Math.min(next ? next.start : start + 8, limit);
   };
   const playDiscSentence = (i = discIdx) => {
     const seg = discSegments[i];
@@ -1772,7 +1976,8 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     discStopAtRef.current = discEnd(i);
     // A hair early so the first syllable isn't clipped — but not into the
     // previous sentence.
-    const prevEnd = discSegments[i - 1]?.end ?? 0;
+    // An episode's first sentence never reaches back into the episode before.
+    const prevEnd = discSegments[i - 1]?.end ?? (activeEpisode && !activeEpisode.pending ? activeEpisode.start : 0);
     const start = seg.start ?? 0;
     p.seekTo(Math.max(0, Math.min(start, Math.max(start - 0.2, prevEnd))), true);
     p.playVideo?.();
@@ -1842,7 +2047,11 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
 
   // Recommended vocabulary for the chapter: picked once by AI, saved on the
   // student's chapter_progress row, highlighted in the sentences.
-  const discProgress: any = shellVideo?.video_id ? chapterByVideo.get(shellVideo.video_id) : null;
+  const discKey =
+    activeEpisode && !activeEpisode.pending && activeEpisode.videoId === shellVideo?.video_id
+      ? episodeKey(activeEpisode.videoId, activeEpisode.number)
+      : shellVideo?.video_id;
+  const discProgress: any = discKey ? chapterByVideo.get(discKey) : null;
   const recommendedWords: any[] = Array.isArray(discProgress?.recommended_words) ? discProgress.recommended_words : [];
   const recommendTried = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -1854,7 +2063,7 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
         const text = discSegments.map((s: any) => s.hebrew || s.text || "").join("\n");
         const level = shellVideo?.difficulty_level || "Beginner";
         const r: any = await base44.integrations.Core.InvokeLLM({
-          prompt: `These are the sentences of a short ${languageLabel(vidLang)} video for a ${level} learner:\n${text}\n\nPick the 8 to 12 most useful words to learn from it: frequent in the language, important for understanding this content, and suited to a ${level} learner. Use each word exactly as it appears in the sentences. Return JSON: { "words": [ { "hebrew": the word as written in the sentence, "phonetic": Latin transliteration, "meaning": English meaning in context } ] }`,
+          prompt: `These are the sentences of a short ${languageLabel(vidLang)} video for a ${level} learner:\n${text}\n\nPick the ${activeEpisode && !activeEpisode.pending ? "3 to 6" : "8 to 12"} most useful words to learn from it: frequent in the language, important for understanding this content, and suited to a ${level} learner. Use each word exactly as it appears in the sentences. Return JSON: { "words": [ { "hebrew": the word as written in the sentence, "phonetic": Latin transliteration, "meaning": English meaning in context } ] }`,
           response_json_schema: {
             type: "object",
             properties: {
@@ -1887,8 +2096,12 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     discStopAtRef.current = null;
     shellPlayerRef.current?.pauseVideo?.();
     const field = passKind === "discovery" ? "discovery_completed_at" : "comprehension_completed_at";
+    const inEpisode = !!(activeEpisode && !activeEpisode.pending && activeEpisode.videoId === shellVideo?.video_id);
     try {
-      if (discProgress?.id) {
+      if (inEpisode && discKey) {
+        // By key, not cached row: the episode's row may be newer than the cache.
+        await upsertChapterRow(discKey, { [field]: new Date().toISOString() });
+      } else if (discProgress?.id) {
         await base44.entities.ChapterProgress.update(discProgress.id, { [field]: new Date().toISOString() });
         queryClient.invalidateQueries({ queryKey: ["chapterProgress"] });
       }
@@ -1927,6 +2140,16 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
         }
       }
       if (added) queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
+      // An episode: on to the next episode's First listen, or — after the
+      // last one — the Full Source Challenge.
+      if (activeEpisode && !activeEpisode.pending && activeEpisode.videoId === shellVideo?.video_id) {
+        const { number, count, eps } = activeEpisode;
+        const v = shellVideo;
+        if (number < count) toast.success(`Episode ${number} of ${count} done! 🎉`);
+        else toast.success("All episodes done! Now the full challenge 🏁");
+        continueChapter(v, eps, number + 1);
+        return;
+      }
       // → step 3, same sentences with less help
       toast.success("Discovery done! Now the comprehension pass 👂");
       setPassKind("comprehension");
@@ -2746,7 +2969,12 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onReveal={revealDiscTranslation}
                 onHideTranslation={() => setDiscRevealed(false)}
                 title={shellMeta?.name || shellVideo.title}
-                artist={shellMeta?.artist || ""}
+                artist={[
+                  shellMeta?.artist || "",
+                  activeEpisode && !activeEpisode.pending && activeEpisode.videoId === shellVideo?.video_id
+                    ? `Episode ${activeEpisode.number} of ${activeEpisode.count}`
+                    : "",
+                ].filter(Boolean).join(" · ")}
                 progress={discProgressInSentence}
                 recommendedWords={recommendedWords}
                 onPrev={() => { setWordPopup(null); setDiscIdx((i) => Math.max(0, i - 1)); }}
@@ -2948,12 +3176,31 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {/* ================= PATH — video journey, Mondly-style ================= */}
         {chapterWatch && (
           <ChapterWatch
+            key={watchEpisode ? `${chapterWatch.video_id}#e${watchEpisode.number}` : chapterWatch.video_id}
             video={chapterWatch}
-            onExit={() => setChapterWatch(null)}
+            segment={watchEpisode ? { start: watchEpisode.start, end: watchEpisode.end } : null}
+            label={watchEpisode ? `Episode ${watchEpisode.number} of ${watchEpisode.count}` : undefined}
+            onExit={() => { setChapterWatch(null); setWatchEpisode(null); }}
             onSave={(score) => saveChapterBaseline(chapterWatch, score)}
-            // Straight to the sentences: no baseline saved, the video is not
-            // marked as watched, so the chapter still starts at step 1 next time.
-            onSkip={() => { const v = chapterWatch; setChapterWatch(null); startPass(v, "discovery", false); }}
+            // Straight to the episode's transcript, without a score.
+            onSkip={() => skipFirstListen(chapterWatch)}
+          />
+        )}
+        {chapterChallenge?.phase === "watch" && (
+          <ChapterWatch
+            final
+            video={chapterChallenge.v}
+            segment={{ start: 0, end: chapterChallenge.eps[chapterChallenge.eps.length - 1]?.end || CHAPTER_MAX_SECONDS }}
+            onExit={() => setChapterChallenge(null)}
+            onSave={async (score) => setChapterChallenge((c: any) => (c ? { ...c, phase: "quiz", score } : c))}
+          />
+        )}
+        {chapterChallenge?.phase === "quiz" && (
+          <SourceChallengeQuiz
+            video={chapterChallenge.v}
+            language={chapterChallenge.v?.language || language}
+            onExit={() => saveChallenge(chapterChallenge.v, chapterChallenge.eps, chapterChallenge.score).catch(() => {})}
+            onDone={(quiz) => saveChallenge(chapterChallenge.v, chapterChallenge.eps, chapterChallenge.score, quiz).catch(() => {})}
           />
         )}
         {chapterFinal && (
@@ -3023,14 +3270,34 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                               <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${left ? "" : "justify-end"}`}>
                                 {v.difficulty_level && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-500">{v.difficulty_level}</span>}
                                 {v.duration_minutes && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-500">{v.duration_minutes} min</span>}
-                                {chapterByVideo.get(vid)?.baseline_score != null && (
-                                  <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
-                                    {chapterByVideo.get(vid).final_score != null
-                                      ? `${chapterByVideo.get(vid).baseline_score}% → ${chapterByVideo.get(vid).final_score}%`
-                                      : `Understood ${chapterByVideo.get(vid).baseline_score}%`}
-                                  </span>
-                                )}
+                                {(() => {
+                                  const sp = sourceProgressOf(v);
+                                  return (
+                                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${sp.challengeDone ? "bg-emerald-50 text-emerald-600" : "bg-fuchsia-50 text-fuchsia-600"}`}>
+                                      {sp.challengeDone
+                                        ? sp.before != null ? `${sp.before}% → ${sp.after}%` : `Understood ${sp.after}%`
+                                        : sp.done >= sp.count ? "Final challenge" : `Episode ${sp.next ?? 1} of ${sp.count}`}
+                                    </span>
+                                  );
+                                })()}
                               </div>
+                              {/* Progress across the whole source: one segment per episode. */}
+                              {(() => {
+                                const sp = sourceProgressOf(v);
+                                const n = Math.min(sp.count, 16);
+                                return (
+                                  <div className={`mt-1.5 flex max-w-[150px] gap-[3px] ${left ? "" : "ml-auto"}`}>
+                                    {Array.from({ length: n }, (_, k) => (
+                                      <span
+                                        key={k}
+                                        className={`h-1 min-w-[4px] flex-1 rounded-full ${
+                                          sp.challengeDone || k + 1 <= Math.round((sp.done / sp.count) * n) ? "bg-fuchsia-500" : "bg-indigo-100"
+                                        }`}
+                                      />
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                               {isNext && (
                                 <button
                                   onClick={() => openChapter(v)}
@@ -3305,7 +3572,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                         key={`${v._mine ? "mine" : "cat"}_${v.id}`}
                         video={v}
                         meta={libMetas[v.video_id] || null}
-                        step={v.video_id ? chapterStep(chapterByVideo.get(v.video_id)) : 1}
+                        progress={sourceProgressOf(v)}
                         onOpen={() => (v.video_id ? openChapter(v) : openShellVideo(v))}
                       />
                     ))}
@@ -3558,8 +3825,9 @@ function formatClock(s: number | null) {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
 
-// A chapter's content is at most 3.5 minutes; longer videos use the first 3:30.
-const CHAPTER_MAX_SECONDS = 210;
+// The whole source is kept and learned in ~30 s episodes (lib/chapterEpisodes);
+// this only guards against runaway lengths, same as prepareChapter.
+const CHAPTER_MAX_SECONDS = 900;
 
 // No subtitles in chapter step 1: turn off YouTube captions (CC / auto-translate).
 function hideCaptions(player: any) {
@@ -3574,13 +3842,19 @@ function ChapterWatch({
   onSave,
   onSkip,
   final = false,
+  segment = null,
+  label,
 }: {
   video: any;
   onExit: () => void;
   onSave: (score: number) => Promise<void>;
   onSkip?: () => void;
-  // Step 4 "Final Uninterrupted Pass": same rules, different wording.
+  // The Full Source Challenge: same rules, different wording.
   final?: boolean;
+  // The part of the source to play (an episode, or the whole source).
+  segment?: { start: number; end: number } | null;
+  // e.g. "Episode 2 of 7".
+  label?: string;
 }) {
   const [phase, setPhase] = useState<"intro" | "watching" | "rate">("intro");
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -3615,11 +3889,15 @@ function ChapterWatch({
         playerVars: {
           autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1,
           iv_load_policy: 3, cc_load_policy: 0, playsinline: 1,
-          end: CHAPTER_MAX_SECONDS, // play at most the first 3:30
+          ...(segment
+            ? { start: Math.floor(segment.start), end: Math.ceil(segment.end) }
+            : { end: CHAPTER_MAX_SECONDS }),
         },
         events: {
           onReady: (e: any) => {
             hideCaptions(e.target);
+            // `start` only takes whole seconds: land exactly on the cut.
+            if (segment && segment.start > 0) e.target.seekTo(segment.start, true);
             e.target.playVideo();
             // Some browsers block autoplay with sound: offer one tap to start.
             startCheck = setTimeout(() => {
@@ -3641,12 +3919,13 @@ function ChapterWatch({
       poll = setInterval(() => {
         const p = playerRef.current;
         if (!p?.getDuration) return;
-        const d = Math.min(p.getDuration() || 0, CHAPTER_MAX_SECONDS);
+        const from = segment?.start ?? 0;
+        const to = Math.min(segment?.end ?? (p.getDuration() || 0), CHAPTER_MAX_SECONDS);
         const t = p.getCurrentTime() || 0;
-        if (d > 0) {
-          setTotal(d);
-          setRemaining(Math.max(0, d - t));
-          if (t >= d - 0.25) finish(); // safety net if YouTube doesn't report "ended"
+        if (to > from) {
+          setTotal(to - from);
+          setRemaining(Math.min(to - from, Math.max(0, to - Math.max(t, from))));
+          if (t >= to - 0.15) finish(); // the episode's end (or YouTube didn't report "ended")
         }
       }, 250);
     });
@@ -3657,7 +3936,7 @@ function ChapterWatch({
       try { playerRef.current?.destroy?.(); } catch {}
       playerRef.current = null;
     };
-  }, [phase, video.video_id]);
+  }, [phase, video.video_id, segment?.start, segment?.end]);
 
   const progress = total && remaining != null ? Math.min(1, Math.max(0, 1 - remaining / total)) : 0;
 
@@ -3665,8 +3944,13 @@ function ChapterWatch({
   // chapter screens; the watching / rating phases stay dark.
   if (phase === "intro") {
     const t = tint || "196,190,240";
-    const secs = Math.min(Math.round(Number(video?.duration_minutes) * 60) || CHAPTER_MAX_SECONDS, CHAPTER_MAX_SECONDS);
-    const step = final ? 4 : 1;
+    const secs = segment
+      ? Math.round(segment.end - segment.start)
+      : Math.min(Math.round(Number(video?.duration_minutes) * 60) || CHAPTER_MAX_SECONDS, CHAPTER_MAX_SECONDS);
+    // An episode has 2 steps (First listen → Interactive transcript); the
+    // challenge is one step over the whole source.
+    const steps = final ? 1 : label ? 2 : 4;
+    const step = 1;
     return (
       <div
         className="absolute inset-0 z-30 flex flex-col px-5 pb-6 text-slate-900 [font-family:var(--font-body),var(--font-hebrew)]"
@@ -3685,7 +3969,7 @@ function ChapterWatch({
 
         {/* the chapter's 4 steps */}
         <div className="mt-4 flex flex-shrink-0 gap-1.5">
-          {[1, 2, 3, 4].map((n) => (
+          {Array.from({ length: steps }, (_, i) => i + 1).map((n) => (
             <span key={n} className={`h-1 flex-1 rounded-full ${n <= step ? "bg-slate-900" : "bg-slate-900/15"}`} />
           ))}
         </div>
@@ -3697,7 +3981,7 @@ function ChapterWatch({
           />
           <div className="min-w-0">
             <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-600">
-              {final ? "Step 4 — Final pass" : "Step 1 — First listen"}
+              {final ? "Final challenge — full source" : label ? `${label} · First listen` : "Step 1 — First listen"}
             </p>
             {shortTitle ? (
               <>
@@ -3711,7 +3995,7 @@ function ChapterWatch({
         </div>
 
         <p className="mt-6 flex-shrink-0 text-[30px] font-extrabold leading-[1.1] tracking-[-0.02em] [font-family:var(--font-display),var(--font-hebrew)]">
-          {final ? "How much do you understand now?" : "How much can you understand without help?"}
+          {final ? "Now, without help — how much do you understand?" : "How much can you understand without help?"}
         </p>
 
         <div className="mt-5 grid flex-shrink-0 grid-cols-2 gap-2.5">
@@ -3761,7 +4045,7 @@ function ChapterWatch({
           ✕ Exit
         </button>
         <div className="flex items-center gap-2">
-          <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200">{final ? "🎬 Final pass" : "🎬 Watch for meaning"}</span>
+          <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200">{final ? "🏁 Final challenge" : label ? `🎬 ${label}` : "🎬 Watch for meaning"}</span>
           {onSkip && (
             <button onClick={onSkip} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/15">
               Skip ›
@@ -3837,12 +4121,25 @@ function ChapterWatch({
 // Recommended words (picked by the system) are underlined and starred.
 // ---------------------------------------------------------------------------
 // Library card (design L6). Opens the video's chapter where the student left it.
-function LibraryCard({ video, meta, step, onOpen }: { video: any; meta: VideoMeta | null; step: number; onOpen: () => void }) {
+function LibraryCard({
+  video, meta, progress, onOpen,
+}: {
+  video: any;
+  meta: VideoMeta | null;
+  progress: { count: number; done: number; next: number | null; started: boolean; challengeDone: boolean; before: number | null; after: number | null };
+  onOpen: () => void;
+}) {
   const short = meta;
   const vid = video.video_id || "";
   const thumb = video.thumbnail_url || (vid ? `https://i.ytimg.com/vi/${vid}/mqdefault.jpg` : "");
   const dur = fmtMinutes(video.duration_minutes);
-  const cta = step === 5 ? "Review" : step > 1 ? "Continue" : "Start";
+  const { count, done, next, started, challengeDone } = progress;
+  const allEpisodes = done >= count;
+  const cta = challengeDone ? "Review" : allEpisodes ? "Challenge" : started ? "Continue" : "Start";
+  // Episode X of Y, or where the source stands once its episodes are done.
+  const where = challengeDone
+    ? progress.before != null ? `${progress.before}% → ${progress.after}%` : `Understood ${progress.after}%`
+    : allEpisodes ? "Final challenge" : `Episode ${next ?? 1} of ${count}`;
   return (
     <button
       onClick={onOpen}
@@ -3861,17 +4158,22 @@ function LibraryCard({ video, meta, step, onOpen }: { video: any; meta: VideoMet
           </span>
         </span>
         <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-white">
-          {step === 5 ? <Check className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
+          {challengeDone ? <Check className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
         </span>
       </span>
-      <span className="flex items-center gap-2.5 px-3 pb-2.5 pt-1.5">
-        <span className="flex gap-1">
-          {[1, 2, 3, 4].map((n) => (
-            <span key={n} className={`h-[5px] w-[22px] rounded-full ${n < step ? "bg-slate-900" : "bg-slate-200"}`} />
-          ))}
+      <span className="flex flex-col gap-1.5 px-3 pb-2.5 pt-1.5">
+        {/* One segment per ~30 s episode: progress across the whole source. */}
+        <span className="flex gap-[3px]">
+          {Array.from({ length: Math.min(count, 16) }, (_, k) => k + 1).map((n) => {
+            const filled = challengeDone || n <= Math.round((done / count) * Math.min(count, 16));
+            return <span key={n} className={`h-[5px] min-w-[4px] flex-1 rounded-full ${filled ? "bg-slate-900" : "bg-slate-200"}`} />;
+          })}
         </span>
-        {video._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">Mine</span>}
-        <span className="ml-auto text-xs font-extrabold text-slate-900">{cta}</span>
+        <span className="flex items-center gap-2">
+          <span className="truncate text-[11px] font-bold text-slate-500">{where}</span>
+          {video._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">Mine</span>}
+          <span className="ml-auto text-xs font-extrabold text-slate-900">{cta}</span>
+        </span>
       </span>
     </button>
   );
@@ -4095,25 +4397,155 @@ function DiscoveryPanel({
 // ---------------------------------------------------------------------------
 // End of step 4: the chapter's measurable progress, "Before 42% → After 87%".
 // ---------------------------------------------------------------------------
-function ChapterResult({ title, before, after, onClose }: { title: string; before: number; after: number; onClose: () => void }) {
+// ---------------------------------------------------------------------------
+// Full Source Challenge · quiz. After the whole source plays uninterrupted,
+// AI questions cover all of it — the checkpoint after its episodes.
+// ---------------------------------------------------------------------------
+function SourceChallengeQuiz({
+  video,
+  language,
+  onDone,
+  onExit,
+}: {
+  video: any;
+  language: string;
+  onDone: (quiz: { correct: number; total: number }) => void;
+  onExit: () => void;
+}) {
+  const [questions, setQuestions] = useState<any[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [i, setI] = useState(0);
+  const [picked, setPicked] = useState<number | null>(null);
+  const [correct, setCorrect] = useState(0);
+
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      try {
+        const row = (await (base44 as any).entities.ChapterContent.filter({ video_id: video.video_id }))?.[0];
+        const lines = (Array.isArray(row?.sentences) ? row.sentences : [])
+          .map((s: any) => `${s.hebrew || s.text || ""}${s.english ? ` (${s.english})` : ""}`)
+          .join("\n")
+          .slice(0, 9000);
+        if (!lines) throw new Error("no sentences");
+        const label = languageLabel(language);
+        const r: any = await (base44 as any).integrations.Core.InvokeLLM({
+          prompt: `A learner just listened to this whole ${label} song/story/video without help. Its full transcript (with English in brackets):\n${lines}\n\nWrite 5 multiple-choice questions that check understanding of the WHOLE source — what happens or is said, who/where/why, key phrases' meaning — spread over its beginning, middle and end. Questions and options in simple English; quote a short ${label} phrase where useful. Exactly 4 options each, one correct. Return JSON: { "questions": [ { "question": string, "options": [4 strings], "correct": 0-3 } ] }`,
+          response_json_schema: {
+            type: "object",
+            properties: {
+              questions: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: { question: { type: "string" }, options: { type: "array", items: { type: "string" } }, correct: { type: "number" } },
+                },
+              },
+            },
+          },
+        });
+        const qs = (r?.questions || []).filter(
+          (q: any) => q?.question && Array.isArray(q.options) && q.options.length === 4 && q.correct >= 0 && q.correct <= 3
+        );
+        if (!qs.length) throw new Error("no questions");
+        if (!off) setQuestions(qs.slice(0, 5));
+      } catch (e) {
+        console.error("[chapter] challenge questions failed", e);
+        if (!off) setFailed(true);
+      }
+    })();
+    return () => { off = true; };
+  }, [video.video_id, language]);
+
+  const q = questions?.[i];
+  const next = () => {
+    const last = !questions || i + 1 >= questions.length;
+    if (last) onDone({ correct, total: questions?.length || 0 });
+    else { setI(i + 1); setPicked(null); }
+  };
+
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col bg-gradient-to-b from-[#f7f8ff] via-[#f2f4fe] to-[#e9ecfd] px-5 pb-6 text-slate-900">
+      <div className="flex flex-shrink-0 items-center justify-between pt-9">
+        <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-600">Final challenge — questions</span>
+        {questions && <span className="text-xs font-bold text-slate-500">{i + 1} / {questions.length}</span>}
+      </div>
+      {!questions && !failed && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-slate-500">
+          <Loader2 className="h-6 w-6 animate-spin text-indigo-500" /> Writing your questions…
+        </div>
+      )}
+      {failed && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+          <p className="text-sm text-slate-600">The questions couldn't be made right now.</p>
+          <button onClick={onExit} className="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white">See my result</button>
+        </div>
+      )}
+      {q && (
+        <div className="mt-6 flex min-h-0 flex-1 flex-col">
+          <p className="text-xl font-extrabold leading-snug [font-family:var(--font-display),var(--font-hebrew)]">{q.question}</p>
+          <div className="mt-5 flex flex-col gap-2.5">
+            {q.options.map((opt: string, k: number) => {
+              const state = picked == null ? "idle" : k === q.correct ? "right" : k === picked ? "wrong" : "idle";
+              return (
+                <button
+                  key={k}
+                  disabled={picked != null}
+                  onClick={() => { setPicked(k); if (k === q.correct) setCorrect((c) => c + 1); }}
+                  className={`rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                    state === "right" ? "border-emerald-400 bg-emerald-50 text-emerald-800"
+                    : state === "wrong" ? "border-rose-300 bg-rose-50 text-rose-700"
+                    : "border-indigo-100 bg-white text-slate-800 hover:border-indigo-300"
+                  }`}
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+          {picked != null && (
+            <button onClick={next} className="mt-auto h-14 rounded-full bg-slate-900 text-base font-extrabold text-white">
+              {i + 1 >= (questions?.length || 0) ? "See my result" : "Next"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChapterResult({
+  title, before, after, quiz, onClose,
+}: {
+  title: string; before: number | null; after: number; quiz?: { correct: number; total: number }; onClose: () => void;
+}) {
   return (
     <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-gradient-to-b from-[#f7f8ff] via-[#f2f4fe] to-[#e9ecfd] px-5">
       <div className="w-full rounded-3xl bg-white p-6 text-center shadow-2xl shadow-indigo-200/70">
         <p className="text-3xl">🎉</p>
-        <p className="mt-1 text-xl font-bold text-indigo-950">Chapter complete</p>
+        <p className="mt-1 text-xl font-bold text-indigo-950">Full source complete</p>
         {title && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{title}</p>}
         <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-slate-400">How much you understood</p>
         <div className="mt-3 flex items-center justify-center gap-3">
-          <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-rose-50 text-rose-600">
-            <span className="text-3xl font-extrabold">{before}%</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider">Before</span>
-          </div>
-          <span className="text-2xl text-indigo-300">➜</span>
+          {before != null && (
+            <>
+              <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-rose-50 text-rose-600">
+                <span className="text-3xl font-extrabold">{before}%</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider">First listen</span>
+              </div>
+              <span className="text-2xl text-indigo-300">➜</span>
+            </>
+          )}
           <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-emerald-50 text-emerald-600 shadow-lg shadow-emerald-200">
             <span className="text-3xl font-extrabold">{after}%</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider">After</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Now</span>
           </div>
         </div>
+        {quiz && quiz.total > 0 && (
+          <p className="mt-4 text-sm font-semibold text-slate-600">
+            Challenge questions: <span className="font-extrabold text-indigo-950">{quiz.correct} / {quiz.total}</span>
+          </p>
+        )}
         <button onClick={onClose} className="mt-5 w-full rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30">
           Done
         </button>

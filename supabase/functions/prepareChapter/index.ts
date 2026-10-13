@@ -22,8 +22,10 @@ import { alignLinesToWords, fitSungLines, wordsFromFragments } from "../../../li
 import { splitScriptLine } from "../../../lib/songLyrics.ts";
 import { QUALITY_MODEL, glossPrompt, GLOSS_SCHEMA, reviewGlossPrompt, REVIEW_GLOSS_SCHEMA, cleanGlosses, promptLanguageLabel } from "../../../lib/chapterPrompts.ts";
 
-// A chapter's content is at most 3.5 minutes; longer videos use the first 3:30.
-const CHAPTER_MAX_SECONDS = 210;
+// The WHOLE source is prepared: it is split into ~30 s episodes for learning
+// (lib/chapterEpisodes), never shortened. This guard only stops runaway
+// lengths (e.g. an hour-long upload); 15 minutes covers songs and stories.
+const CHAPTER_MAX_SECONDS = 900;
 
 const LANGUAGE_CODE: Record<string, string> = {
   english: "en", spanish: "es", hebrew: "he", french: "fr", portuguese: "pt", italian: "it",
