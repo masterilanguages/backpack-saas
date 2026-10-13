@@ -15,8 +15,9 @@ import { useRouter } from "next/navigation";
 import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight, Lock } from "lucide-react";
+import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
+import { supabase } from "@/api/supabaseClient";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight, Lock, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
@@ -517,6 +518,36 @@ export default function Home() {
       .map((v) => ({ ...v, _mine: true }));
     return [...own, ...catalog];
   }, [libraryVideos, myVideos, language, currentUser?.email]);
+
+  // The student's own Library order (dragged on "All"), kept in their auth
+  // profile so it follows them across devices. Videos not in it (new ones)
+  // come first, in the default order.
+  const [libOrder, setLibOrder] = useState<string[]>([]);
+  const libOrderRef = useRef<string[]>([]);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }: any) => {
+      const saved = data?.user?.user_metadata?.library_order;
+      if (Array.isArray(saved)) { setLibOrder(saved); libOrderRef.current = saved; }
+    }).catch(() => {});
+  }, []);
+  const orderedVideos = useMemo(() => {
+    const rank = new Map(libOrder.map((k, i) => [k, i]));
+    const fresh = shellVideos.filter((v: any) => !rank.has(libItemKey(v)));
+    const placed = shellVideos
+      .filter((v: any) => rank.has(libItemKey(v)))
+      .sort((a: any, b: any) => (rank.get(libItemKey(a)) as number) - (rank.get(libItemKey(b)) as number));
+    return [...fresh, ...placed];
+  }, [shellVideos, libOrder]);
+  const reorderLibrary = (keys: string[]) => { setLibOrder(keys); libOrderRef.current = keys; };
+  const saveLibraryOrder = async () => {
+    try {
+      const { error } = await supabase.auth.updateUser({ data: { library_order: libOrderRef.current } });
+      if (error) throw error;
+    } catch (e) {
+      console.error("[library] could not save the order", e);
+      toast.error("Couldn't save the new order — please try again.");
+    }
+  };
 
   // Every listed source's prepared sentences, to split it into episodes.
   const sourceIds = useMemo(
@@ -3586,9 +3617,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
 
               {(() => {
                 const visible =
-                  libFilter === "mine" ? shellVideos.filter((v: any) => v._mine)
-                  : libFilter === "song" || libFilter === "lesson" ? shellVideos.filter((v: any) => libMetas[v.video_id]?.kind === libFilter)
-                  : shellVideos;
+                  libFilter === "mine" ? orderedVideos.filter((v: any) => v._mine)
+                  : libFilter === "song" || libFilter === "lesson" ? orderedVideos.filter((v: any) => libMetas[v.video_id]?.kind === libFilter)
+                  : orderedVideos;
                 if (visible.length === 0) {
                   return (
                     <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
@@ -3605,18 +3636,36 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     </div>
                   );
                 }
+                const card = (v: any) => (
+                  <LibraryCard
+                    video={v}
+                    meta={libMetas[v.video_id] || null}
+                    progress={sourceProgressOf(v)}
+                    onOpen={() => (v.video_id ? openChapter(v) : openShellVideo(v))}
+                  />
+                );
+                // The order is set on "All" (the filters show a part of it).
+                if (libFilter !== "all") {
+                  return (
+                    <div className="mt-4 flex flex-col gap-3.5">
+                      {visible.map((v: any) => <div key={libItemKey(v)}>{card(v)}</div>)}
+                    </div>
+                  );
+                }
+                const byKey = new Map(visible.map((v: any) => [libItemKey(v), v]));
                 return (
-                  <div className="mt-4 flex flex-col gap-3.5">
+                  <Reorder.Group
+                    axis="y"
+                    values={visible.map(libItemKey)}
+                    onReorder={reorderLibrary}
+                    className="mt-4 flex flex-col gap-3.5"
+                  >
                     {visible.map((v: any) => (
-                      <LibraryCard
-                        key={`${v._mine ? "mine" : "cat"}_${v.id}`}
-                        video={v}
-                        meta={libMetas[v.video_id] || null}
-                        progress={sourceProgressOf(v)}
-                        onOpen={() => (v.video_id ? openChapter(v) : openShellVideo(v))}
-                      />
+                      <LibraryReorderItem key={libItemKey(v)} value={libItemKey(v)} onDrop={saveLibraryOrder}>
+                        {card(byKey.get(libItemKey(v)))}
+                      </LibraryReorderItem>
                     ))}
-                  </div>
+                  </Reorder.Group>
                 );
               })()}
             </div>
@@ -4347,6 +4396,34 @@ function ChapterWatch({
 // Recommended words (picked by the system) are underlined and starred.
 // ---------------------------------------------------------------------------
 // Library card (design L6). Opens the video's chapter where the student left it.
+// A Library item's identity (own videos and catalog rows can share an id).
+const libItemKey = (v: any) => `${v._mine ? "mine" : "cat"}_${v.id}`;
+
+// One draggable Library row: it moves only from its handle, so scrolling and
+// tapping the card still work with a finger.
+function LibraryReorderItem({ value, onDrop, children }: { value: string; onDrop: () => void; children: React.ReactNode }) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item
+      value={value}
+      dragListener={false}
+      dragControls={controls}
+      onDragEnd={onDrop}
+      className="flex items-stretch gap-1.5"
+      whileDrag={{ scale: 1.02, zIndex: 10 }}
+    >
+      <button
+        aria-label="Drag to reorder"
+        onPointerDown={(e) => controls.start(e)}
+        className="flex w-6 flex-shrink-0 touch-none cursor-grab items-center justify-center text-slate-300 active:cursor-grabbing active:text-slate-600"
+      >
+        <GripVertical className="h-5 w-5" />
+      </button>
+      <div className="min-w-0 flex-1">{children}</div>
+    </Reorder.Item>
+  );
+}
+
 function LibraryCard({
   video, meta, progress, onOpen,
 }: {
