@@ -3597,12 +3597,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         {/* ================= ACCOUNT ================= */}
         {tab === "account" && (
           <div className="flex min-h-0 flex-1 flex-col px-4 pt-6">
-            <div className="flex flex-shrink-0 flex-col items-center text-center">
-              <Turtle mood={mood} size="text-5xl" />
-              <p className="mt-2 font-semibold text-slate-800">{currentUser?.full_name || currentUser?.email}</p>
-              <p className="text-xs text-slate-400">{currentUser?.email}</p>
-            </div>
-            <div className="mt-5 space-y-2.5 overflow-y-auto pb-3">
+            {/* The turtle + name/email header is hidden for now. */}
+            <div className="space-y-2.5 overflow-y-auto pb-3">
               {/* Learning language — expandable picker (was the sidebar switcher) */}
               <div className="rounded-2xl border border-indigo-100 bg-white shadow-md shadow-indigo-100/70">
                 <button
@@ -3637,12 +3633,12 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               </div>
 
               {[
-                // Practice & Journal moved here when the PATH tab took their slot.
-                { emoji: "💬", label: "Practice", desc: "AI exercises from your newest cards", action: () => { setTab("practice"); setJournalMode("off"); } },
-                { emoji: "📓", label: "Journal", desc: "Write entries and turn them into lessons", action: () => { setTab("practice"); setJournalMode("list"); } },
+                // Practice, Journal and Settings are hidden for now; restore them here:
+                // { emoji: "💬", label: "Practice", desc: "AI exercises from your newest cards", action: () => { setTab("practice"); setJournalMode("off"); } },
+                // { emoji: "📓", label: "Journal", desc: "Write entries and turn them into lessons", action: () => { setTab("practice"); setJournalMode("list"); } },
+                // { emoji: "⚙️", label: "Settings", desc: "Account and preferences", href: "/settings" },
                 { emoji: "📈", label: "Progress", desc: "Streaks, words and study time", href: "/progress" },
                 { emoji: "🗓️", label: "Schedule", desc: "Your sessions and daily tasks", href: "/learn/lessons/days" },
-                { emoji: "⚙️", label: "Settings", desc: "Account and preferences", href: "/settings" },
                 ...(currentUser && ["admin", "coach", "owner"].includes(currentUser.role)
                   ? [{ emoji: "🛠️", label: "Admin console", desc: "Manage your school", href: "/dashboard" }]
                   : []),
