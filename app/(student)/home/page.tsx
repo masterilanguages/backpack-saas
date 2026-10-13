@@ -528,7 +528,7 @@ export default function Home() {
     () => Array.from(new Set((shellVideos as any[]).map((v: any) => v.video_id).filter(Boolean))) as string[],
     [shellVideos]
   );
-  const { data: allChapterContent = [] } = useQuery({
+  const { data: allChapterContent = [], isFetched: chapterAllFetched } = useQuery({
     queryKey: ["chapterContentAll", sourceIds.join(",")],
     queryFn: () => base44.entities.ChapterContent.filter({ video_id: sourceIds }),
     enabled: sourceIds.length > 0 && (tab === "path" || tab === "library"),
@@ -569,6 +569,33 @@ export default function Home() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allChapterContent]);
+
+  // Pre-warm sentence prep for every listed source that isn't prepared yet, as
+  // soon as the Library/Path list is shown — so opening a video never shows
+  // "Preparing the sentences…". Fire-and-forget: the server skips sources that
+  // are already done and persists the rest to ChapterContent, so by the time
+  // the student taps a video its sentences are ready. Guarded per session (one
+  // request per video) and spaced out so a large library doesn't fan out dozens
+  // of prep jobs at once.
+  const prewarmedPrep = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if ((tab !== "library" && tab !== "path") || !currentUser || !chapterAllFetched) return;
+    const prepared = new Set((allChapterContent as any[]).map((c: any) => c.video_id));
+    const byId = new Map((shellVideos as any[]).map((v: any) => [v.video_id, v]));
+    const todo = sourceIds.filter((id) => !prepared.has(id) && !prewarmedPrep.current.has(id));
+    if (todo.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const id of todo) {
+        if (cancelled) break;
+        prewarmedPrep.current.add(id);
+        requestChapterPrep(id, byId.get(id)?.language || language);
+        await new Promise((r) => setTimeout(r, 1500)); // space out the fan-out
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, currentUser, chapterAllFetched, sourceIds, allChapterContent, shellVideos]);
 
   // Where a student is in a source: episodes done, the next one, the challenge.
   const sourceProgressOf = (v: any) => {
