@@ -3845,6 +3845,30 @@ const UNDERSTOOD_LEVELS = [
   { label: "Almost everything", score: 95 },
 ];
 
+// An episode's progress bar fills by section, not by time.
+const EPISODE_STAGES = {
+  firstListen: { label: "First listen", pct: 15 },
+  sentences: { label: "Sentence by sentence", pct: 30 },
+  acceptWords: { label: "Accept or dismiss words", pct: 45 },
+  rateWords: { label: "Rate your words", pct: 60 },
+  mnemonics: { label: "Sounds-like mnemonics", pct: 75 },
+  listenAgain: { label: "Listen again", pct: 100 },
+} as const;
+
+// "Episode 1 of 7", a thin bar right under it, then the current section.
+function EpisodeProgress({ title, stage }: { title: string; stage: keyof typeof EPISODE_STAGES }) {
+  const { label, pct } = EPISODE_STAGES[stage];
+  return (
+    <div className="flex-shrink-0">
+      <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-700">{title}</p>
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-900/15">
+        <div className="h-full rounded-full bg-slate-900 transition-[width] duration-500" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="mt-2 text-xs font-semibold text-slate-500">{label}</p>
+    </div>
+  );
+}
+
 // The whole source is kept and learned in ~30 s episodes (lib/chapterEpisodes);
 // this only guards against runaway lengths, same as prepareChapter.
 const CHAPTER_MAX_SECONDS = 900;
@@ -3973,10 +3997,6 @@ function ChapterWatch({
     const secs = segment
       ? Math.round(segment.end - segment.start)
       : Math.min(Math.round(Number(video?.duration_minutes) * 60) || CHAPTER_MAX_SECONDS, CHAPTER_MAX_SECONDS);
-    // An episode has 2 steps (First listen → Interactive transcript); the
-    // challenge is one step over the whole source.
-    const steps = final ? 1 : label ? 2 : 4;
-    const step = 1;
     return (
       <div
         className="absolute inset-0 z-30 flex flex-col px-5 pb-6 text-slate-900 [font-family:var(--font-body),var(--font-hebrew)]"
@@ -3993,31 +4013,8 @@ function ChapterWatch({
           )}
         </div>
 
-        {/* the chapter's 4 steps */}
-        <div className="mt-4 flex flex-shrink-0 gap-1.5">
-          {Array.from({ length: steps }, (_, i) => i + 1).map((n) => (
-            <span key={n} className={`h-1 flex-1 rounded-full ${n <= step ? "bg-slate-900" : "bg-slate-900/15"}`} />
-          ))}
-        </div>
-
-        <div className="mt-5 flex flex-shrink-0 items-center gap-3.5">
-          <div
-            className="h-[120px] w-[120px] flex-shrink-0 rounded-2xl bg-slate-200 bg-cover bg-center"
-            style={{ backgroundImage: `url(https://i.ytimg.com/vi/${video.video_id}/mqdefault.jpg)`, boxShadow: `0 18px 34px -18px rgba(${t},.95)` }}
-          />
-          <div className="min-w-0">
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-600">
-              {final ? "Final challenge — full source" : label ? `${label} · First listen` : "Step 1 — First listen"}
-            </p>
-            {shortTitle ? (
-              <>
-                <p className="mt-1.5 line-clamp-2 text-[28px] font-extrabold leading-none tracking-[-0.03em] [font-family:var(--font-display),var(--font-hebrew)]">{shortTitle.name}</p>
-                {shortTitle.artist && <p className="mt-1.5 truncate text-sm italic text-slate-500">{shortTitle.artist}</p>}
-              </>
-            ) : (
-              <p className="mt-1.5 line-clamp-4 text-lg font-extrabold leading-snug tracking-tight [font-family:var(--font-display),var(--font-hebrew)]">{video.title}</p>
-            )}
-          </div>
+        <div className="mt-4">
+          <EpisodeProgress title={final ? "Final challenge — full source" : label || "First listen"} stage="firstListen" />
         </div>
 
         <p className="mt-6 flex-shrink-0 text-[30px] font-extrabold leading-[1.1] tracking-[-0.02em] [font-family:var(--font-display),var(--font-hebrew)]">
@@ -4034,9 +4031,26 @@ function ChapterWatch({
           Just see how much you understand. You’ll rate yourself at the end.
         </p>
 
+        <div className="mt-6 flex flex-shrink-0 items-center gap-3.5">
+          <div
+            className="h-20 w-20 flex-shrink-0 rounded-2xl bg-slate-200 bg-cover bg-center"
+            style={{ backgroundImage: `url(https://i.ytimg.com/vi/${video.video_id}/mqdefault.jpg)`, boxShadow: `0 14px 28px -16px rgba(${t},.95)` }}
+          />
+          <div className="min-w-0">
+            {shortTitle ? (
+              <>
+                <p className="line-clamp-2 text-lg font-extrabold leading-tight tracking-tight [font-family:var(--font-display),var(--font-hebrew)]">{shortTitle.name}</p>
+                {shortTitle.artist && <p className="mt-1 truncate text-sm italic text-slate-500">{shortTitle.artist}</p>}
+              </>
+            ) : (
+              <p className="line-clamp-3 text-base font-extrabold leading-snug tracking-tight [font-family:var(--font-display),var(--font-hebrew)]">{video.title}</p>
+            )}
+          </div>
+        </div>
+
         <button
           onClick={() => setPhase("watching")}
-          className="mt-8 flex h-14 flex-shrink-0 items-center justify-between rounded-full bg-slate-900 pl-2 pr-6 text-base font-extrabold text-white shadow-[0_16px_30px_-14px_rgba(15,18,34,.7)] transition active:scale-[.98]"
+          className="mt-6 flex h-14 flex-shrink-0 items-center justify-between rounded-full bg-slate-900 pl-2 pr-6 text-base font-extrabold text-white shadow-[0_16px_30px_-14px_rgba(15,18,34,.7)] transition active:scale-[.98]"
         >
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-900">
             <Play className="ml-0.5 h-4 w-4 fill-current" />
