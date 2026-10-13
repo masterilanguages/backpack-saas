@@ -16,7 +16,7 @@ import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
@@ -350,6 +350,8 @@ export default function Home() {
   // activeEpisode: the episode whose sentences the transcript pass shows;
   // { videoId, pending: true } while a source's sentences are still prepared.
   const [activeEpisode, setActiveEpisode] = useState<any>(null);
+  // Library item → its episode list → an episode's learning flow.
+  const [episodeList, setEpisodeList] = useState<{ v: any; eps: Episode[] } | null>(null);
   // The episode the First listen screen plays (chapterWatch holds its video).
   const [watchEpisode, setWatchEpisode] = useState<any>(null);
   // { v, eps, phase: "watch" | "quiz", score? }
@@ -1216,7 +1218,6 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
   // then the Full Source Challenge; a finished source opens the plain view.
   const openChapter = async (v: any) => {
     if (!v?.video_id) { openShellVideo(v); return; }
-    if (chapterByVideo.get(v.video_id)?.final_score != null) { startPass(v, null); return; }
     let eps = episodesByVideo.get(v.video_id) || null;
     if (!eps?.length) {
       try {
@@ -1230,7 +1231,20 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
       startPass(v, "discovery", false);
       return;
     }
-    continueChapter(v, eps);
+    setEpisodeList({ v, eps });
+  };
+  // From the episode list: one episode — its First listen, or its transcript
+  // when it was already listened to (a replayed First listen would overwrite
+  // the score).
+  const openEpisode = (v: any, eps: Episode[], ep: Episode) => {
+    if (chapterByVideo.get(episodeKey(v.video_id, ep.number))?.baseline_at) {
+      startEpisodePass(v, ep, eps);
+      return;
+    }
+    if (shellVideo) closeShellVideo();
+    setActiveEpisode(null);
+    setWatchEpisode({ ...ep, count: eps.length, eps });
+    setChapterWatch(v);
   };
   // The next step from episode `fromNumber` on: an unfinished episode's First
   // listen (or its transcript, if already listened), else the challenge.
@@ -3186,6 +3200,17 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
         )}
 
         {/* ================= PATH — video journey, Mondly-style ================= */}
+        {episodeList && !shellVideo && !chapterWatch && !chapterChallenge && !chapterFinal && !chapterResult && (
+          <EpisodeList
+            video={episodeList.v}
+            eps={episodeList.eps}
+            progressOf={(n: number) => chapterByVideo.get(episodeKey(episodeList.v.video_id, n))}
+            finalDone={chapterByVideo.get(episodeList.v.video_id)?.final_score != null}
+            onBack={() => setEpisodeList(null)}
+            onOpen={(ep: Episode) => openEpisode(episodeList.v, episodeList.eps, ep)}
+            onChallenge={() => setChapterChallenge({ v: episodeList.v, eps: episodeList.eps, phase: "watch" })}
+          />
+        )}
         {chapterWatch && (
           <ChapterWatch
             key={watchEpisode ? `${chapterWatch.video_id}#e${watchEpisode.number}` : chapterWatch.video_id}
@@ -3870,6 +3895,123 @@ function EpisodeProgress({ title, stage, dark = false }: { title: string; stage:
   );
 }
 
+// The 4 learning activities of an episode (dots on the episode list).
+// Listen again and Recall / Speak don't exist yet, so they never fill.
+const EPISODE_ACTIVITIES = ["First listen", "Sentence by sentence", "Listen again", "Recall / Speak"];
+const episodeActivitiesDone = (row: any) => [!!row?.baseline_at, !!row?.discovery_completed_at, false, false];
+// What opens the next episode (today: the sentence-by-sentence pass done).
+const episodeFinished = (row: any) => !!row?.discovery_completed_at;
+
+function EpisodeList({
+  video, eps, progressOf, finalDone, onBack, onOpen, onChallenge,
+}: {
+  video: any;
+  eps: Episode[];
+  progressOf: (n: number) => any;
+  finalDone: boolean;
+  onBack: () => void;
+  onOpen: (ep: Episode) => void;
+  onChallenge: () => void;
+}) {
+  const shortTitle = useDisplayTitle(video);
+  const rows = eps.map((ep, i) => {
+    const row = progressOf(ep.number);
+    const dots = episodeActivitiesDone(row);
+    const done = dots.filter(Boolean).length;
+    const locked = i > 0 && !episodeFinished(progressOf(eps[i - 1].number));
+    return { ep, dots, done, locked, finished: episodeFinished(row) };
+  });
+  const next = rows.find((r) => !r.finished);
+  const allFinished = !next;
+  return (
+    <div className="absolute inset-0 z-20 flex flex-col bg-gradient-to-b from-[#f7f8ff] to-white text-slate-900 [font-family:var(--font-body),var(--font-hebrew)]">
+      <div className="flex flex-shrink-0 items-center px-3 pt-3">
+        <button onClick={onBack} aria-label="Back" className="rounded-lg p-1 text-slate-700 hover:bg-white/60">
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
+        <p className="mt-1 line-clamp-2 text-[26px] font-extrabold leading-tight tracking-[-0.02em] [font-family:var(--font-display),var(--font-hebrew)]">
+          {shortTitle ? shortTitle.name : video.title}
+        </p>
+        {shortTitle?.artist && <p className="mt-1 truncate text-sm italic text-slate-500">{shortTitle.artist}</p>}
+        <p className="mt-1 text-sm font-semibold text-slate-500">{eps.length} episodes · ~30 sec each</p>
+
+        {(next || !finalDone) && (
+          <button
+            onClick={() => (next ? onOpen(next.ep) : onChallenge())}
+            className="mt-5 flex h-14 w-full items-center justify-between rounded-full bg-slate-900 pl-6 pr-5 text-base font-extrabold text-white shadow-[0_16px_30px_-14px_rgba(15,18,34,.7)] transition active:scale-[.98]"
+          >
+            <span>{next ? `${next.done ? "Continue" : "Start"} Episode ${next.ep.number}` : "Start the final challenge"}</span>
+            <ArrowRight className="h-5 w-5" />
+          </button>
+        )}
+
+        <div className="mt-5 flex flex-col gap-2.5">
+          {rows.map(({ ep, dots, done, locked, finished }) => (
+            <button
+              key={ep.number}
+              disabled={locked}
+              onClick={() => onOpen(ep)}
+              className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition ${
+                locked ? "border-slate-100 bg-slate-50 text-slate-400" : "border-indigo-100 bg-white shadow-sm active:scale-[.99]"
+              }`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2">
+                  <p className="font-extrabold">Episode {ep.number}</p>
+                  <p className="text-xs tabular-nums text-slate-400">{fmtTime(ep.start)}–{fmtTime(ep.end)}</p>
+                </div>
+                {locked ? (
+                  <p className="mt-1.5 text-xs font-semibold">Locked</p>
+                ) : (
+                  <>
+                    <div className="mt-2 flex gap-1.5" aria-label={`${done} of ${EPISODE_ACTIVITIES.length} activities complete`}>
+                      {dots.map((on, i) => (
+                        <span key={i} title={EPISODE_ACTIVITIES[i]} className={`h-2 w-2 rounded-full ${on ? "bg-slate-900" : "bg-slate-900/15"}`} />
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      {done === 0 ? "Not started" : done === EPISODE_ACTIVITIES.length ? "Complete" : `${done} of ${EPISODE_ACTIVITIES.length} activities complete`}
+                    </p>
+                  </>
+                )}
+              </div>
+              {locked ? (
+                <Lock className="h-4 w-4 flex-shrink-0" />
+              ) : (
+                <span className="flex flex-shrink-0 items-center gap-1 text-sm font-bold text-slate-900">
+                  {finished ? "Review" : done ? "Continue" : "Start"} <ArrowRight className="h-4 w-4" />
+                </span>
+              )}
+            </button>
+          ))}
+
+          <button
+            disabled={!allFinished}
+            onClick={onChallenge}
+            className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left ${
+              allFinished ? "border-indigo-100 bg-white shadow-sm" : "border-slate-100 bg-slate-50 text-slate-400"
+            }`}
+          >
+            <div className="min-w-0 flex-1">
+              <p className="font-extrabold">Final challenge</p>
+              <p className="mt-1 text-xs text-slate-500">{finalDone ? "Complete" : allFinished ? "The full video, without help" : "Locked"}</p>
+            </div>
+            {allFinished ? (
+              <span className="flex flex-shrink-0 items-center gap-1 text-sm font-bold text-slate-900">
+                {finalDone ? "Again" : "Start"} <ArrowRight className="h-4 w-4" />
+              </span>
+            ) : (
+              <Lock className="h-4 w-4 flex-shrink-0" />
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // The whole source is kept and learned in ~30 s episodes (lib/chapterEpisodes);
 // this only guards against runaway lengths, same as prepareChapter.
 const CHAPTER_MAX_SECONDS = 900;
@@ -4117,7 +4259,6 @@ function ChapterWatch({
         <div className="flex flex-1 flex-col items-center justify-center px-5">
           <div className="w-full rounded-3xl bg-white p-6 text-center text-slate-900 shadow-2xl">
             <p className="text-xl font-bold text-indigo-950">How much did you understand?</p>
-            <p className="mt-1 text-xs text-slate-500">Think about the overall meaning, not every word.</p>
 
             <div className="mt-6 grid grid-cols-5 items-end gap-1">
               {UNDERSTOOD_LEVELS.map((l, i) => (
