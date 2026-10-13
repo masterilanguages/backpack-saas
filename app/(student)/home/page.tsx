@@ -370,6 +370,9 @@ export default function Home() {
   const [activeEpisode, setActiveEpisode] = useState<any>(null);
   // Library item → its episode list → an episode's learning flow.
   const [episodeList, setEpisodeList] = useState<{ v: any; eps: Episode[] } | null>(null);
+  // Library video whose title an admin is editing.
+  const [renameTarget, setRenameTarget] = useState<any>(null);
+  const canRename = currentUser?.role === "admin" || currentUser?.role === "owner";
   // The episode the First listen screen plays (chapterWatch holds its video).
   const [watchEpisode, setWatchEpisode] = useState<any>(null);
   // { v, eps, phase: "watch" | "quiz", score? }
@@ -3273,7 +3276,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             onBack={() => setEpisodeList(null)}
             onOpen={(ep: Episode) => openEpisode(episodeList.v, episodeList.eps, ep)}
             onChallenge={() => setChapterChallenge({ v: episodeList.v, eps: episodeList.eps, phase: "watch" })}
-            canRename={currentUser?.role === "admin" || currentUser?.role === "owner"}
+            canRename={canRename}
             onRename={(name: string, subtitle: string) => renameVideo(episodeList.v, name, subtitle)}
           />
         )}
@@ -3672,12 +3675,24 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   );
                 }
                 const card = (v: any) => (
-                  <LibraryCard
-                    video={v}
-                    meta={libMetas[v.video_id] || null}
-                    progress={sourceProgressOf(v)}
-                    onOpen={() => (v.video_id ? openChapter(v) : openShellVideo(v))}
-                  />
+                  <div className="relative">
+                    <LibraryCard
+                      video={v}
+                      meta={libMetas[v.video_id] || null}
+                      progress={sourceProgressOf(v)}
+                      onOpen={() => (v.video_id ? openChapter(v) : openShellVideo(v))}
+                    />
+                    {/* Admins rename any video from here, prepared or not. */}
+                    {canRename && (
+                      <button
+                        onClick={() => setRenameTarget(v)}
+                        aria-label="Edit title"
+                        className="absolute left-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 );
                 // The order is set on "All" (the filters show a part of it).
                 if (libFilter !== "all") {
@@ -3703,6 +3718,20 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   </Reorder.Group>
                 );
               })()}
+            </div>
+          </div>
+        )}
+
+        {renameTarget && (
+          <div className="absolute inset-0 z-40 flex items-end bg-black/40" onClick={() => setRenameTarget(null)}>
+            <div className="w-full rounded-t-3xl bg-white p-5 pb-8" onClick={(e) => e.stopPropagation()}>
+              <p className="mb-3 text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">Edit title</p>
+              <TitleEditor
+                initialName={libMetas[renameTarget.video_id]?.name || renameTarget.title || ""}
+                initialSubtitle={libMetas[renameTarget.video_id]?.artist || ""}
+                onSave={async (n, sub) => { await renameVideo(renameTarget, n, sub); setRenameTarget(null); }}
+                onCancel={() => setRenameTarget(null)}
+              />
             </div>
           </div>
         )}
@@ -4001,14 +4030,6 @@ function EpisodeList({
 }) {
   const shortTitle = useDisplayTitle(video);
   const [editing, setEditing] = useState(false);
-  const [nameDraft, setNameDraft] = useState("");
-  const [subDraft, setSubDraft] = useState("");
-  const [savingTitle, setSavingTitle] = useState(false);
-  const startEditing = () => {
-    setNameDraft(shortTitle?.name || video.title || "");
-    setSubDraft(shortTitle?.artist || "");
-    setEditing(true);
-  };
   const rows = eps.map((ep, i) => {
     const row = progressOf(ep.number);
     const dots = episodeActivitiesDone(row);
@@ -4027,36 +4048,13 @@ function EpisodeList({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
         {editing ? (
-          <div className="mt-1 space-y-2">
-            <input
-              value={nameDraft}
-              onChange={(e) => setNameDraft(e.target.value)}
-              placeholder="Title (empty = automatic)"
-              aria-label="Title"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-extrabold outline-none focus:border-slate-900"
+          <div className="mt-1">
+            <TitleEditor
+              initialName={shortTitle?.name || video.title || ""}
+              initialSubtitle={shortTitle?.artist || ""}
+              onSave={async (n, sub) => { await onRename?.(n, sub); setEditing(false); }}
+              onCancel={() => setEditing(false)}
             />
-            <input
-              value={subDraft}
-              onChange={(e) => setSubDraft(e.target.value)}
-              placeholder="Subtitle (optional)"
-              aria-label="Subtitle"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900"
-            />
-            <div className="flex gap-2">
-              <button
-                disabled={savingTitle}
-                onClick={async () => {
-                  setSavingTitle(true);
-                  try { await onRename?.(nameDraft, subDraft); setEditing(false); } catch {} finally { setSavingTitle(false); }
-                }}
-                className="rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
-              >
-                {savingTitle ? "Saving…" : "Save"}
-              </button>
-              <button onClick={() => setEditing(false)} className="rounded-full px-4 py-2 text-xs font-bold text-slate-500">
-                Cancel
-              </button>
-            </div>
           </div>
         ) : (
           <>
@@ -4065,7 +4063,7 @@ function EpisodeList({
                 {shortTitle ? shortTitle.name : video.title}
               </p>
               {canRename && (
-                <button onClick={startEditing} aria-label="Edit title" className="mt-1.5 flex-shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-700">
+                <button onClick={() => setEditing(true)} aria-label="Edit title" className="mt-1.5 flex-shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-700">
                   <Pencil className="h-4 w-4" />
                 </button>
               )}
@@ -4505,6 +4503,53 @@ function BackpackThinking() {
             transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
           />
         ))}
+      </div>
+    </div>
+  );
+}
+
+// An admin's title + subtitle form for a video (empty title = automatic).
+function TitleEditor({
+  initialName, initialSubtitle, onSave, onCancel,
+}: {
+  initialName: string;
+  initialSubtitle: string;
+  onSave: (name: string, subtitle: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [subtitle, setSubtitle] = useState(initialSubtitle);
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className="space-y-2">
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Title (empty = automatic)"
+        aria-label="Title"
+        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-extrabold text-slate-900 outline-none focus:border-slate-900"
+      />
+      <input
+        value={subtitle}
+        onChange={(e) => setSubtitle(e.target.value)}
+        placeholder="Subtitle (optional)"
+        aria-label="Subtitle"
+        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900"
+      />
+      <div className="flex gap-2">
+        <button
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true);
+            try { await onSave(name, subtitle); } catch {} finally { setSaving(false); }
+          }}
+          className="rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button onClick={onCancel} className="rounded-full px-4 py-2 text-xs font-bold text-slate-500">
+          Cancel
+        </button>
       </div>
     </div>
   );
