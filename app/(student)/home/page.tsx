@@ -2047,8 +2047,10 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
 
   // Recommended vocabulary for the chapter: picked once by AI, saved on the
   // student's chapter_progress row, highlighted in the sentences.
+  // The open sentence pass belongs to an episode.
+  const episodeOn = !!(activeEpisode && !activeEpisode.pending && activeEpisode.videoId === shellVideo?.video_id);
   const discKey =
-    activeEpisode && !activeEpisode.pending && activeEpisode.videoId === shellVideo?.video_id
+    episodeOn
       ? episodeKey(activeEpisode.videoId, activeEpisode.number)
       : shellVideo?.video_id;
   const discProgress: any = discKey ? chapterByVideo.get(discKey) : null;
@@ -2900,7 +2902,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              {discovery ? (
+              {discovery && episodeOn ? (
+                <div className="min-w-0 flex-1">
+                  <EpisodeProgress title={`Episode ${activeEpisode.number} of ${activeEpisode.count}`} stage="sentences" />
+                </div>
+              ) : discovery ? (
                 <span className="min-w-0 flex-1 truncate text-center leading-tight">
                   <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-600">
                     {passKind === "discovery" ? "Sentence discovery" : "Comprehension pass"}
@@ -2980,12 +2986,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onReveal={revealDiscTranslation}
                 onHideTranslation={() => setDiscRevealed(false)}
                 title={shellMeta?.name || shellVideo.title}
-                artist={[
-                  shellMeta?.artist || "",
-                  activeEpisode && !activeEpisode.pending && activeEpisode.videoId === shellVideo?.video_id
-                    ? `Episode ${activeEpisode.number} of ${activeEpisode.count}`
-                    : "",
-                ].filter(Boolean).join(" · ")}
+                artist={shellMeta?.artist || ""}
                 progress={discProgressInSentence}
                 recommendedWords={recommendedWords}
                 onPrev={() => { setWordPopup(null); setDiscIdx((i) => Math.max(0, i - 1)); }}
@@ -3856,15 +3857,15 @@ const EPISODE_STAGES = {
 } as const;
 
 // "Episode 1 of 7", a thin bar right under it, then the current section.
-function EpisodeProgress({ title, stage }: { title: string; stage: keyof typeof EPISODE_STAGES }) {
+function EpisodeProgress({ title, stage, dark = false }: { title: string; stage: keyof typeof EPISODE_STAGES; dark?: boolean }) {
   const { label, pct } = EPISODE_STAGES[stage];
   return (
     <div className="flex-shrink-0">
-      <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-700">{title}</p>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-900/15">
-        <div className="h-full rounded-full bg-slate-900 transition-[width] duration-500" style={{ width: `${pct}%` }} />
+      <p className={`text-xs font-extrabold uppercase tracking-[0.14em] ${dark ? "text-slate-200" : "text-slate-700"}`}>{title}</p>
+      <div className={`mt-2 h-1 overflow-hidden rounded-full ${dark ? "bg-white/15" : "bg-slate-900/15"}`}>
+        <div className={`h-full rounded-full transition-[width] duration-500 ${dark ? "bg-white" : "bg-slate-900"}`} style={{ width: `${pct}%` }} />
       </div>
-      <p className="mt-2 text-xs font-semibold text-slate-500">{label}</p>
+      <p className={`mt-2 text-xs font-semibold ${dark ? "text-slate-400" : "text-slate-500"}`}>{label}</p>
     </div>
   );
 }
@@ -3988,7 +3989,6 @@ function ChapterWatch({
     };
   }, [phase, video.video_id, segment?.start, segment?.end]);
 
-  const progress = total && remaining != null ? Math.min(1, Math.max(0, 1 - remaining / total)) : 0;
 
   // Intro (design P5): light, tinted with the cover's colour like the other
   // chapter screens; the watching / rating phases stay dark.
@@ -4069,14 +4069,14 @@ function ChapterWatch({
         <button onClick={onExit} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/15">
           ✕ Exit
         </button>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200">{final ? "🏁 Final challenge" : label ? `🎬 ${label}` : "🎬 Watch for meaning"}</span>
-          {onSkip && (
-            <button onClick={onSkip} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/15">
-              Skip ›
-            </button>
-          )}
-        </div>
+        {onSkip && (
+          <button onClick={onSkip} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/15">
+            Skip ›
+          </button>
+        )}
+      </div>
+      <div className="px-5 pt-2">
+        <EpisodeProgress dark title={final ? "Final challenge — full source" : label || "First listen"} stage="firstListen" />
       </div>
 
       {phase === "watching" && (
@@ -4109,9 +4109,6 @@ function ChapterWatch({
           <div className="mt-10 text-center">
             <p className="text-5xl font-extrabold tabular-nums tracking-wide">{formatClock(remaining)}</p>
             <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-400">remaining</p>
-          </div>
-          <div className="mx-6 mt-6 h-1 overflow-hidden rounded-full bg-white/15">
-            <div className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500" style={{ width: `${progress * 100}%` }} />
           </div>
         </div>
       )}
