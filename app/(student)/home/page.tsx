@@ -16,7 +16,7 @@ import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, Clock, Star, CaptionsOff } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
@@ -150,13 +150,6 @@ function useVideoMetas(videos: any[]) {
   }, [ids]);
   return metas;
 }
-
-// "No pausing": a pause sign struck through.
-const NoPauseIcon = ({ className = "" }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className={className} aria-hidden="true">
-    <path d="M9 6v12M15 6v12M4 4l16 16" />
-  </svg>
-);
 
 // The cover's average colour (like Spotify's now-playing screen), as "r,g,b".
 // YouTube thumbnails are served with CORS, so the canvas can read them.
@@ -3958,6 +3951,8 @@ function ChapterWatch({
     // challenge is one step over the whole source.
     const steps = final ? 1 : label ? 2 : 4;
     const step = 1;
+    // label reads "Episode N of M"; the button names the episode.
+    const episodeNumber = label?.match(/Episode (\d+)/)?.[1];
     return (
       <div
         className="absolute inset-0 z-30 flex flex-col px-5 pb-6 text-slate-900 [font-family:var(--font-body),var(--font-hebrew)]"
@@ -4005,40 +4000,25 @@ function ChapterWatch({
           {final ? "Now, without help — how much do you understand?" : "How much can you understand without help?"}
         </p>
 
-        <div className="mt-5 grid flex-shrink-0 grid-cols-2 gap-2.5">
-          <div className="flex items-center gap-2.5">
-            <Clock className="h-5 w-5 flex-shrink-0" />
-            <div>
-              <p className="text-base font-extrabold leading-tight">{fmtTime(secs)}</p>
-              <p className="text-[11px] text-slate-500">without stopping</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <Star className="h-5 w-5 flex-shrink-0" />
-            <div>
-              <p className="text-base font-extrabold leading-tight">Rate</p>
-              <p className="text-[11px] text-slate-500">at the end</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-shrink-0 flex-wrap gap-x-4 gap-y-2">
-          {[
-            { Icon: CaptionsOff, label: "No subtitles" },
-            { Icon: Languages, label: "No translation" },
-            { Icon: NoPauseIcon, label: "No pausing" },
-          ].map(({ Icon, label }) => (
-            <span key={label} className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
-              <Icon className="h-3.5 w-3.5" /> {label}
-            </span>
-          ))}
-        </div>
+        <p className="mt-3 flex-shrink-0 text-base font-semibold text-slate-700">
+          Watch this video for {secs < 60 ? `${secs} seconds` : fmtTime(secs)} on your own.
+        </p>
+        <p className="mt-3 flex-shrink-0 text-sm font-semibold text-slate-500">
+          No subtitles · no translation · no pausing
+        </p>
+        <p className="mt-3 flex-shrink-0 text-sm text-slate-500">
+          Just see how much you understand. You’ll rate yourself at the end.
+        </p>
 
         <button
           onClick={() => setPhase("watching")}
-          className="mt-auto flex h-14 flex-shrink-0 items-center justify-center gap-2 rounded-full bg-slate-900 text-base font-extrabold text-white shadow-[0_16px_30px_-14px_rgba(15,18,34,.7)] transition active:scale-[.98]"
+          className="mt-auto flex h-14 flex-shrink-0 items-center justify-between rounded-full bg-slate-900 pl-2 pr-6 text-base font-extrabold text-white shadow-[0_16px_30px_-14px_rgba(15,18,34,.7)] transition active:scale-[.98]"
         >
-          <Play className="h-4 w-4 fill-current" /> Start
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-900">
+            <Play className="ml-0.5 h-4 w-4 fill-current" />
+          </span>
+          <span>{final ? "Start the challenge" : episodeNumber ? `Start Episode ${episodeNumber}` : "Start"}</span>
+          <ArrowRight className="h-5 w-5" />
         </button>
       </div>
     );
