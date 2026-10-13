@@ -1316,7 +1316,6 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     };
     try {
       await upsertChapterRow(key, data);
-      toast.success(`Saved: ${score}%`);
     } catch (e) {
       console.error("[chapter] could not save baseline", e);
       toast.error("Couldn't save your answer — please try again.");
@@ -3817,13 +3816,23 @@ function BackpackDeckMenu({
 // Full-screen video with no controls, subtitles, text or translation; it can't
 // be paused or skipped (a layer blocks taps and a pause is resumed at once). A
 // countdown shows the time left. When the video ends the student answers
-// "How much did you understand?" (1–100%) — the chapter's baseline score.
+// "How much did you understand?" on 5 stops — the chapter's baseline score.
 // ---------------------------------------------------------------------------
 function formatClock(s: number | null) {
   if (s == null || !isFinite(s)) return "–:––";
   const t = Math.max(0, Math.ceil(s));
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
+
+// Self-rating stops and the score each one saves. It's a self-assessment, so
+// the top is 95, not 100.
+const UNDERSTOOD_LEVELS = [
+  { label: "Almost nothing", score: 10, phrase: "almost nothing" },
+  { label: "A little", score: 25, phrase: "a little of it" },
+  { label: "About half", score: 50, phrase: "about half of it" },
+  { label: "Most", score: 80, phrase: "most of it" },
+  { label: "Almost everything", score: 95, phrase: "almost everything" },
+];
 
 // The whole source is kept and learned in ~30 s episodes (lib/chapterEpisodes);
 // this only guards against runaway lengths, same as prepareChapter.
@@ -3856,14 +3865,14 @@ function ChapterWatch({
   // e.g. "Episode 2 of 7".
   label?: string;
 }) {
-  const [phase, setPhase] = useState<"intro" | "watching" | "rate">("intro");
+  const [phase, setPhase] = useState<"intro" | "watching" | "rate" | "result">("intro");
   const [remaining, setRemaining] = useState<number | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [needsTap, setNeedsTap] = useState(false);
   // Our own cover whenever the video isn't actually playing, so YouTube's
   // pause/end screen (title, share, "More videos", big ▶) is never visible.
   const [playing, setPlaying] = useState(false);
-  const [score, setScore] = useState(50);
+  const [level, setLevel] = useState(2);
   const [saving, setSaving] = useState(false);
   const playerRef = useRef<any>(null);
   const endedRef = useRef(false);
@@ -4081,26 +4090,73 @@ function ChapterWatch({
       {phase === "rate" && (
         <div className="flex flex-1 flex-col items-center justify-center px-5">
           <div className="w-full rounded-3xl bg-white p-6 text-center text-slate-900 shadow-2xl">
-            <p className="text-3xl">🎧</p>
-            <p className="mt-2 text-xl font-bold text-indigo-950">How much did you understand?</p>
-            <p className="mt-1 text-xs text-slate-500">The overall meaning, story and context — not every word.</p>
-            <p className="mt-4 bg-gradient-to-r from-fuchsia-500 to-indigo-500 bg-clip-text text-6xl font-extrabold text-transparent">{score}%</p>
-            <input
-              type="range"
-              min={1}
-              max={100}
-              value={score}
-              onChange={(e) => setScore(Number(e.target.value))}
-              aria-label="How much did you understand, from 1 to 100 percent"
-              className="mt-4 w-full accent-indigo-500"
-            />
-            <div className="mt-1 flex justify-between text-[10px] text-slate-400"><span>1%</span><span>100%</span></div>
+            <p className="text-xl font-bold text-indigo-950">How much did you understand?</p>
+            <p className="mt-1 text-xs text-slate-500">Think about the overall meaning, not every word.</p>
+
+            <div className="mt-6 grid grid-cols-5 items-end gap-1">
+              {UNDERSTOOD_LEVELS.map((l, i) => (
+                <button
+                  key={l.label}
+                  onClick={() => setLevel(i)}
+                  className={`text-[11px] leading-tight transition ${i === level ? "font-extrabold text-indigo-950" : "font-medium text-slate-400"}`}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+            {/* 5-stop selector: tap a dot or a label, or drag along the line. */}
+            <div className="relative mt-3 h-8">
+              <div className="absolute inset-x-[10%] top-1/2 h-0.5 -translate-y-1/2 bg-slate-200" />
+              <div className="absolute inset-0 grid grid-cols-5">
+                {UNDERSTOOD_LEVELS.map((l, i) => (
+                  <span key={l.label} className="flex items-center justify-center">
+                    <span
+                      className={`rounded-full border-2 transition-all ${
+                        i === level ? "h-6 w-6 border-indigo-500 bg-indigo-500 shadow-md shadow-indigo-500/40" : "h-3.5 w-3.5 border-slate-300 bg-white"
+                      }`}
+                    />
+                  </span>
+                ))}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={4}
+                step={1}
+                value={level}
+                onChange={(e) => setLevel(Number(e.target.value))}
+                aria-label="How much did you understand?"
+                aria-valuetext={UNDERSTOOD_LEVELS[level].label}
+                className="absolute inset-y-0 left-[5%] w-[90%] cursor-pointer opacity-0"
+              />
+            </div>
+
+            <button
+              onClick={() => setPhase("result")}
+              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "result" && (
+        <div className="flex flex-1 flex-col items-center justify-center px-5">
+          <div className="w-full rounded-3xl bg-white p-6 text-center text-slate-900 shadow-2xl">
+            <p className="bg-gradient-to-r from-fuchsia-500 to-indigo-500 bg-clip-text text-5xl font-extrabold text-transparent">
+              About {UNDERSTOOD_LEVELS[level].score}%
+            </p>
+            <p className="mt-3 text-base font-semibold text-indigo-950">
+              You understood {UNDERSTOOD_LEVELS[level].phrase} {final ? "without help." : "on your first listen."}
+            </p>
+            {!final && <p className="mt-2 text-sm text-slate-500">Now let’s go through it together, one sentence at a time.</p>}
             <button
               disabled={saving}
-              onClick={async () => { setSaving(true); try { await onSave(score); } finally { setSaving(false); } }}
-              className="mt-5 w-full rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30 disabled:opacity-60"
+              onClick={async () => { setSaving(true); try { await onSave(UNDERSTOOD_LEVELS[level].score); } finally { setSaving(false); } }}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-3 text-base font-bold text-white shadow-lg shadow-indigo-500/30 disabled:opacity-60"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Saving…" : <>Continue <ArrowRight className="h-5 w-5" /></>}
             </button>
           </div>
         </div>
