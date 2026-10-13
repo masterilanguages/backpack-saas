@@ -18,7 +18,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
 import { supabase } from "@/api/supabaseClient";
 import { BackpackLogo } from "@/components/AuthShell";
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight, Lock, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight, Lock, GripVertical, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
@@ -123,7 +123,17 @@ Examples: "שמואל - תן לי תפילה | Shmuel - Give Me One Prayer" -> {
   }
   return metaInflight.get(vid)!;
 }
+// A title set by an admin (display_name / display_subtitle) wins over the AI one.
+function withOverride(video: any, meta: VideoMeta | null): VideoMeta | null {
+  const name = (video?.display_name || "").trim();
+  if (!name) return meta;
+  return { name, artist: (video?.display_subtitle || "").trim(), kind: meta?.kind || "lesson" };
+}
 function useDisplayTitle(video: any) {
+  const meta = useAiDisplayTitle(video);
+  return withOverride(video, meta);
+}
+function useAiDisplayTitle(video: any) {
   const [meta, setMeta] = useState<VideoMeta | null>(() => readMeta(video?.video_id));
   useEffect(() => {
     let off = false;
@@ -150,7 +160,13 @@ function useVideoMetas(videos: any[]) {
     return () => { off = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids]);
-  return metas;
+  const out: Record<string, VideoMeta> = {};
+  for (const v of videos) {
+    if (!v?.video_id) continue;
+    const m = withOverride(v, metas[v.video_id] || null);
+    if (m) out[v.video_id] = m;
+  }
+  return out;
 }
 
 // The cover's average colour (like Spotify's now-playing screen), as "r,g,b".
@@ -1264,6 +1280,22 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
       return;
     }
     setEpisodeList({ v, eps });
+  };
+  // An admin's own title for a video (empty name = back to the automatic one).
+  const renameVideo = async (v: any, name: string, subtitle: string) => {
+    const data = { display_name: name.trim() || null, display_subtitle: name.trim() ? subtitle.trim() || null : null };
+    try {
+      if (v._mine) await base44.entities.UserSavedVideo.update(v.id, data);
+      else await base44.entities.MediaLibrary.update(v.id, data);
+    } catch (e) {
+      console.error("[library] could not rename the video", e);
+      toast.error("Couldn't save the title — please try again.");
+      throw e;
+    }
+    queryClient.invalidateQueries({ queryKey: ["mediaLibrary"] });
+    queryClient.invalidateQueries({ queryKey: ["userSavedVideos"] });
+    setEpisodeList((l) => (l && l.v.id === v.id ? { ...l, v: { ...l.v, ...data } } : l));
+    toast.success("Title saved");
   };
   // From the episode list: one episode — its First listen, or its transcript
   // when it was already listened to (a replayed First listen would overwrite
@@ -3241,6 +3273,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             onBack={() => setEpisodeList(null)}
             onOpen={(ep: Episode) => openEpisode(episodeList.v, episodeList.eps, ep)}
             onChallenge={() => setChapterChallenge({ v: episodeList.v, eps: episodeList.eps, phase: "watch" })}
+            canRename={currentUser?.role === "admin" || currentUser?.role === "owner"}
+            onRename={(name: string, subtitle: string) => renameVideo(episodeList.v, name, subtitle)}
           />
         )}
         {chapterWatch && (
@@ -3953,7 +3987,7 @@ const episodeActivitiesDone = (row: any) => [!!row?.baseline_at, !!row?.discover
 const episodeFinished = (row: any) => !!row?.discovery_completed_at;
 
 function EpisodeList({
-  video, eps, progressOf, finalDone, onBack, onOpen, onChallenge,
+  video, eps, progressOf, finalDone, onBack, onOpen, onChallenge, canRename = false, onRename,
 }: {
   video: any;
   eps: Episode[];
@@ -3962,8 +3996,19 @@ function EpisodeList({
   onBack: () => void;
   onOpen: (ep: Episode) => void;
   onChallenge: () => void;
+  canRename?: boolean;
+  onRename?: (name: string, subtitle: string) => Promise<void>;
 }) {
   const shortTitle = useDisplayTitle(video);
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [subDraft, setSubDraft] = useState("");
+  const [savingTitle, setSavingTitle] = useState(false);
+  const startEditing = () => {
+    setNameDraft(shortTitle?.name || video.title || "");
+    setSubDraft(shortTitle?.artist || "");
+    setEditing(true);
+  };
   const rows = eps.map((ep, i) => {
     const row = progressOf(ep.number);
     const dots = episodeActivitiesDone(row);
@@ -3981,10 +4026,53 @@ function EpisodeList({
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
-        <p className="mt-1 line-clamp-2 text-[26px] font-extrabold leading-tight tracking-[-0.02em] [font-family:var(--font-display),var(--font-hebrew)]">
-          {shortTitle ? shortTitle.name : video.title}
-        </p>
-        {shortTitle?.artist && <p className="mt-1 truncate text-sm italic text-slate-500">{shortTitle.artist}</p>}
+        {editing ? (
+          <div className="mt-1 space-y-2">
+            <input
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              placeholder="Title (empty = automatic)"
+              aria-label="Title"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-extrabold outline-none focus:border-slate-900"
+            />
+            <input
+              value={subDraft}
+              onChange={(e) => setSubDraft(e.target.value)}
+              placeholder="Subtitle (optional)"
+              aria-label="Subtitle"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900"
+            />
+            <div className="flex gap-2">
+              <button
+                disabled={savingTitle}
+                onClick={async () => {
+                  setSavingTitle(true);
+                  try { await onRename?.(nameDraft, subDraft); setEditing(false); } catch {} finally { setSavingTitle(false); }
+                }}
+                className="rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+              >
+                {savingTitle ? "Saving…" : "Save"}
+              </button>
+              <button onClick={() => setEditing(false)} className="rounded-full px-4 py-2 text-xs font-bold text-slate-500">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mt-1 flex items-start gap-2">
+              <p className="line-clamp-2 min-w-0 flex-1 text-[26px] font-extrabold leading-tight tracking-[-0.02em] [font-family:var(--font-display),var(--font-hebrew)]">
+                {shortTitle ? shortTitle.name : video.title}
+              </p>
+              {canRename && (
+                <button onClick={startEditing} aria-label="Edit title" className="mt-1.5 flex-shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-700">
+                  <Pencil className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {shortTitle?.artist && <p className="mt-1 truncate text-sm italic text-slate-500">{shortTitle.artist}</p>}
+          </>
+        )}
         <p className="mt-1 text-sm font-semibold text-slate-500">{eps.length} episodes · ~30 sec each</p>
 
         {(next || !finalDone) && (
