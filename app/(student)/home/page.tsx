@@ -443,7 +443,7 @@ export default function Home() {
 
   useEffect(() => {
     base44.auth.me().then(setCurrentUser).catch(() => {});
-    document.title = "Home - Lashon Languages";
+    document.title = "Home - Masteri Languages";
     // Deep-link support: /home?open=journal (old /journal links redirect here).
     const open = new URLSearchParams(window.location.search).get("open");
     if (open === "journal") {

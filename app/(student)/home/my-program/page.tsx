@@ -22,7 +22,7 @@ export default function MyProgram() {
       } catch (e) {}
     };
     fetchUser();
-    document.title = "My Program - Lashon Languages";
+    document.title = "My Program - Masteri Languages";
   }, []);
 
   const { data: myProgram = [] } = useQuery({

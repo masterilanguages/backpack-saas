@@ -217,7 +217,7 @@ export default function MediaLibrary() {
       } catch (e) {}
     };
     fetchUser();
-    document.title = "Media Library - Lashon Languages";
+    document.title = "Media Library - Masteri Languages";
 
     // Auto-open video if videoId param is present
     const urlParams = new URLSearchParams(window.location.search);

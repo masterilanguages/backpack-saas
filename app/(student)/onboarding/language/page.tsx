@@ -21,7 +21,7 @@ export default function LanguageSelect() {
   const [showComingSoon, setShowComingSoon] = useState(false);
 
   useEffect(() => {
-    document.title = "Choose Language - Lashon Languages";
+    document.title = "Choose Language - Masteri Languages";
   }, []);
 
   const selectLanguageMutation = useMutation({

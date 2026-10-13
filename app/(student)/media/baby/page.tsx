@@ -675,7 +675,7 @@ export default function BabyVideos() {
   });
 
   useEffect(() => {
-    document.title = "Videos - Lashon Languages";
+    document.title = "Videos - Masteri Languages";
   }, []);
 
   const copyToMyVideosMutation = useMutation({
