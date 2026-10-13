@@ -4317,7 +4317,6 @@ function DiscoveryPanel({
   const popupOpen = wordPopup && String(wordPopup.key || "").startsWith(popupKeyPrefix);
   const popupRec = popupOpen ? recommendedFor(wordPopup.clean) : null;
   const tappable = mode === "discovery";
-  const chips = tappable ? recommendedWords.slice(0, 4) : [];
   const sideBtn = "relative flex h-11 w-11 items-center justify-center rounded-full transition active:scale-95";
 
   return (
@@ -4447,17 +4446,6 @@ function DiscoveryPanel({
         <span className="w-11 text-center">Replay</span>
       </div>
 
-      {/* the chapter's recommended words */}
-      {chips.length > 0 && (
-        <div className="mt-4 flex flex-shrink-0 gap-2">
-          {chips.map((w: any) => (
-            <span key={w.hebrew} className="min-w-0 flex-1 rounded-xl bg-white px-1.5 py-2 text-center shadow-[0_1px_0_rgba(15,18,34,.06)]">
-              <span dir="rtl" className="block truncate text-base text-slate-900">{w.hebrew}</span>
-              <span className="block truncate text-[10px] text-slate-500">{w.meaning}</span>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
