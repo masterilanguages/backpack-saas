@@ -2927,6 +2927,17 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               </div>
               {discovery && (
                 <>
+                  {/* Same mask as the first listen: subtitles burned into the
+                      video pixels (Hebrew + English on many learner videos)
+                      would give away the sentence and its translation, and no
+                      caption setting removes them. They sit in the bottom band
+                      of the frame — the crop above makes the frame exactly the
+                      video picture. */}
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-[27%]"
+                    style={{ background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, #000 14%, #000 100%)" }}
+                  />
                   {/* Taps never reach YouTube (its own buttons don't know about
                       sentences): tapping the video pauses / resumes it instead.
                       Paused, the frozen frame stays visible (no thumbnail: many
