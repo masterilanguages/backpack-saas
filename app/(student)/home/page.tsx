@@ -330,7 +330,7 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   // Sign-in lands on the PATH: the video journey is the first thing a student
   // sees (product decision — thumbnails → video + transcript).
-  const [tab, setTab] = useState<"learning" | "practice" | "path" | "library" | "account">("path");
+  const [tab, setTab] = useState<"learning" | "practice" | "path" | "library" | "account">("library");
   // Videos the user has opened on this device — drives the Path's progress.
   const [watchedIds, setWatchedIds] = useState<Set<string>>(() => {
     if (typeof window === "undefined") return new Set();
@@ -3673,12 +3673,12 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
 
         {/* ================= BOTTOM MENU (pinned) ================= */}
         <div className="flex flex-shrink-0 items-center justify-around border-t border-indigo-100 bg-white px-2 py-2">
-          {/* PATH is deliberately FIRST (bottom-left): it's the student's
-              primary surface and the tab shown right after sign-in. */}
+          {/* LEARN (the "path" tab) is hidden for now; its screen is kept so it
+              can come back by restoring this entry:
+              { key: "path", Icon: Route, label: "LEARN", onTap: () => { closeShellVideo(); setTab("path"); } }, */}
           {[
-            { key: "path", Icon: Route, label: "LEARN", onTap: () => { closeShellVideo(); setTab("path"); } },
-            { key: "learning", Icon: Backpack, label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
             { key: "library", Icon: Library, label: "LIBRARY", onTap: () => { closeShellVideo(); setLibView("grid"); setTab("library"); } },
+            { key: "learning", Icon: Backpack, label: "BACKPACK", onTap: () => { closeShellVideo(); setTab("learning"); } },
             { key: "account", Icon: CircleUser, label: "ACCOUNT", onTap: () => { closeShellVideo(); setTab("account"); } },
           ].map((t) => {
             const active = tab === t.key;
@@ -4010,14 +4010,14 @@ function ChapterWatch({
         </p>
 
         <div className="mt-5 grid flex-shrink-0 grid-cols-2 gap-2.5">
-          <div className="flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-3 shadow-[0_1px_0_rgba(15,18,34,.06)]">
+          <div className="flex items-center gap-2.5">
             <Clock className="h-5 w-5 flex-shrink-0" />
             <div>
               <p className="text-base font-extrabold leading-tight">{fmtTime(secs)}</p>
               <p className="text-[11px] text-slate-500">without stopping</p>
             </div>
           </div>
-          <div className="flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-3 shadow-[0_1px_0_rgba(15,18,34,.06)]">
+          <div className="flex items-center gap-2.5">
             <Star className="h-5 w-5 flex-shrink-0" />
             <div>
               <p className="text-base font-extrabold leading-tight">Rate</p>
@@ -4026,13 +4026,13 @@ function ChapterWatch({
           </div>
         </div>
 
-        <div className="mt-3.5 flex flex-shrink-0 flex-wrap gap-2">
+        <div className="mt-4 flex flex-shrink-0 flex-wrap gap-x-4 gap-y-2">
           {[
             { Icon: CaptionsOff, label: "No subtitles" },
             { Icon: Languages, label: "No translation" },
             { Icon: NoPauseIcon, label: "No pausing" },
           ].map(({ Icon, label }) => (
-            <span key={label} className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 shadow-[0_1px_0_rgba(15,18,34,.06)]">
+            <span key={label} className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
               <Icon className="h-3.5 w-3.5" /> {label}
             </span>
           ))}
