@@ -4057,7 +4057,7 @@ function ChapterWatch({
             {/* Blocks taps/hover on the player: no pausing, seeking or YouTube UI. */}
             <div className="absolute inset-0" onClick={(e) => e.preventDefault()} />
             {!playing && !needsTap && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black text-xs text-slate-400">Loading…</div>
+              <div className="absolute inset-0 bg-black" />
             )}
             {needsTap && (
               <button
