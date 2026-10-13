@@ -4126,6 +4126,16 @@ function ChapterWatch({
             >
               {saving ? "Saving…" : "Save"}
             </button>
+            {/* Not sure yet? Replay the same episode before locking in a score.
+                Going back to "watching" re-creates the player (the effect keys
+                off `phase`) and autoplays from the segment start again. */}
+            <button
+              disabled={saving}
+              onClick={() => setPhase("watching")}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50 disabled:opacity-60"
+            >
+              <RotateCcw className="h-4 w-4" /> Watch one more time
+            </button>
           </div>
         </div>
       )}
