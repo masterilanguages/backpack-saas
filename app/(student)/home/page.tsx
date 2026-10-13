@@ -4058,6 +4058,15 @@ function ChapterWatch({
         <div className="relative flex flex-1 flex-col justify-center">
           <div className="relative aspect-video w-full bg-black">
             <div id="chapter-yt-player" className="absolute inset-0 h-full w-full" />
+            {/* "No subtitles" also covers subtitles burned into the video
+                pixels (many learner videos ship Hebrew + English text there),
+                which YouTube's caption switch can't remove. They sit in the
+                bottom band of the frame, so mask it. */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-[27%]"
+              style={{ background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, #000 14%, #000 100%)" }}
+            />
             {/* Blocks taps/hover on the player: no pausing, seeking or YouTube UI. */}
             <div className="absolute inset-0" onClick={(e) => e.preventDefault()} />
             {!playing && !needsTap && (
