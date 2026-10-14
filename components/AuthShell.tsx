@@ -7,13 +7,15 @@ import type { ReactNode } from "react";
  * getBrandFromHost) + "Powered by Backpack" con el logito. En el apex/www (sin
  * tenant) el nombre cae a "Backpack".
  */
-export function BackpackLogo({ size = 22 }: { size?: number }) {
+// bare: only the backpack, drawn in navy, without the navy tile behind it.
+export function BackpackLogo({ size = 22, bare = false }: { size?: number; bare?: boolean }) {
+  const ink = bare ? "#1B2B4B" : "white";
   return (
-    <svg width={size} height={size} viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="44" height="44" rx="10" fill="#1B2B4B" />
-      <path d="M17 16.5C17 14.567 18.567 13 20.5 13h3C25.433 13 27 14.567 27 16.5V17h1.5A2.5 2.5 0 0 1 31 19.5v13A2.5 2.5 0 0 1 28.5 35h-13A2.5 2.5 0 0 1 13 32.5v-13A2.5 2.5 0 0 1 15.5 17H17v-.5Z" stroke="white" strokeWidth="1.8" fill="none" />
-      <path d="M19 17h6" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-      <rect x="18" y="23" width="8" height="1.8" rx="0.9" fill="white" />
+    <svg width={size} height={size} viewBox={bare ? "10 11 24 26" : "0 0 44 44"} fill="none" xmlns="http://www.w3.org/2000/svg">
+      {!bare && <rect width="44" height="44" rx="10" fill="#1B2B4B" />}
+      <path d="M17 16.5C17 14.567 18.567 13 20.5 13h3C25.433 13 27 14.567 27 16.5V17h1.5A2.5 2.5 0 0 1 31 19.5v13A2.5 2.5 0 0 1 28.5 35h-13A2.5 2.5 0 0 1 13 32.5v-13A2.5 2.5 0 0 1 15.5 17H17v-.5Z" stroke={ink} strokeWidth="1.8" fill="none" />
+      <path d="M19 17h6" stroke={ink} strokeWidth="1.8" strokeLinecap="round" />
+      <rect x="18" y="23" width="8" height="1.8" rx="0.9" fill={ink} />
     </svg>
   );
 }

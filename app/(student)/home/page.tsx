@@ -382,6 +382,12 @@ export default function Home() {
   const [discRevealed, setDiscRevealed] = useState(false);
   const [discTranslations, setDiscTranslations] = useState<Record<number, { english: string; phonetic: string }>>({});
   const [discTranslating, setDiscTranslating] = useState(false);
+  // Sentence card: the line above the sentence shows the Latin transliteration
+  // (🔤) or, after a tap, the Hebrew sentence with nikud (א). Nikud is made on
+  // demand, one sentence at a time, and kept in this browser.
+  const [nikudMode, setNikudMode] = useState(false);
+  const [nikudBySentence, setNikudBySentence] = useState<Record<string, string>>({});
+  const nikudAskedRef = useRef<Set<string>>(new Set());
   const discStopAtRef = useRef<number | null>(null);
   const [mood, setMood] = useState<Mood>("idle");
 
@@ -1998,6 +2004,43 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     if (chapterPreparing || !chapterContentFetched || chapterPrepFailed !== shellVideo?.video_id) return [];
     return shellSegments.filter((s: any) => (s.start ?? 0) < CHAPTER_MAX_SECONDS);
   }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, chapterPrepFailed, shellVideo?.video_id, shellSegments, activeEpisode]);
+
+  const discNikudKey = (seg: any) => splitScriptLine(seg?.hebrew || seg?.text || "").native.trim();
+  useEffect(() => {
+    if (!nikudMode || !discovery) return;
+    const sentence = discNikudKey(discSegments[discIdx]);
+    if (!sentence || nikudBySentence[sentence] || nikudAskedRef.current.has(sentence)) return;
+    const cacheKey = `nikud:v1:${sentence}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) return setNikudBySentence((m) => ({ ...m, [sentence]: cached }));
+    } catch {}
+    nikudAskedRef.current.add(sentence);
+    (async () => {
+      try {
+        const result = await base44.integrations.Core.InvokeLLM({
+          prompt: `Add full nikud (vowel points) to this Hebrew sentence, as pronounced in modern Israeli Hebrew. Keep exactly the same words, in the same order, with the same punctuation; add nothing else.
+
+Sentence: "${sentence}"
+
+Return JSON: { "nikud": the sentence with nikud }`,
+          response_json_schema: { type: "object", properties: { nikud: { type: "string" } } },
+        });
+        const out = String(result?.nikud || "").trim();
+        // Same letters as the sentence once the vowel points are removed.
+        const letters = (t: string) => t.replace(/[^\u05D0-\u05EA]/g, "");
+        if (!out || letters(out) !== letters(sentence)) throw new Error("nikud did not match the sentence");
+        setNikudBySentence((m) => ({ ...m, [sentence]: out }));
+        try { localStorage.setItem(cacheKey, out); } catch {}
+      } catch (e) {
+        console.warn("[nikud] failed", e);
+        nikudAskedRef.current.delete(sentence);
+        setNikudMode(false);
+        toast.error("Couldn't show the Hebrew phonetics. Try again.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nikudMode, discovery, discSegments, discIdx]);
   const discSeg: any = discSegments[discIdx] || null;
   const coverTint = useCoverTint(discovery ? shellVideo?.video_id : undefined);
   const shellMeta = useDisplayTitle(discovery ? shellVideo : null);
@@ -3048,8 +3091,10 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onTapWord={(key: string, tok: string, main: string) => tapTranscriptWord(key, tok, main)}
                 onAddWord={savePopupWord}
                 onClosePopup={() => setWordPopup(null)}
-                showTranslit={shellShowTranslit}
-                onToggleTranslit={() => setShellShowTranslit((v) => !v)}
+                nikudAvailable={(shellVideo?.language || language) === "hebrew"}
+                nikudMode={nikudMode}
+                nikud={nikudBySentence[discNikudKey(discSegments[discIdx])]}
+                onToggleNikud={() => setNikudMode((v) => !v)}
                 playing={shellPlaying}
                 onPause={pauseDisc}
                 onResume={resumeDisc}
@@ -4478,9 +4523,8 @@ function BackpackThinking() {
       <motion.div
         animate={{ y: [0, -6, 0], rotate: [0, -4, 4, 0] }}
         transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-        className="rounded-2xl shadow-[0_14px_30px_-12px_rgba(27,43,75,.6)]"
       >
-        <BackpackLogo size={64} />
+        <BackpackLogo size={64} bare />
       </motion.div>
       <div className="mt-3 flex gap-1.5">
         {[0, 1, 2].map((i) => (
@@ -4643,7 +4687,7 @@ function FitLine({
     const box = boxRef.current;
     const text = textRef.current;
     if (!box || !text) return;
-    const measure = () => {
+    const choose = () => {
       const avail = box.clientWidth;
       const widthAt = (px: number) => {
         text.style.fontSize = `${px}px`;
@@ -4651,16 +4695,28 @@ function FitLine({
         return text.getBoundingClientRect().width;
       };
       const natural = widthAt(max);
-      if (!natural || !avail || natural <= avail) return setFit({ size: max, wrap: false });
+      if (!natural || !avail || natural <= avail) return { size: max, wrap: false };
       // Proportional first guess, then step down: word padding/underlines
       // don't scale with the font, so the guess can be slightly too big.
       let size = Math.min(max, Math.floor(((max * avail) / natural) * 10) / 10);
       while (size > min && widthAt(size) > avail) size -= 0.5;
-      setFit(size >= min && widthAt(size) <= avail ? { size, wrap: false } : { size: min, wrap: true });
+      return size >= min && widthAt(size) <= avail ? { size, wrap: false } : { size: min, wrap: true };
+    };
+    // Measuring leaves its last trial size/nowrap on the span, and React won't
+    // reapply styles whose values didn't change (e.g. two long sentences in a
+    // row, both wrapped): the line then overflowed and its end was cut off.
+    // So the chosen fit is always written back to the span.
+    const measure = () => {
+      const f = choose();
+      text.style.fontSize = `${f.size}px`;
+      text.style.whiteSpace = f.wrap ? "normal" : "nowrap";
+      setFit(f);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(box);
+    // The Hebrew web font can arrive after the first measurement and is wider.
+    document.fonts?.ready.then(measure).catch(() => {});
     return () => ro.disconnect();
   }, [fitKey, max, min]);
   return (
@@ -4678,7 +4734,7 @@ function FitLine({
 
 function DiscoveryPanel({
   mode = "discovery", loading, preparing = false, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
-  onTapWord, onAddWord, onClosePopup, showTranslit, onToggleTranslit, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
+  onTapWord, onAddWord, onClosePopup, nikudAvailable, nikudMode, nikud, onToggleNikud, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
   title, artist, progress, recommendedWords,
 }: {
   // "discovery" (step 2): words tappable, recommended words marked.
@@ -4699,9 +4755,12 @@ function DiscoveryPanel({
   onTapWord: (key: string, token: string, sentence: string) => void;
   onAddWord: () => void;
   onClosePopup: () => void;
-  // The Latin transliteration line: shown with "🔤 Transliteration", hidden with "א".
-  showTranslit: boolean;
-  onToggleTranslit: () => void;
+  // The line above the sentence: Latin transliteration (🔤) or, for Hebrew,
+  // the sentence with nikud (א; undefined while it is being made).
+  nikudAvailable: boolean;
+  nikudMode: boolean;
+  nikud?: string;
+  onToggleNikud: () => void;
   playing: boolean;
   onPause: () => void;
   onResume: () => void;
@@ -4750,13 +4809,6 @@ function DiscoveryPanel({
           <p className="line-clamp-2 text-[24px] font-extrabold leading-none tracking-[-0.02em] text-slate-900 [font-family:var(--font-display),var(--font-hebrew)]">{title}</p>
           {artist && <p className="mt-1 truncate text-sm text-slate-600">{artist}</p>}
         </div>
-        <button
-          onClick={onToggleTranslit}
-          aria-label={showTranslit ? "Hide transliteration" : "Show transliteration"}
-          className="flex-shrink-0 rounded-lg bg-white/75 px-2.5 py-1 text-xs font-extrabold text-slate-700 transition active:scale-95"
-        >
-          {showTranslit ? "🔤 Transliteration" : <span className="[font-family:var(--font-hebrew)]">א</span>}
-        </button>
         <span className="flex-shrink-0 rounded-lg bg-white/75 px-2.5 py-1 text-xs font-extrabold text-slate-700">
           {idx + 1} / {segments.length}
         </span>
@@ -4764,7 +4816,22 @@ function DiscoveryPanel({
 
       {/* the sentence: phonetic, native line (words tappable), translation */}
       <div className="mt-3 flex-shrink-0 text-center">
-        <p className="text-sm italic text-slate-600">{showTranslit ? phonetic || (translating ? "…" : " ") : " "}</p>
+        <div className="flex items-center justify-center gap-2">
+          {nikudAvailable && (
+            <button
+              onClick={onToggleNikud}
+              aria-label={nikudMode ? "Show transliteration" : "Show Hebrew phonetics (nikud)"}
+              className="flex h-7 min-w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/80 px-1.5 text-sm font-bold text-slate-700 shadow-sm transition active:scale-95"
+            >
+              {nikudMode ? <span className="[font-family:var(--font-hebrew)]">א</span> : "🔤"}
+            </button>
+          )}
+          {nikudMode && nikudAvailable ? (
+            <p dir="rtl" className="text-base text-slate-700 [font-family:var(--font-hebrew)]">{nikud || "…"}</p>
+          ) : (
+            <p className="text-sm italic text-slate-600">{phonetic || (translating ? "…" : " ")}</p>
+          )}
+        </div>
         <FitLine fitKey={main} dir={rtl ? "rtl" : "ltr"} className="mt-1 font-medium leading-[1.45] text-slate-900">
           {tokens.map((tok: string, wi: number) => {
             const key = `${popupKeyPrefix}${wi}`;
