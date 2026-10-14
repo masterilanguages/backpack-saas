@@ -31,6 +31,7 @@ import { languageLabel, isRTLText } from "@/lib/language";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
 import { requestChapterPrep } from "@/lib/prepareChapter";
+import { videosNeedingChapter } from "@/lib/chapterBackfill";
 import { buildLyricSegments, chapterContentKey, shouldRefreshChapter, timedSegmentsFromSavedTranscript } from "@/lib/songLyrics";
 
 // Shared, memoized loader for the YouTube IFrame API. The YT API calls the single
@@ -1987,14 +1988,19 @@ Return a JSON with a "videos" array. Each video must have:
                 <Plus className="h-4 w-4" /> {canEdit ? "Add New Content" : "Add Video"}
               </button>
             )}
-            {/* Prepare every video's chapter on the server (already prepared
-                ones are skipped), so no student meets "Preparing the sentences…". */}
+            {/* Prepare the chapter of every video that has none yet, on the
+                server, so no student meets "Preparing the sentences…". Existing
+                chapters are never rebuilt from here (each rebuild is a paid
+                transcription); rebuilding one is a separate, explicit action. */}
             {canEdit && (
               <button
                 onClick={async () => {
-                  const list = (videos as any[]).filter((v) => v.video_id);
-                  toast.info(`Preparing chapters for ${list.length} videos in the background…`);
-                  for (const v of list) {
+                  const ids = Array.from(new Set((videos as any[]).map((v) => v.video_id).filter(Boolean)));
+                  const chapters: any[] = ids.length ? (await base44.entities.ChapterContent.filter({ video_id: ids })) || [] : [];
+                  const todo = videosNeedingChapter(videos as any[], chapters.map((c) => c.video_id));
+                  if (!todo.length) { toast.success("Every video already has its chapter."); return; }
+                  toast.info(`Preparing chapters for ${todo.length} video${todo.length === 1 ? "" : "s"} in the background…`);
+                  for (const v of todo) {
                     await requestChapterPrep(v.video_id, v.language);
                     await new Promise((r) => setTimeout(r, 1500)); // don't start them all at once
                   }

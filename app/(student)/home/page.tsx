@@ -598,24 +598,8 @@ export default function Home() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allChapterContent, shellVideos]);
-  // Sources prepared before episodes existed stop at 3:30: prepare them again,
-  // whole, once (the source is never shortened).
-  useEffect(() => {
-    for (const c of allChapterContent as any[]) {
-      const s = Array.isArray(c?.sentences) ? c.sentences : [];
-      const lastEnd = Number(s[s.length - 1]?.end) || 0;
-      const v = (shellVideos as any[]).find((x: any) => x.video_id === c.video_id);
-      const dur = Number(v?.duration_minutes) * 60 || 0;
-      if (lastEnd < 209 || lastEnd > 211 || dur <= 215) continue;
-      const flag = `chapterReprep:${c.video_id}`;
-      try {
-        if (localStorage.getItem(flag)) continue;
-        localStorage.setItem(flag, "1");
-      } catch { continue; }
-      requestChapterPrep(c.video_id, c.language || v?.language, true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allChapterContent]);
+  // Opening the library never rebuilds a prepared chapter: that used to run
+  // once per browser and device, each time a paid transcription.
 
   // Where a student is in a source: episodes done, the next one, the challenge.
   const sourceProgressOf = (v: any) => {
