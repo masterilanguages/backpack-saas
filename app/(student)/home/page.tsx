@@ -384,6 +384,12 @@ export default function Home() {
   const [discRevealed, setDiscRevealed] = useState(false);
   const [discTranslations, setDiscTranslations] = useState<Record<number, { english: string; phonetic: string }>>({});
   const [discTranslating, setDiscTranslating] = useState(false);
+  // FINISH on an episode: the next episode's first sentence waits for Play
+  // (the hold skips one autoplay); repeated taps are ignored while saving.
+  const holdAutoPlayRef = useRef(false);
+  const finishingRef = useRef(false);
+  // FINISH on the last episode: its "what next" card replaces the controls.
+  const [discFinished, setDiscFinished] = useState<number | null>(null);
   // Sentence card: the line above the sentence shows the Latin transliteration
   // (abc) or the same sentence in Hebrew letters (א). A plain visual toggle —
   // both texts come with the sentence, nothing is generated.
@@ -1371,6 +1377,9 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
   // An episode's Interactive transcript: its own sentences only. Reuses the
   // open video view when it's already showing this source.
   const startEpisodePass = (v: any, ep: Episode, eps: Episode[]) => {
+    setDiscFinished(null);
+    // ‹ in the pass always leads back to this source's episodes.
+    setEpisodeList((l) => (l && l.v.video_id === v.video_id ? l : { v, eps }));
     setActiveEpisode({ videoId: v.video_id, ...ep, count: eps.length, eps });
     if (shellVideo?.video_id === v.video_id && discovery) {
       setPassKind("discovery");
@@ -1733,6 +1742,7 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
 
   const closeShellVideo = () => {
     setDiscovery(false);
+    setDiscFinished(null);
     setActiveEpisode(null);
     discStopAtRef.current = null;
     shellVideoIdRef.current = null;
@@ -2127,14 +2137,20 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     }, 40);
     return () => clearInterval(t);
   }, [discovery]);
-  // Each new sentence plays on its own (translation hidden).
+  // Each new sentence plays on its own (translation hidden) — except the
+  // first sentence of the episode FINISH just moved to: it waits for Play.
   useEffect(() => {
     if (!discovery || !discSeg) return;
     setDiscRevealed(false);
+    if (holdAutoPlayRef.current) {
+      holdAutoPlayRef.current = false;
+      shellPlayerRef.current?.pauseVideo?.();
+      return;
+    }
     const t = setTimeout(() => playDiscSentence(discIdx), 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discovery, passKind, discIdx, discSegments.length]);
+  }, [discovery, passKind, discIdx, discSegments.length, activeEpisode?.number]);
 
   // The phonetic line is always shown on top, so fetch translation + phonetic
   // up front when the transcript lacks them (the English stays hidden until
@@ -2157,7 +2173,7 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
   useEffect(() => {
     if (discovery && discSeg) fillDiscTranslation(discIdx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discovery, discIdx, discSegments.length]);
+  }, [discovery, discIdx, discSegments.length, activeEpisode?.number]);
   const revealDiscTranslation = () => {
     setDiscRevealed(true);
     if (passKind === "discovery") playDiscSentence(); // step 2: replay once more with the translation
@@ -2213,6 +2229,16 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
   };
 
   const finishDiscovery = async () => {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    try {
+      await finishDiscoveryOnce();
+    } finally {
+      // A moment more, so a double tap can't also finish the next episode.
+      setTimeout(() => { finishingRef.current = false; }, 800);
+    }
+  };
+  const finishDiscoveryOnce = async () => {
     discStopAtRef.current = null;
     shellPlayerRef.current?.pauseVideo?.();
     const field = passKind === "discovery" ? "discovery_completed_at" : "comprehension_completed_at";
@@ -2260,14 +2286,19 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
         }
       }
       if (added) queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
-      // An episode: on to the next episode's First listen, or — after the
-      // last one — the Full Source Challenge.
+      // An episode: straight on to the next episode's sentences in this same
+      // player (finishing this one is what opens it), first sentence waiting
+      // for Play. The last episode shows its "what next" card.
       if (activeEpisode && !activeEpisode.pending && activeEpisode.videoId === shellVideo?.video_id) {
         const { number, count, eps } = activeEpisode;
-        const v = shellVideo;
-        if (number < count) toast.success(`Episode ${number} of ${count} done! 🎉`);
-        else toast.success("All episodes done! Now the full challenge 🏁");
-        continueChapter(v, eps, number + 1);
+        if (number < count) {
+          toast.success(`Episode ${number} done ✓`);
+          holdAutoPlayRef.current = true;
+          startEpisodePass(shellVideo, eps[number], eps);
+        } else {
+          toast.success(`Episode ${number} done ✓ — that was the last one`);
+          setDiscFinished(number);
+        }
         return;
       }
       // → step 3, same sentences with less help
@@ -3121,6 +3152,17 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onPrev={() => { setWordPopup(null); setDiscIdx((i) => Math.max(0, i - 1)); }}
                 onNext={() => { setWordPopup(null); setDiscIdx((i) => i + 1); }}
                 onFinish={finishDiscovery}
+                finished={(() => {
+                  if (!episodeOn || discFinished !== activeEpisode.number) return undefined;
+                  const eps: Episode[] = activeEpisode.eps;
+                  const v = shellVideo;
+                  // This episode was just saved; the cache may not have it yet.
+                  const allDone = eps.every((e) => e.number === activeEpisode.number || !!chapterByVideo.get(episodeKey(v.video_id, e.number))?.discovery_completed_at);
+                  const actions: { label: string; go: () => void }[] = [];
+                  if (allDone) actions.push({ label: "Final challenge", go: () => { closeShellVideo(); setActiveEpisode(null); setChapterChallenge({ v, eps, phase: "watch" }); } });
+                  actions.push({ label: "All episodes", go: () => { closeShellVideo(); setEpisodeList({ v, eps }); } });
+                  return { title: "All episodes done ✓", actions };
+                })()}
               />
             ) : (<>
             {/* Floating controls: play/pause + turtle slow mode */}
@@ -4785,7 +4827,7 @@ function LibraryCard({
 function DiscoveryPanel({
   mode = "discovery", loading, preparing = false, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
   onTapWord, onAddWord, onClosePopup, hebrewLine, onToggleHebrewLine, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
-  title, artist, progress, recommendedWords,
+  title, artist, progress, recommendedWords, finished,
 }: {
   // "discovery" (step 2): words tappable, recommended words marked.
   // "comprehension" (step 3): less help — words not tappable.
@@ -4821,6 +4863,8 @@ function DiscoveryPanel({
   artist?: string;
   // How far the video is through the current sentence, 0–1.
   progress: number;
+  // FINISH on the last episode: what next, instead of the controls.
+  finished?: { title: string; actions: { label: string; go: () => void }[] };
   recommendedWords: any[];
 }) {
   if (loading) {
@@ -4982,6 +5026,22 @@ function DiscoveryPanel({
         </div>
       </div>
 
+      {finished ? (
+        <div className="mt-2 flex flex-shrink-0 flex-col gap-2 rounded-2xl bg-white/80 p-4 shadow-sm">
+          <p className="text-center text-sm font-extrabold text-emerald-700">{finished.title}</p>
+          {finished.actions.map((act, i) => (
+            <button
+              key={act.label}
+              onClick={act.go}
+              className={`flex h-11 items-center justify-center gap-1.5 rounded-full text-sm font-bold transition active:scale-[.98] ${
+                i === 0 && finished.actions.length > 1 ? "bg-slate-900 text-white" : "border border-slate-900/10 bg-white text-slate-800"
+              }`}
+            >
+              {act.label} <ArrowRight className="h-4 w-4" />
+            </button>
+          ))}
+        </div>
+      ) : (<>
       {/* transport: Previous · Play · Next (empty side slots keep Play centred) */}
       <div className="mt-1 flex flex-shrink-0 items-center justify-between">
         <span className="h-11 w-11" aria-hidden="true" />
@@ -5014,7 +5074,7 @@ function DiscoveryPanel({
         <span className="w-12 text-center text-emerald-600">{last ? "Finish" : ""}</span>
         <span className="w-11" />
       </div>
-
+      </>)}
     </div>
   );
 }
