@@ -2053,6 +2053,10 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
   const discProgressInSentence = discSeg?.end > discSeg?.start
     ? Math.min(1, Math.max(0, (shellTime - discSeg.start) / (discSeg.end - discSeg.start)))
     : 0;
+  // The playhead is in the sentence on screen. Right after Previous / Replay
+  // the player still reports the old time for a moment; lines that follow the
+  // audio wait for it instead of jumping to the end and back.
+  const discPlayheadInSentence = discSeg?.end > discSeg?.start && shellTime >= discSeg.start - 0.5 && shellTime <= discSeg.end + 0.5;
   // Word glosses of a sentence: saved with it, or (chapters prepared before
   // glosses existed) fetched once while the sentence is on screen.
   const glossCacheRef = useRef<Record<string, any[]>>({});
@@ -3116,6 +3120,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 title={shellMeta?.name || shellVideo.title}
                 artist={shellMeta?.artist || ""}
                 progress={discProgressInSentence}
+                follow={discPlayheadInSentence ? discProgressInSentence : null}
                 recommendedWords={recommendedWords}
                 onPrev={() => { setWordPopup(null); setDiscIdx((i) => Math.max(0, i - 1)); }}
                 onNext={() => { setWordPopup(null); setDiscIdx((i) => i + 1); }}
@@ -4840,10 +4845,72 @@ function FitLine({
   );
 }
 
+// One line of text at a fixed, readable size (no wrapping, no shrinking, no
+// "…"). A line wider than its room scrolls sideways inside its own box, never
+// the page; a short one shows whole and centred. It starts at the reading
+// start (the right edge in Hebrew) whenever resetKey changes, then sits where
+// the audio is (follow: 0–1; null = the playhead isn't in this sentence, stay
+// put) — so it glides while playing and stops on pause — until the student
+// touches or scrolls it: by hand wins until the next reset.
+function ScrollLine({
+  dir, resetKey, follow, className = "", children,
+}: {
+  dir: "rtl" | "ltr"; resetKey: string; follow: number | null; className?: string; children: React.ReactNode;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const handRef = useRef(false);
+  // How far the line can scroll (0 = it fits). Kept in state so the audio
+  // position is re-applied when it changes (e.g. the Hebrew font arrives).
+  const [room, setRoom] = useState(0);
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    handRef.current = false;
+    box.scrollLeft = 0; // the start edge, in both directions
+    let live = true;
+    const check = () => { if (live) setRoom(Math.max(0, box.scrollWidth - box.clientWidth)); };
+    check();
+    // The box (screen width) and the text itself (it grows when a web font
+    // arrives after the first measurement).
+    const ro = new ResizeObserver(check);
+    ro.observe(box);
+    if (box.firstElementChild) ro.observe(box.firstElementChild);
+    document.fonts?.ready.then(check).catch(() => {});
+    return () => { live = false; ro.disconnect(); };
+  }, [resetKey]);
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box || room <= 1 || handRef.current || follow == null) return;
+    // Hold the start for the first part of the sentence, reach the end a bit
+    // before the audio does.
+    const t = Math.min(1, Math.max(0, (follow - 0.15) / 0.7));
+    const left = (dir === "rtl" ? -1 : 1) * t * room;
+    if (Math.abs(box.scrollLeft - left) >= 1) box.scrollTo({ left, behavior: "smooth" });
+  }, [follow, room, dir]);
+  const byHand = () => { handRef.current = true; };
+  // A soft fade on the side(s) where more text is hidden.
+  const fade = room > 1
+    ? { maskImage: "linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent)", WebkitMaskImage: "linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent)" }
+    : undefined;
+  return (
+    <div
+      ref={boxRef}
+      dir={dir}
+      onPointerDown={byHand}
+      onTouchStart={byHand}
+      onWheel={byHand}
+      className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      style={fade}
+    >
+      <p className={`w-max whitespace-nowrap px-3.5 ${className}`}>{children}</p>
+    </div>
+  );
+}
+
 function DiscoveryPanel({
   mode = "discovery", loading, preparing = false, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
   onTapWord, onAddWord, onClosePopup, hebrewLine, onToggleHebrewLine, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
-  title, artist, progress, recommendedWords,
+  title, artist, progress, follow, recommendedWords,
 }: {
   // "discovery" (step 2): words tappable, recommended words marked.
   // "comprehension" (step 3): less help — words not tappable.
@@ -4879,6 +4946,8 @@ function DiscoveryPanel({
   artist?: string;
   // How far the video is through the current sentence, 0–1.
   progress: number;
+  // The same, only while the playhead is really in this sentence (else null).
+  follow: number | null;
   recommendedWords: any[];
 }) {
   if (loading) {
@@ -4936,9 +5005,9 @@ function DiscoveryPanel({
             </button>
           )}
           {canSwapScript && hebrewLine ? (
-            <p dir="rtl" className="text-sm text-slate-600 [font-family:var(--font-hebrew)]">{main}</p>
+            <ScrollLine dir="rtl" resetKey={`${idx}-he`} follow={follow} className="text-sm text-slate-600 [font-family:var(--font-hebrew)]">{main}</ScrollLine>
           ) : (
-            <p className="text-sm italic text-slate-600">{phonetic || (translating ? "…" : " ")}</p>
+            <ScrollLine dir="ltr" resetKey={`${idx}-la`} follow={follow} className="text-sm italic text-slate-600">{phonetic || (translating ? "…" : " ")}</ScrollLine>
           )}
         </div>
         <FitLine fitKey={main} dir={rtl ? "rtl" : "ltr"} className="mt-1 font-medium leading-[1.45] text-slate-900">
