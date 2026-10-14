@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# Tests migration 2100 (chapter_prep) against a throwaway local PostgreSQL 17
+# in Docker, with the real 1900 + 2100 migrations. Never touches Supabase.
+#
+#   bash supabase/tests/chapter_prep_test.sh
+#
+# Needs Docker running. Uses short leases (1–2 s) to test expiry.
+set -u
+cd "$(dirname "$0")/../.."
+NAME=chapter-prep-test
+PASS=0; FAIL=0
+
+docker rm -f $NAME >/dev/null 2>&1
+docker run -d --rm --name $NAME -e POSTGRES_PASSWORD=x postgres:17-alpine >/dev/null || exit 1
+trap 'docker rm -f $NAME >/dev/null 2>&1' EXIT
+for _ in $(seq 1 60); do docker exec $NAME pg_isready -U postgres -q && break; sleep 1; done
+sleep 2
+
+q()  { docker exec -i $NAME psql -U postgres -qtAX -v ON_ERROR_STOP=1 -c "$1" 2>&1; }
+qs() { docker exec -i -e PGOPTIONS="-c client_min_messages=warning" $NAME psql -U postgres -qtAX -v ON_ERROR_STOP=1 2>&1; }   # SQL from stdin
+check() { # name expected actual
+  if [ "$2" = "$3" ]; then PASS=$((PASS+1)); echo "  ok   $1"; else FAIL=$((FAIL+1)); echo "  FAIL $1"; echo "       expected: $2"; echo "       actual:   $3"; fi
+}
+contains() { # name needle haystack
+  case "$3" in *"$2"*) PASS=$((PASS+1)); echo "  ok   $1";; *) FAIL=$((FAIL+1)); echo "  FAIL $1"; echo "       expected to contain: $2"; echo "       actual: $3";; esac
+}
+claim() { q "select lock_token from chapter_prep_claim('$1','hebrew',${2:-180},${3:-false})"; }
+DONE='[{"start":0,"end":2,"text":"a","transliteration":"a","english":"a"},{"start":2,"end":4,"text":"b","transliteration":"b","english":"b"}]'
+PARTIAL='[{"start":0,"end":2,"text":"a","transliteration":"a","english":"a"},{"start":2,"end":4,"text":"b","transliteration":"b","english":" "}]'
+
+echo "== setup: Supabase roles + migrations 1900 and 2100"
+qs >/dev/null <<'SQL'
+create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
+grant usage on schema public to anon, authenticated, service_role;
+create function public.is_platform_admin() returns boolean language sql as 'select false';
+SQL
+out=$(qs < supabase/migrations/1900_chapter_content.sql); check "1900 applies" "" "$out"
+out=$(qs < supabase/migrations/2100_chapter_prep.sql);    check "2100 applies" "" "$out"
+out=$(qs < supabase/migrations/2100_chapter_prep.sql);    check "2100 applies twice (idempotent)" "" "$out"
+
+echo "== 1. atomic claim"
+for i in $(seq 1 12); do claim v-claim > /tmp/claim.$i 2>&1 & done; wait
+got=$(cat /tmp/claim.* | grep -c -E '^[0-9a-f-]{36}$'); rm -f /tmp/claim.*
+check "12 simultaneous claims on a new video: exactly 1 gets the token" "1" "$got"
+check "claiming again while the lease is valid returns nothing" "" "$(claim v-claim)"
+claim v-exp 1 >/dev/null; sleep 2
+t2=$(claim v-exp)
+contains "after the lease expires the video can be claimed again" "-" "$t2"
+check "that new claim counts as a second attempt, hops reset" "2|0" "$(q "select attempts||'|'||hops from chapter_prep where video_id='v-exp'")"
+check "lease is capped at 900 s" "t" "$(q "select locked_until <= now() + interval '900 seconds' from chapter_prep_claim('v-cap','hebrew',5000)")"
+
+echo "== 2. an expired token can neither modify nor publish"
+A=$(claim v-stale 1); sleep 2; B=$(claim v-stale)
+check "stale A: save refused"      "f" "$(q "select chapter_prep_save('v-stale','$A','{\"status\":\"transcribing\",\"audio_key\":\"evil\"}')")"
+check "stale A: add_batch refused" "f" "$(q "select chapter_prep_add_batch('v-stale','$A',null,0,'{\"x\":1}')")"
+contains "stale A: publish refused" "lease lost" "$(q "select chapter_prep_publish('v-stale','$A','$DONE','A',true)")"
+check "stale A: release refused (B holds it)" "f" "$(q "select chapter_prep_release('v-stale','$A','failed','x','A failed')")"
+check "nothing from A got in"      "|{}|queued" "$(q "select coalesce(audio_key,'')||'|'||batches::text||'|'||status from chapter_prep where video_id='v-stale'")"
+check "chapter_content untouched"  "0" "$(q "select count(*) from chapter_content where video_id='v-stale'")"
+check "current holder B can save" "t" "$(q "select chapter_prep_save('v-stale','$B','{\"status\":\"transcribing\",\"audio_key\":\"ak1\"}')")"
+C=$(claim v-lapsed 1); sleep 2
+check "expired, not taken over: save refused"      "f" "$(q "select chapter_prep_save('v-lapsed','$C','{\"status\":\"translating\"}')")"
+contains "expired, not taken over: publish refused" "lease lost" "$(q "select chapter_prep_publish('v-lapsed','$C','$DONE','C',false)")"
+check "expired, not taken over: may still release" "t" "$(q "select chapter_prep_release('v-lapsed','$C','failed','timeout','ran out of time')")"
+
+echo "== 3. lease length vs external calls (lease renewed by every write)"
+L=$(claim v-lease 3)
+sleep 2; q "select chapter_prep_save('v-lease','$L','{\"status\":\"transcribing\"}',3)" >/dev/null
+sleep 2
+check "a run that keeps saving keeps its lease past the first 3 s" "t" "$(q "select chapter_prep_save('v-lease','$L','{\"status\":\"translating\"}',3)")"
+check "default lease is 180 s (above the 135 s transcription budget)" "t" "$(q "select locked_until between now() + interval '179 seconds' and now() + interval '181 seconds' from chapter_prep_claim('v-default','hebrew')")"
+
+echo "== 4. finished batches survive errors"
+T=$(claim v-batch)
+q "select chapter_prep_save('v-batch','$T','{\"audio_key\":\"ak1\",\"segment_key\":\"sk1\",\"sentences\":[{\"text\":\"a\"}],\"translate_key\":\"tk1\",\"batch_size\":8,\"batches\":{}}')" >/dev/null
+for i in 0 1 2 3 4; do q "select chapter_prep_add_batch('v-batch','$T','tk1',$i,'{\"items\":[$i]}')" >/dev/null & done; wait
+check "5 batches saved at the same time: all 5 kept" "0,1,2,3,4" "$(q "select string_agg(k, ',' order by k) from chapter_prep, jsonb_object_keys(batches) k where video_id='v-batch'")"
+check "a batch for an old translate_key is ignored" "f" "$(q "select chapter_prep_add_batch('v-batch','$T','tk-old',7,'{}')")"
+q "select chapter_prep_release('v-batch','$T','blocked','credit','Your credit balance is too low')" >/dev/null
+check "after a credit error: status blocked, batches kept" "blocked|credit|5" "$(q "select status||'|'||error_kind||'|'||(select count(*) from jsonb_object_keys(batches)) from chapter_prep where video_id='v-batch'")"
+T2=$(claim v-batch)
+check "a new run sees the cached sentences and batches" "sk1|tk1|5" "$(q "select segment_key||'|'||translate_key||'|'||(select count(*) from jsonb_object_keys(batches)) from chapter_prep where video_id='v-batch'")"
+q "select chapter_prep_save('v-batch','$T2','{\"segment_key\":\"sk2\",\"translate_key\":\"tk2\",\"batches\":{}}')" >/dev/null
+check "new lyrics (segment_key) reset only sentences/batches, not the audio" "ak1|sk2|0" "$(q "select audio_key||'|'||segment_key||'|'||(select count(*) from jsonb_object_keys(batches)) from chapter_prep where video_id='v-batch'")"
+check "save cannot set status ready" "ready is set only" "$(q "select chapter_prep_save('v-batch','$T2','{\"status\":\"ready\"}')" | grep -o 'ready is set only')"
+
+echo "== 5. publication keeps the phase 1 rules"
+P=$(claim v-pub)
+contains "empty chapter refused"      "no sentences" "$(q "select chapter_prep_publish('v-pub','$P','[]','x',false)")"
+contains "incomplete chapter refused" "1 of 2 sentences untranslated" "$(q "select chapter_prep_publish('v-pub','$P','$PARTIAL','x',false)")"
+check "nothing published, prep not ready" "0|queued" "$(q "select (select count(*) from chapter_content where video_id='v-pub')||'|'||status from chapter_prep where video_id='v-pub'")"
+check "complete chapter published" "published" "$(q "select chapter_prep_publish('v-pub','$P','$DONE','eleven',false)")"
+check "prep ready, lease freed" "ready||true" "$(q "select status||'|'||coalesce(lock_token::text,'')||'|'||(locked_until is null) from chapter_prep where video_id='v-pub'")"
+
+echo "== 6. existing published content is protected"
+q "insert into chapter_content (video_id, language, sentences, source) values ('v-live','hebrew','$DONE','original')" >/dev/null
+E=$(claim v-live)
+check "without force: kept_existing" "kept_existing" "$(q "select chapter_prep_publish('v-live','$E','$DONE','rebuilt',false)")"
+check "original still published"     "original" "$(q "select source from chapter_content where video_id='v-live'")"
+E=$(claim v-live)
+contains "force + incomplete: refused" "untranslated" "$(q "select chapter_prep_publish('v-live','$E','$PARTIAL','broken',true)")"
+check "original still published"     "original" "$(q "select source from chapter_content where video_id='v-live'")"
+check "force + complete: replaced"    "published|rebuilt" "$(q "select chapter_prep_publish('v-live','$E','$DONE','rebuilt',true)")|$(q "select source from chapter_content where video_id='v-live'")"
+OLD=$(claim v-race 1); sleep 2; NEW=$(claim v-race)
+check "newer forced rebuild publishes" "published" "$(q "select chapter_prep_publish('v-race','$NEW','$DONE','newer',true)")"
+contains "older forced rebuild (expired) can no longer overwrite" "lease lost" "$(q "select chapter_prep_publish('v-race','$OLD','$DONE','older',true)")"
+check "the newer version stays"       "newer" "$(q "select source from chapter_content where video_id='v-race'")"
+
+echo "== 7. runs out of continuations: pending_recovery"
+R=$(claim v-rec); q "select chapter_prep_release('v-rec','$R','queued')" >/dev/null
+for h in 1 2 3; do R=$(claim v-rec 180 true); q "select chapter_prep_release('v-rec','$R','queued')" >/dev/null; done
+R=$(claim v-rec 180 true)
+check "continuations counted as hops, not attempts" "4|1" "$(q "select hops||'|'||attempts from chapter_prep where video_id='v-rec'")"
+q "select chapter_prep_release('v-rec','$R','pending_recovery',null,null,'max continuations reached (4)')" >/dev/null
+check "identified as pending recovery, with the reason" "pending_recovery|max continuations reached (4)" "$(q "select status||'|'||recovery_reason from chapter_prep where video_id='v-rec'")"
+check "listed by the not-ready index query" "v-rec" "$(q "select video_id from chapter_prep where status='pending_recovery'")"
+contains "release refuses a status like ready" "invalid final status" "$(q "select chapter_prep_release('v-rec','$R','ready')")"
+
+echo "== 8. permissions"
+check "app (authenticated) reads the status only" "pending_recovery|false" "$(q "set role authenticated; select status||'|'||busy from chapter_prep_status('v-rec')")"
+contains "app cannot read the table"   "permission denied" "$(q "set role authenticated; select count(*) from chapter_prep")"
+contains "app cannot claim"            "permission denied" "$(q "set role authenticated; select chapter_prep_claim('v-x','hebrew')")"
+contains "app cannot publish"          "permission denied" "$(q "set role authenticated; select chapter_prep_publish('v-x',gen_random_uuid(),'[]','x',true)")"
+contains "anon cannot read the status" "permission denied" "$(q "set role anon; select * from chapter_prep_status('v-rec')")"
+check "service role can claim"          "1" "$(q "set role service_role; select count(*) from chapter_prep_claim('v-svc','hebrew')")"
+check "unknown video: no status row"    "0" "$(q "set role authenticated; select count(*) from chapter_prep_status('nope')")"
+
+echo
+echo "passed: $PASS   failed: $FAIL"
+[ "$FAIL" = 0 ]

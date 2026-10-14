@@ -39,7 +39,8 @@ import { fetchLetrasLyrics } from "@/lib/lyrics";
 import { buildLyricSegments, splitScriptLine } from "@/lib/songLyrics";
 import { alignLinesToWords, fitSungLines, wordsFromFragments } from "@/lib/lyricAlign";
 import { QUALITY_MODEL, translitRules, glossPrompt, GLOSS_SCHEMA, cleanGlosses } from "@/lib/chapterPrompts";
-import { requestChapterPrep } from "@/lib/prepareChapter";
+import { requestChapterPrep, chapterPrepStatus, waitForServerChapter } from "@/lib/prepareChapter";
+import { prepAction } from "@/lib/chapterPrepStatus";
 import { untranslatedCount } from "@/lib/chapterPublish";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
@@ -1811,6 +1812,20 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
       setChapterPreparing(true);
       try {
         const lang = shellVideo.language || language;
+        // The server keeps its own record of the preparation (chapter_prep).
+        // While it has one, the browser never prepares the video too (that
+        // paid twice): it waits, or asks the server to resume what it did.
+        const action = prepAction(await chapterPrepStatus(vid));
+        if (action !== "local") {
+          const rowId = shellVideo.id;
+          if (action === "resume") requestChapterPrep(vid, lang);
+          const result = action === "ready" ? "ready" : await waitForServerChapter(vid, () => shellVideoIdRef.current === rowId);
+          if (result === "ready") queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
+          else if (result === "abandoned") prepareTried.current.delete(vid);
+          else setChapterPrepFailed(vid);
+          setChapterPreparing(false);
+          return;
+        }
         // Songs with imported lyrics: the lyrics give the words, the audio the
         // times. Lines are timed word by word against the transcription below.
         // (Imports made before the marker existed are recognised by the
