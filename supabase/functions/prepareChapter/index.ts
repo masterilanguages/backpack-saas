@@ -67,8 +67,13 @@ Deno.serve(async (req) => {
   const db = serviceClient();
 
   // Testing: run the pipeline in memory and return the result without saving
-  // anything (no chapter_prep, no chapter_content).
+  // anything (no chapter_prep, no chapter_content). It still PAYS for the
+  // transcription and Claude, so it is refused unless called with the service
+  // role key and an explicit confirmation — never from the app.
   if (body?.dryRun === true) {
+    if (!internal || body?.confirmPaidCalls !== true) {
+      return json({ error: "dryRun makes paid calls: service role key and confirmPaidCalls: true required" }, 403);
+    }
     const out = await runPrep(liveDeps(db, new MemoryPrepStore()), { videoId, language, force: false, continuing: false, ignoreLyrics: body?.ignoreLyrics === true });
     return json(out, "sentences" in out ? 200 : 500);
   }

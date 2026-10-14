@@ -13,7 +13,7 @@ export async function chapterPrepStatus(videoId: string | null | undefined): Pro
     const { data, error } = await (supabase as any).rpc("chapter_prep_status", { p_video_id: videoId });
     if (error) return null;
     const row = Array.isArray(data) ? data[0] : data;
-    return row ? { status: String(row.status), busy: !!row.busy, error_kind: row.error_kind ?? null } : null;
+    return row ? { status: String(row.status), busy: !!row.busy, resumable: !!row.resumable } : null;
   } catch {
     return null;
   }
@@ -38,10 +38,12 @@ export async function requestChapterPrep(videoId: string | null | undefined, lan
 }
 
 /**
- * Waits while the server prepares a video's chapter (polling its status).
- * "ready": published. "stopped": the server stopped without publishing (after
- * giving a resume request a few polls to start). "timeout" / "abandoned"
- * (the student moved on) end the wait without a result.
+ * Waits while the server prepares a video's chapter (polling). "ready": the
+ * chapter is published — seen in chapter_content itself, so it also works
+ * while an older site or function version is live. "stopped": the server
+ * stopped and a retry is not worth it (after giving a resume request a few
+ * polls to start). "timeout" / "abandoned" (the student moved on) end the
+ * wait without a result.
  */
 export async function waitForServerChapter(
   videoId: string,
@@ -52,8 +54,9 @@ export async function waitForServerChapter(
   for (let polls = 1; Date.now() - started < maxMs; polls++) {
     await new Promise((r) => setTimeout(r, intervalMs));
     if (!stillWanted()) return "abandoned";
+    const published = await (base44 as any).entities.ChapterContent.filter({ video_id: videoId }).catch(() => null);
+    if (published?.length) return "ready";
     const s = await chapterPrepStatus(videoId);
-    if (s?.status === "ready") return "ready";
     if (polls >= 3 && prepStopped(s)) return "stopped";
   }
   return "timeout";

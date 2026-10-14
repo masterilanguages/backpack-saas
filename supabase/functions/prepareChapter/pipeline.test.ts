@@ -185,6 +185,21 @@ const scenarios: Record<string, (h: Harness) => Promise<void>> = {
     assertEquals((await h.published("v-live3"))!.source, "original");
   },
 
+  async "a batch that comes back with gaps is not kept: the retry translates it again"(h) {
+    let gaps = true;
+    const { deps, calls } = fakes(h, {
+      failWhen: () => null,
+      get incomplete() { return gaps; },
+    } as any);
+    const out = await runPrep(deps, input("v-gaps"));
+    assertEquals([out.status, (out as any).errorKind], ["failed", "incomplete"]);
+    assertEquals(Object.keys((await h.prep("v-gaps")).batches), []); // every batch had a gap (line 0)
+    const before = calls.translate.length;
+    gaps = false;
+    assertEquals((await runPrep(deps, input("v-gaps"))).status, "published");
+    assertEquals([calls.translate.length - before, calls.transcribe], [batchesOf(20), 1]);
+  },
+
   async "two runs at the same time: one works, the other is busy; one transcription"(h) {
     const { deps, calls } = fakes(h);
     const [a, b] = await Promise.all([runPrep(deps, input("v-twice")), runPrep(deps, input("v-twice"))]);

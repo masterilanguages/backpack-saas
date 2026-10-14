@@ -33,6 +33,10 @@ qs >/dev/null <<'SQL'
 create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
 grant usage on schema public to anon, authenticated, service_role;
 create function public.is_platform_admin() returns boolean language sql as 'select false';
+-- Same default privileges as production (pg_default_acl, checked 2026-10-14):
+-- every new table and function in public is granted to anon/authenticated.
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
 SQL
 out=$(qs < supabase/migrations/1900_chapter_content.sql); check "1900 applies" "" "$out"
 out=$(qs < supabase/migrations/2100_chapter_prep.sql);    check "2100 applies" "" "$out"
@@ -117,13 +121,34 @@ check "listed by the not-ready index query" "v-rec" "$(q "select video_id from c
 contains "release refuses a status like ready" "invalid final status" "$(q "select chapter_prep_release('v-rec','$R','ready')")"
 
 echo "== 8. permissions"
-check "app (authenticated) reads the status only" "pending_recovery|false" "$(q "set role authenticated; select status||'|'||busy from chapter_prep_status('v-rec')")"
+check "app (authenticated) reads the status only" "pending_recovery|false|true" "$(q "set role authenticated; select status||'|'||busy||'|'||resumable from chapter_prep_status('v-rec')")"
 contains "app cannot read the table"   "permission denied" "$(q "set role authenticated; select count(*) from chapter_prep")"
 contains "app cannot claim"            "permission denied" "$(q "set role authenticated; select chapter_prep_claim('v-x','hebrew')")"
 contains "app cannot publish"          "permission denied" "$(q "set role authenticated; select chapter_prep_publish('v-x',gen_random_uuid(),'[]','x',true)")"
 contains "anon cannot read the status" "permission denied" "$(q "set role anon; select * from chapter_prep_status('v-rec')")"
 check "service role can claim"          "1" "$(q "set role service_role; select count(*) from chapter_prep_claim('v-svc','hebrew')")"
 check "unknown video: no status row"    "0" "$(q "set role authenticated; select count(*) from chapter_prep_status('nope')")"
+contains "app cannot call the lease helper" "permission denied" "$(q "set role authenticated; select chapter_prep_lease(10)")"
+contains "anon cannot call the lease helper" "permission denied" "$(q "set role anon; select chapter_prep_lease(10)")"
+contains "app cannot write the table" "permission denied" "$(q "set role authenticated; insert into chapter_prep (video_id, language) values ('x','hebrew')")"
+check "status exposes only status, busy, resumable" "status,busy,resumable" "$(q "select string_agg(parameter_name, ',' order by ordinal_position) from information_schema.parameters where specific_schema='public' and specific_name like 'chapter_prep_status%' and parameter_mode='OUT'")"
+
+echo "== 9. resumable: only failures a retry can fix, at most 5 attempts"
+st() { q "set role authenticated; select busy||'|'||resumable from chapter_prep_status('$1')"; }
+X=$(claim r-blocked); q "select chapter_prep_release('r-blocked','$X','blocked','credit','no credit')" >/dev/null
+check "blocked (no credit): not resumable"            "false|false" "$(st r-blocked)"
+X=$(claim r-transc);  q "select chapter_prep_release('r-transc','$X','failed','transcription','no words')" >/dev/null
+check "failed transcription: not resumable (would pay again)" "false|false" "$(st r-transc)"
+X=$(claim r-busy);    q "select chapter_prep_release('r-busy','$X','failed','overloaded','529')" >/dev/null
+check "failed overloaded: resumable"                   "false|true" "$(st r-busy)"
+X=$(claim r-held)
+check "held by a run: busy, not resumable"             "true|false" "$(st r-held)"
+X=$(claim r-cut 1); q "select chapter_prep_save('r-cut','$X','{\"status\":\"translating\"}',1)" >/dev/null; sleep 2
+check "run cut off mid-translation (lease expired): resumable" "false|true" "$(st r-cut)"
+for i in 1 2 3 4 5; do X=$(claim r-many); q "select chapter_prep_release('r-many','$X','failed','overloaded','529')" >/dev/null; done
+check "after 5 attempts: not resumable"                "false|false" "$(st r-many)"
+X=$(claim r-pend); q "select chapter_prep_release('r-pend','$X','pending_recovery',null,null,'max continuations reached (4)')" >/dev/null
+check "pending_recovery: resumable"                    "false|true" "$(st r-pend)"
 
 echo
 echo "passed: $PASS   failed: $FAIL"

@@ -239,6 +239,10 @@ export async function runPrep(deps: PrepDeps, input: PrepInput): Promise<PrepOut
           ? await deps.translate(reviewGlossPrompt(label, batch.map((x: any) => ({ text: x.text, alt: altFor(x) }))), REVIEW_GLOSS_SCHEMA, QUALITY_MODEL, 12000)
           : await deps.translate(glossPrompt(label, batch.map((x: any) => x.text)), GLOSS_SCHEMA, QUALITY_MODEL, 8000);
         const kept = { items: Array.isArray(t?.items) ? t.items : [] };
+        // Only a complete batch is kept: one with gaps would otherwise count
+        // as done and never be translated again.
+        const gaps = untranslatedCount(applyBatches(batch, { 0: kept }, review).sentences);
+        if (gaps) throw Object.assign(new Error(`${gaps} of ${batch.length} sentences came back untranslated`), { kind: "incomplete" });
         if (await store.addBatch(videoId, token, tKey, b, kept, lease)) batches[String(b)] = kept;
         else leaseLost = true;
       } catch (e: any) {

@@ -206,12 +206,22 @@ begin
 end $$;
 
 -- What the app may know about a preparation: lets its fallback stay out of a
--- video the server is working on (or that is blocked / waiting for recovery).
--- Never exposes the cached content or the token.
+-- video the server is working on. Never exposes the cached content, the
+-- token or the error details. resumable: the app may ask the server to resume
+-- it — only for failures a retry can fix (a run cut off, a temporary AI
+-- error, an incomplete batch), at most 5 attempts; never for an account
+-- problem (blocked: no credit / bad key) or a transcription that failed,
+-- which a retry would just pay for again.
 create or replace function public.chapter_prep_status(p_video_id text)
-returns table (status text, busy boolean, error_kind text, updated_at timestamptz)
+returns table (status text, busy boolean, resumable boolean)
 language sql stable security definer set search_path = public as $$
-  select cp.status, (cp.locked_until is not null and cp.locked_until > now()), cp.error_kind, cp.updated_at
+  select cp.status,
+         coalesce(cp.locked_until > now(), false),
+         (coalesce(cp.locked_until <= now(), true)
+          and cp.attempts < 5
+          and (cp.status in ('queued','transcribing','translating','publishing','pending_recovery')
+               or (cp.status = 'failed'
+                   and cp.error_kind in ('rate_limit','overloaded','timeout','lease_lost','incomplete','unknown'))))
   from public.chapter_prep cp where cp.video_id = p_video_id;
 $$;
 
@@ -221,6 +231,7 @@ revoke all on function public.chapter_prep_add_batch(text, uuid, text, int, json
 revoke all on function public.chapter_prep_publish(text, uuid, jsonb, text, boolean) from public, anon, authenticated;
 revoke all on function public.chapter_prep_release(text, uuid, text, text, text, text) from public, anon, authenticated;
 revoke all on function public.chapter_prep_status(text) from public, anon;
+revoke all on function public.chapter_prep_lease(int) from public, anon, authenticated;
 grant execute on function public.chapter_prep_claim(text, text, int, boolean) to service_role;
 grant execute on function public.chapter_prep_save(text, uuid, jsonb, int) to service_role;
 grant execute on function public.chapter_prep_add_batch(text, uuid, text, int, jsonb, int) to service_role;

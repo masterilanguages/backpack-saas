@@ -17,6 +17,10 @@ q <<'SQL' || exit 1
 create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
 grant usage on schema public to anon, authenticated, service_role;
 create function public.is_platform_admin() returns boolean language sql as 'select false';
+-- Same default privileges as production (pg_default_acl, checked 2026-10-14):
+-- every new table and function in public is granted to anon/authenticated.
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
 SQL
 q < supabase/migrations/1900_chapter_content.sql || exit 1
 q < supabase/migrations/2100_chapter_prep.sql || exit 1

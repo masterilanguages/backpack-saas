@@ -1814,12 +1814,14 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
         const lang = shellVideo.language || language;
         // The server keeps its own record of the preparation (chapter_prep).
         // While it has one, the browser never prepares the video too (that
-        // paid twice): it waits, or asks the server to resume what it did.
+        // paid twice): it waits, asks the server to resume what it did, or —
+        // when a retry would only pay again (no credit…) — shows the stored
+        // transcript right away (lib/chapterPrepStatus).
         const action = prepAction(await chapterPrepStatus(vid));
         if (action !== "local") {
           const rowId = shellVideo.id;
           if (action === "resume") requestChapterPrep(vid, lang);
-          const result = action === "ready" ? "ready" : await waitForServerChapter(vid, () => shellVideoIdRef.current === rowId);
+          const result = action === "ready" || action === "stopped" ? action : await waitForServerChapter(vid, () => shellVideoIdRef.current === rowId);
           if (result === "ready") queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
           else if (result === "abandoned") prepareTried.current.delete(vid);
           else setChapterPrepFailed(vid);
