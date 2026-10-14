@@ -4869,12 +4869,11 @@ function DiscoveryPanel({
 
       {/* the sentence: phonetic, native line (words tappable), translation */}
       <div className="mt-3 flex-shrink-0 text-center">
-        {/* The button lines up with the sentence's first line (28 px button,
-            21 px line: the text starts 4 px lower so both centres meet). */}
+        {/* Row 1: abc/א + the sentence. The button lines up with the first
+            line (28 px button, 21 px line: the text starts 4 px lower). */}
         <div className="flex items-start justify-center gap-2">
-          {/* Left column: abc/א (only when the sentence carries both texts, so
-              the swap is instant), then Translate. */}
-          <div className="flex flex-shrink-0 flex-col items-center gap-1.5">
+          <div className="flex w-7 flex-shrink-0 justify-center">
+            {/* Only when the sentence carries both texts, so the swap is instant. */}
             {canSwapScript && (
               <button
                 onClick={onToggleHebrewLine}
@@ -4884,17 +4883,6 @@ function DiscoveryPanel({
                 {hebrewLine ? <span className="text-sm [font-family:var(--font-hebrew)]">א</span> : "abc"}
               </button>
             )}
-            <button
-              onClick={revealed ? onHideTranslation : onReveal}
-              aria-expanded={revealed}
-              aria-label={revealed ? "Hide translation" : "Translate"}
-              title={revealed ? "Hide translation" : "Translate"}
-              className={`flex h-7 w-7 items-center justify-center rounded-full shadow-sm transition active:scale-95 ${
-                revealed ? "bg-slate-900 text-white" : "bg-white/80 text-slate-700"
-              }`}
-            >
-              <Languages className="h-4 w-4" />
-            </button>
           </div>
           <div className="min-w-0 flex-1 pt-1">
             {showLatin && !latinTokens ? (
@@ -4930,11 +4918,25 @@ function DiscoveryPanel({
               </p>
             )}
             {showLatin && !latinTokens && !phonetic && translating && <p className="text-sm text-slate-500">…</p>}
-            {/* The translation belongs to the sentence: it opens right under it. */}
-            {revealed && (
-              <p className="mt-1.5 text-sm text-slate-600">{english || (translating ? "translating…" : "—")}</p>
-            )}
           </div>
+        </div>
+        {/* Row 2: Translate + the English. The button never moves: only the
+            text to its right grows when the translation opens. */}
+        <div className="mt-1.5 flex items-start gap-2">
+          <button
+            onClick={revealed ? onHideTranslation : onReveal}
+            aria-expanded={revealed}
+            aria-label={revealed ? "Hide translation" : "Translate"}
+            title={revealed ? "Hide translation" : "Translate"}
+            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full shadow-sm transition active:scale-95 ${
+              revealed ? "bg-slate-900 text-white" : "bg-white/80 text-slate-700"
+            }`}
+          >
+            <Languages className="h-4 w-4" />
+          </button>
+          {revealed && (
+            <p className="min-w-0 flex-1 pt-1 text-sm leading-[1.5] text-slate-600">{english || (translating ? "translating…" : "—")}</p>
+          )}
         </div>
       </div>
 
