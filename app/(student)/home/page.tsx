@@ -383,11 +383,9 @@ export default function Home() {
   const [discTranslations, setDiscTranslations] = useState<Record<number, { english: string; phonetic: string }>>({});
   const [discTranslating, setDiscTranslating] = useState(false);
   // Sentence card: the line above the sentence shows the Latin transliteration
-  // (🔤) or, after a tap, the Hebrew sentence with nikud (א). Nikud is made on
-  // demand, one sentence at a time, and kept in this browser.
-  const [nikudMode, setNikudMode] = useState(false);
-  const [nikudBySentence, setNikudBySentence] = useState<Record<string, string>>({});
-  const nikudAskedRef = useRef<Set<string>>(new Set());
+  // (abc) or the same sentence in Hebrew letters (א). A plain visual toggle —
+  // both texts come with the sentence, nothing is generated.
+  const [discHebrewLine, setDiscHebrewLine] = useState(false);
   const discStopAtRef = useRef<number | null>(null);
   const [mood, setMood] = useState<Mood>("idle");
 
@@ -2004,43 +2002,6 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
     if (chapterPreparing || !chapterContentFetched || chapterPrepFailed !== shellVideo?.video_id) return [];
     return shellSegments.filter((s: any) => (s.start ?? 0) < CHAPTER_MAX_SECONDS);
   }, [discovery, chapterContent, chapterContentFetched, chapterPreparing, chapterPrepFailed, shellVideo?.video_id, shellSegments, activeEpisode]);
-
-  const discNikudKey = (seg: any) => splitScriptLine(seg?.hebrew || seg?.text || "").native.trim();
-  useEffect(() => {
-    if (!nikudMode || !discovery) return;
-    const sentence = discNikudKey(discSegments[discIdx]);
-    if (!sentence || nikudBySentence[sentence] || nikudAskedRef.current.has(sentence)) return;
-    const cacheKey = `nikud:v1:${sentence}`;
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) return setNikudBySentence((m) => ({ ...m, [sentence]: cached }));
-    } catch {}
-    nikudAskedRef.current.add(sentence);
-    (async () => {
-      try {
-        const result = await base44.integrations.Core.InvokeLLM({
-          prompt: `Add full nikud (vowel points) to this Hebrew sentence, as pronounced in modern Israeli Hebrew. Keep exactly the same words, in the same order, with the same punctuation; add nothing else.
-
-Sentence: "${sentence}"
-
-Return JSON: { "nikud": the sentence with nikud }`,
-          response_json_schema: { type: "object", properties: { nikud: { type: "string" } } },
-        });
-        const out = String(result?.nikud || "").trim();
-        // Same letters as the sentence once the vowel points are removed.
-        const letters = (t: string) => t.replace(/[^\u05D0-\u05EA]/g, "");
-        if (!out || letters(out) !== letters(sentence)) throw new Error("nikud did not match the sentence");
-        setNikudBySentence((m) => ({ ...m, [sentence]: out }));
-        try { localStorage.setItem(cacheKey, out); } catch {}
-      } catch (e) {
-        console.warn("[nikud] failed", e);
-        nikudAskedRef.current.delete(sentence);
-        setNikudMode(false);
-        toast.error("Couldn't show the Hebrew phonetics. Try again.");
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nikudMode, discovery, discSegments, discIdx]);
   const discSeg: any = discSegments[discIdx] || null;
   const coverTint = useCoverTint(discovery ? shellVideo?.video_id : undefined);
   const shellMeta = useDisplayTitle(discovery ? shellVideo : null);
@@ -3091,10 +3052,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onTapWord={(key: string, tok: string, main: string) => tapTranscriptWord(key, tok, main)}
                 onAddWord={savePopupWord}
                 onClosePopup={() => setWordPopup(null)}
-                nikudAvailable={(shellVideo?.language || language) === "hebrew"}
-                nikudMode={nikudMode}
-                nikud={nikudBySentence[discNikudKey(discSegments[discIdx])]}
-                onToggleNikud={() => setNikudMode((v) => !v)}
+                hebrewLine={discHebrewLine}
+                onToggleHebrewLine={() => setDiscHebrewLine((v) => !v)}
                 playing={shellPlaying}
                 onPause={pauseDisc}
                 onResume={resumeDisc}
@@ -4734,7 +4693,7 @@ function FitLine({
 
 function DiscoveryPanel({
   mode = "discovery", loading, preparing = false, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
-  onTapWord, onAddWord, onClosePopup, nikudAvailable, nikudMode, nikud, onToggleNikud, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
+  onTapWord, onAddWord, onClosePopup, hebrewLine, onToggleHebrewLine, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
   title, artist, progress, recommendedWords,
 }: {
   // "discovery" (step 2): words tappable, recommended words marked.
@@ -4755,12 +4714,10 @@ function DiscoveryPanel({
   onTapWord: (key: string, token: string, sentence: string) => void;
   onAddWord: () => void;
   onClosePopup: () => void;
-  // The line above the sentence: Latin transliteration (🔤) or, for Hebrew,
-  // the sentence with nikud (א; undefined while it is being made).
-  nikudAvailable: boolean;
-  nikudMode: boolean;
-  nikud?: string;
-  onToggleNikud: () => void;
+  // The line above the sentence: Latin transliteration (abc) or the same
+  // sentence in Hebrew letters (א).
+  hebrewLine: boolean;
+  onToggleHebrewLine: () => void;
   playing: boolean;
   onPause: () => void;
   onResume: () => void;
@@ -4795,6 +4752,8 @@ function DiscoveryPanel({
   const phonetic =
     (seg.transliteration && !isRTLText(seg.transliteration) && seg.transliteration !== main ? seg.transliteration : "") ||
     split.latin || translation?.phonetic || "";
+  // abc ⇄ א: the Hebrew-letters version is the sentence's own text.
+  const canSwapScript = rtl && !!phonetic;
   const last = idx >= segments.length - 1;
   const popupKeyPrefix = `d${idx}_`;
   const popupOpen = wordPopup && String(wordPopup.key || "").startsWith(popupKeyPrefix);
@@ -4817,17 +4776,18 @@ function DiscoveryPanel({
       {/* the sentence: phonetic, native line (words tappable), translation */}
       <div className="mt-3 flex-shrink-0 text-center">
         <div className="flex items-center justify-center gap-2">
-          {nikudAvailable && (
+          {/* Only when the sentence carries both texts, so the swap is instant. */}
+          {canSwapScript && (
             <button
-              onClick={onToggleNikud}
-              aria-label={nikudMode ? "Show transliteration" : "Show Hebrew phonetics (nikud)"}
-              className="flex h-7 min-w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/80 px-1.5 text-sm font-bold text-slate-700 shadow-sm transition active:scale-95"
+              onClick={onToggleHebrewLine}
+              aria-label={hebrewLine ? "Show transliteration" : "Show in Hebrew letters"}
+              className="flex h-7 min-w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/80 px-1.5 text-xs font-bold text-slate-700 shadow-sm transition active:scale-95"
             >
-              {nikudMode ? <span className="[font-family:var(--font-hebrew)]">א</span> : "🔤"}
+              {hebrewLine ? <span className="text-sm [font-family:var(--font-hebrew)]">א</span> : "abc"}
             </button>
           )}
-          {nikudMode && nikudAvailable ? (
-            <p dir="rtl" className="text-base text-slate-700 [font-family:var(--font-hebrew)]">{nikud || "…"}</p>
+          {canSwapScript && hebrewLine ? (
+            <p dir="rtl" className="text-sm text-slate-600 [font-family:var(--font-hebrew)]">{main}</p>
           ) : (
             <p className="text-sm italic text-slate-600">{phonetic || (translating ? "…" : " ")}</p>
           )}
