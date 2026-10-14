@@ -3,8 +3,8 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { prepAction, prepStopped } from "./chapterPrepStatus.ts";
 
-Deno.test("no server record (or migration not applied): the app prepares it, as before", () => {
-  assertEquals(prepAction(null), "local");
+Deno.test("no server record (or migration not applied): ask the server, never prepare it in the browser", () => {
+  assertEquals(prepAction(null), "request");
 });
 
 Deno.test("a server run holds it: the browser never prepares it too", () => {

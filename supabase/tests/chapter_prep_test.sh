@@ -32,7 +32,8 @@ echo "== setup: Supabase roles + migrations 1900 and 2100"
 qs >/dev/null <<'SQL'
 create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
 grant usage on schema public to anon, authenticated, service_role;
-create function public.is_platform_admin() returns boolean language sql as 'select false';
+-- A platform admin in tests: a session with test.admin = on.
+create function public.is_platform_admin() returns boolean language sql as $$ select coalesce(current_setting('test.admin', true), '') = 'on' $$;
 -- Same default privileges as production (pg_default_acl, checked 2026-10-14):
 -- every new table and function in public is granted to anon/authenticated.
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
@@ -149,6 +150,28 @@ for i in 1 2 3 4 5; do X=$(claim r-many); q "select chapter_prep_release('r-many
 check "after 5 attempts: not resumable"                "false|false" "$(st r-many)"
 X=$(claim r-pend); q "select chapter_prep_release('r-pend','$X','pending_recovery',null,null,'max continuations reached (4)')" >/dev/null
 check "pending_recovery: resumable"                    "false|true" "$(st r-pend)"
+
+echo "== 10. chapter_content writes: before and after migration 2110"
+L='[{"start":0,"end":2,"text":"a","transliteration":"a","english":"a"}]'
+check "before 2110: a student CAN insert a chapter (the hole being closed)" "" "$(q "set role authenticated; insert into chapter_content (video_id, language, sentences) values ('hole','hebrew','$L')")"
+check "before 2110: a platform admin CAN delete one" "" "$(q "set test.admin = 'on'; set role authenticated; delete from chapter_content where video_id = 'hole'")"
+out=$(qs < supabase/migrations/2110_chapter_content_server_writes.sql); check "2110 applies" "" "$out"
+out=$(qs < supabase/migrations/2110_chapter_content_server_writes.sql); check "2110 applies twice (idempotent)" "" "$out"
+q "insert into chapter_content (video_id, language, sentences, source) values ('c-live','hebrew','$L','original')" >/dev/null
+check "student still reads chapters"              "1" "$(q "set role authenticated; select count(*) from chapter_content where video_id = 'c-live'")"
+contains "student cannot insert"                  "permission denied" "$(q "set role authenticated; insert into chapter_content (video_id, language, sentences) values ('c-new','hebrew','$L')")"
+contains "student cannot overwrite (update)"      "permission denied" "$(q "set role authenticated; update chapter_content set source = 'hacked' where video_id = 'c-live'")"
+contains "student cannot upsert over a chapter"   "permission denied" "$(q "set role authenticated; insert into chapter_content (video_id, language, sentences) values ('c-live','hebrew','$L') on conflict (video_id) do update set source = 'hacked'")"
+contains "student cannot delete"                  "permission denied" "$(q "set role authenticated; delete from chapter_content where video_id = 'c-live'")"
+contains "platform admin cannot delete directly either" "permission denied" "$(q "set test.admin = 'on'; set role authenticated; delete from chapter_content where video_id = 'c-live'")"
+contains "anon cannot read"                       "permission denied" "$(q "set role anon; select count(*) from chapter_content")"
+contains "anon cannot insert"                     "permission denied" "$(q "set role anon; insert into chapter_content (video_id, language, sentences) values ('c-anon','hebrew','$L')")"
+check "published chapter untouched"               "original" "$(q "select source from chapter_content where video_id = 'c-live'")"
+check "service role (edge functions) can still write" "" "$(q "set role service_role; update chapter_content set source = 'svc' where video_id = 'c-live'")"
+P=$(q "set role service_role; select lock_token from chapter_prep_claim('c-pub','hebrew')")
+check "server publication (chapter_prep_publish as service role) still works" "published" "$(q "set role service_role; select chapter_prep_publish('c-pub','$P','$L','eleven',false)")"
+check "…and students read it"                     "1" "$(q "set role authenticated; select count(*) from chapter_content where video_id = 'c-pub'")"
+contains "students still cannot call the publication function" "permission denied" "$(q "set role authenticated; select chapter_prep_publish('c-x',gen_random_uuid(),'$L','x',true)")"
 
 echo
 echo "passed: $PASS   failed: $FAIL"

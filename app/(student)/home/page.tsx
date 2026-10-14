@@ -33,15 +33,12 @@ import WordCard from "@/components/backpack/WordCard";
 import AddWordsSheet from "@/components/home/AddWordsSheet";
 import PhotoWordCapture from "@/components/home/PhotoWordCapture";
 import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/transcription";
-import { splitIntoSentences } from "@/lib/chapterSentences";
 import { splitIntoEpisodes, episodeKey, estimateEpisodeCount, type Episode } from "@/lib/chapterEpisodes";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
 import { buildLyricSegments, splitScriptLine } from "@/lib/songLyrics";
-import { alignLinesToWords, fitSungLines, wordsFromFragments } from "@/lib/lyricAlign";
 import { QUALITY_MODEL, translitRules, glossPrompt, GLOSS_SCHEMA, cleanGlosses } from "@/lib/chapterPrompts";
 import { requestChapterPrep, chapterPrepStatus, waitForServerChapter } from "@/lib/prepareChapter";
 import { prepAction } from "@/lib/chapterPrepStatus";
-import { untranslatedCount } from "@/lib/chapterPublish";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
 // left over from YouTube's wrong-language caption tracks (e.g. "[موسيقى]").
@@ -1810,184 +1807,19 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
     prepareTried.current.add(vid);
     (async () => {
       setChapterPreparing(true);
-      try {
-        const lang = shellVideo.language || language;
-        // The server keeps its own record of the preparation (chapter_prep).
-        // While it has one, the browser never prepares the video too (that
-        // paid twice): it waits, asks the server to resume what it did, or —
-        // when a retry would only pay again (no credit…) — shows the stored
-        // transcript right away (lib/chapterPrepStatus).
-        const action = prepAction(await chapterPrepStatus(vid));
-        if (action !== "local") {
-          const rowId = shellVideo.id;
-          if (action === "resume") requestChapterPrep(vid, lang);
-          const result = action === "ready" || action === "stopped" ? action : await waitForServerChapter(vid, () => shellVideoIdRef.current === rowId);
-          if (result === "ready") queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
-          else if (result === "abandoned") prepareTried.current.delete(vid);
-          else setChapterPrepFailed(vid);
-          setChapterPreparing(false);
-          return;
-        }
-        // Songs with imported lyrics: the lyrics give the words, the audio the
-        // times. Lines are timed word by word against the transcription below.
-        // (Imports made before the marker existed are recognised by the
-        // Hebrew+romanization lines Letras.com produced.)
-        const savedLines = (Array.isArray(shellVideo.processed_transcript) ? shellVideo.processed_transcript : [])
-          .map((segment: any) => {
-            const { native, latin } = splitScriptLine(stripCaptionNoise(segment?.hebrew || segment?.text));
-            return { text: native, transliteration: segment?.transliteration || latin, english: segment?.english || "", lyric: !!segment?.lyric, glued: !!latin };
-          })
-          .filter((line: any) => line.text);
-        const lyricLines = savedLines.some((l: any) => l.lyric) || savedLines.filter((l: any) => l.glued).length >= 3 ? savedLines : [];
-        // Supadata's free plan rejects simultaneous requests ("Limit Exceeded")
-        // — e.g. the shell transcribing the same new video at the same time —
-        // so wait and retry a couple of times.
-        let res: any = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          if (attempt) await new Promise((r) => setTimeout(r, 6000 * attempt));
-          res = await transcribeMediaSource(youtubeSource(vid), { language: lang, allowTimingOnly: true });
-          if (!/limit/i.test(String(res?.error || ""))) break;
-        }
-        const frags = (res?.transcript || [])
-          .map((f: any) => ({ text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0) }))
-          .filter((f: any) => f.text && f.start < CHAPTER_MAX_SECONDS);
-        if (!frags.length) throw new Error(res?.error || "no timed transcript");
-
-        let sentences: any[] = [];
-        if (lyricLines.length) {
-          // Every spoken word with its time (ElevenLabs); other engines only
-          // time fragments, whose words are spread evenly.
-          const words = Array.isArray(res?.words) && res.words.length
-            ? res.words
-            : wordsFromFragments((res?.transcript || []).map((f: any) => ({
-                text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0),
-              })));
-          const timing = fitSungLines(alignLinesToWords(lyricLines.map((l: any) => l.text), words));
-          sentences = lyricLines
-            .map((l: any, i: number) => ({
-              start: timing[i].start,
-              end: Math.min(timing[i].end, CHAPTER_MAX_SECONDS),
-              hebrew: l.text,
-              text: l.text,
-              transliteration: l.transliteration,
-              english: l.english,
-            }))
-            .filter((x: any) => x.start < CHAPTER_MAX_SECONDS - 1 && x.end > x.start);
-          if (!sentences.length) throw new Error("could not time the lyrics");
-        } else if (res?.timing_only) {
-          // The only timed track is in another language (e.g. a French dub —
-          // checked: it follows the original speech sentence by sentence). Pair
-          // its timings with the video's stored transcript: the model returns
-          // only index ranges, the Hebrew text is ours.
-          const lines = (Array.isArray(shellVideo.processed_transcript) ? shellVideo.processed_transcript : [])
-            .map((s: any) => stripCaptionNoise(s?.hebrew || s?.text))
-            .filter(Boolean);
-          if (!lines.length) throw new Error("no stored transcript to pair with the timings");
-          // The model only says in which fragment each line STARTS (asking for
-          // ranges on both sides made it produce overlapping ranges).
-          const a: any = await base44.integrations.Core.InvokeLLM({
-            prompt: `A ${languageLabel(lang)} video. List A: its original ${languageLabel(lang)} lines, in order. List B: timed fragments of a translation of the same video (${res.language || "other language"}), in order. B covers only the beginning of the video, so the last A lines may not be in B at all.
-A:
-${lines.map((t: string, i: number) => `${i}: ${t}`).join("\n")}
-
-B:
-${frags.map((f: any, i: number) => `${i}: ${f.text}`).join("\n")}
-
-For every A line that is said within B, give the number of the B fragment where that line STARTS being said. Several A lines can start in the same fragment. Numbers never go backwards. Leave out A lines that come after the end of B.
-Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
-            response_json_schema: {
-              type: "object",
-              properties: { starts: { type: "array", items: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } } } } },
-            },
-            max_tokens: 4000,
-          });
-          const given = new Map<number, number>();
-          for (const x of a?.starts || []) {
-            const ai = Math.round(Number(x?.a)), bi = Math.round(Number(x?.b));
-            if (ai >= 0 && ai < lines.length && bi >= 0 && bi < frags.length) given.set(ai, bi);
-          }
-          const lastLine = given.size ? Math.max(...Array.from(given.keys())) : -1;
-          // Fragment each line starts in: a skipped line inherits the previous
-          // one's, and it never goes backwards.
-          const lineFrag: number[] = [];
-          for (let i = 0; i <= lastLine; i++) {
-            const prev = i ? lineFrag[i - 1] : 0;
-            lineFrag.push(Math.max(prev, given.get(i) ?? prev));
-          }
-          // Lines starting in the same fragment share its time by length.
-          const starts: number[] = [];
-          for (let i = 0; i <= lastLine; ) {
-            let j = i;
-            while (j + 1 <= lastLine && lineFrag[j + 1] === lineFrag[i]) j++;
-            const f = frags[lineFrag[i]];
-            const lens = lines.slice(i, j + 1).map((t: string) => Math.max(1, t.length));
-            const total = lens.reduce((x: number, y: number) => x + y, 0);
-            let t = f.start;
-            for (let k = i; k <= j; k++) { starts.push(t); t += ((f.end - f.start) * lens[k - i]) / total; }
-            i = j + 1;
-          }
-          for (let i = 0; i <= lastLine; i++) {
-            const end = i < lastLine ? starts[i + 1] : frags[frags.length - 1].end;
-            sentences.push({
-              start: starts[i],
-              end: Math.min(end, CHAPTER_MAX_SECONDS),
-              hebrew: lines[i],
-              text: lines[i],
-              transliteration: "",
-              english: "",
-            });
-          }
-          sentences = sentences.filter((x: any) => x.start < CHAPTER_MAX_SECONDS && x.end > x.start);
-          if (!sentences.length) throw new Error("could not pair the transcript with the timings");
-        } else {
-        // 1 · Sentences cut on the fragments' real edges (see
-        // lib/chapterSentences; AI grouping merged whole dialogues into
-        // 20–30 s blocks).
-        sentences = splitIntoSentences(frags, CHAPTER_MAX_SECONDS).map((x) => ({
-          start: x.start,
-          end: x.end,
-          hebrew: x.text,
-          text: x.text,
-          transliteration: "",
-          english: "",
-        }));
-        }
-        if (!sentences.length) throw new Error("no sentences");
-
-        // 2 · Phonetic + English + a gloss per word (so tapping a word is
-        // instant), in batches of 8 run in parallel. A failed batch is filled
-        // per sentence when shown.
-        const batches: any[][] = [];
-        for (let b = 0; b < sentences.length; b += 8) batches.push(sentences.slice(b, b + 8));
-        await Promise.all(batches.map(async (batch) => {
-          try {
-            const t: any = await invokeQuality({
-              prompt: glossPrompt(languageLabel(lang), batch.map((x: any) => x.text)),
-              response_json_schema: GLOSS_SCHEMA,
-              max_tokens: 8000,
-            });
-            for (const it of t?.items || []) {
-              const x = batch[Math.round(Number(it?.i))];
-              if (!x) continue;
-              x.transliteration = x.transliteration || it.transliteration || "";
-              x.english = x.english || it.english || "";
-              x.words = cleanGlosses(it.words);
-            }
-          } catch (e) {
-            console.warn("[chapter] translation batch failed", e);
-          }
-        }));
-        // Only complete chapters are saved (lib/chapterPublish): with any gap
-        // (e.g. the AI account is out of credit) this view falls back to the
-        // stored transcript and the video stays unprepared, to be retried.
-        const missing = untranslatedCount(sentences);
-        if (missing) throw new Error(`${missing} of ${sentences.length} sentences untranslated`);
-        await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences, source: `${res?.source || ""}${lyricLines.length ? "+lyrics" : ""}` });
-        queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
-      } catch (e) {
-        console.error("[chapter] could not prepare timed sentences, using the stored transcript", e);
-        setChapterPrepFailed(vid);
-      }
+      const lang = shellVideo.language || language;
+      const rowId = shellVideo.id;
+      // Chapters are prepared and published only by the server (prepareChapter,
+      // chapter_prep): the browser never transcribes, translates or writes
+      // chapter_content. It asks the server (unless a run is already on it or
+      // a retry would only pay again, e.g. no AI credit) and waits; if no
+      // chapter comes, the stored transcript is shown (lib/chapterPrepStatus).
+      const action = prepAction(await chapterPrepStatus(vid));
+      if (action === "request" || action === "resume") requestChapterPrep(vid, lang);
+      const result = action === "ready" || action === "stopped" ? action : await waitForServerChapter(vid, () => shellVideoIdRef.current === rowId);
+      if (result === "ready") queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
+      else if (result === "abandoned") prepareTried.current.delete(vid);
+      else setChapterPrepFailed(vid);
       setChapterPreparing(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

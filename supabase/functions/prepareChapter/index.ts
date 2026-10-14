@@ -7,6 +7,8 @@
 // Request: { videoId, language: "hebrew", force?: boolean }
 //   force: rebuild and replace the published chapter (e.g. after importing
 //   lyrics); cached steps whose inputs did not change are still reused.
+//   Admins only. Other users may only start the first preparation of a video
+//   in the shared library or in their own saved videos (./access.ts).
 // Replies at once ({ status: "ready" | "started" }) and works in the
 // background; the app sees the result when the chapter_content row appears.
 // Internal: { …, continuing: true } with the service role key — a run that
@@ -18,6 +20,7 @@ import { fetchYoutubeCaptions } from "../_shared/transcription/supadata.ts";
 import { askJsonQuality } from "../_shared/llm.ts";
 import { runPrep, type PrepDeps, type PrepInput } from "./pipeline.ts";
 import { MemoryPrepStore, SupabasePrepStore, type PrepStore } from "./store.ts";
+import { isAdmin, prepAccess, type Caller } from "./access.ts";
 
 function liveDeps(db: any, store: PrepStore): PrepDeps {
   return {
@@ -54,9 +57,13 @@ Deno.serve(async (req) => {
   if (pre) return pre;
   const bearer = (req.headers.get("Authorization") || "").replace("Bearer ", "").trim();
   const internal = !!bearer && bearer === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  let caller: Caller = { kind: "internal" };
+  let email = "";
   if (!internal) {
     const auth = await requireUser(req);
     if (!auth.ok) return json({ error: auth.error }, auth.status);
+    caller = { kind: "user", role: String((auth.user.app_metadata as any)?.user_role || "user") };
+    email = String(auth.user.email || "");
   }
 
   const body = await req.json().catch(() => ({}));
@@ -78,6 +85,18 @@ Deno.serve(async (req) => {
     return json(out, "sentences" in out ? 200 : 500);
   }
   if (!/^[\w-]{6,20}$/.test(videoId)) return json({ error: "Provide a YouTube videoId" }, 400);
+
+  // Rebuilds are admin-only; others may only start the first preparation of
+  // a video in the shared library or in their own saved videos (./access.ts).
+  const access = isAdmin(caller)
+    ? prepAccess({ caller, force })
+    : prepAccess({
+        caller, force,
+        inSharedLibrary: !!(await db.from("media_library").select("video_id").eq("video_id", videoId).limit(1)).data?.length,
+        inOwnLibrary: !!email && !!(await db.from("user_saved_video").select("video_id").eq("video_id", videoId)
+          .ilike("created_by", email.replace(/[\\%_]/g, "\\$&")).limit(1)).data?.length,
+      });
+  if (!access.ok) return json({ error: access.error }, access.status);
 
   if (!force && !continuing) {
     const { data } = await db.from("chapter_content").select("video_id").eq("video_id", videoId).limit(1);
