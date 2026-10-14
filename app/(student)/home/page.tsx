@@ -41,6 +41,7 @@ import { alignLinesToWords, fitSungLines, wordsFromFragments } from "@/lib/lyric
 import { QUALITY_MODEL, translitRules, glossPrompt, GLOSS_SCHEMA, cleanGlosses } from "@/lib/chapterPrompts";
 import { requestChapterPrep } from "@/lib/prepareChapter";
 import { untranslatedCount } from "@/lib/chapterPublish";
+import { sentenceEpisodeIndex, wordEpisode } from "@/lib/backpackEpisodes";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
 // left over from YouTube's wrong-language caption tracks (e.g. "[موسيقى]").
@@ -860,14 +861,19 @@ Return JSON with:
   // "1 / 16", so it looked like the rating hadn't saved. Cards added later join
   // at the end; deleted/dismissed ones drop out. Switching language re-sorts.
   // Backpack opens on a deck menu: "Practice all" + one deck per source video
-  // + "Other words". null = menu; "all"; "yt:<youtubeId>"; "other".
+  // + "Other words". null = menu; "all"; "other"; a video's cards:
+  // "yt:<youtubeId>" (all of them), "yt:<youtubeId>#e<n>" (one episode) or
+  // "yt:<youtubeId>#none" (not found in any episode).
+  // Tapping a video first opens its episode list (deckVideo), then a deck.
   const [deckKey, setDeckKey] = useState<string | null>(null);
+  const [deckVideo, setDeckVideo] = useState<string | null>(null);
   const openDeck = (key: string | null) => {
     setDeckKey(key);
     setCardIdx(0);
   };
   useEffect(() => {
     setDeckKey(null);
+    setDeckVideo(null);
   }, [language]);
 
   // Words still waiting for the Learn/Skip decision, or skipped, aren't studied.
@@ -895,10 +901,47 @@ Return JSON with:
     return { all: visible, videos, other };
   }, [words, dismissedCards]);
 
-  const deckTitle =
-    deckKey === "all" ? "All flashcards"
-    : deckKey === "other" ? "Other words"
-    : backpackDecks.videos.find((g) => g.key === deckKey)?.title || "Video";
+  // The Backpack videos' prepared sentences, to tell each word's episode.
+  const backpackVideoIds = useMemo(() => backpackDecks.videos.map((g) => g.videoId), [backpackDecks]);
+  const { data: backpackChapters = [] } = useQuery({
+    queryKey: ["chapterContentAll", "backpack", backpackVideoIds.join(",")],
+    queryFn: () => base44.entities.ChapterContent.filter({ video_id: backpackVideoIds }),
+    enabled: tab === "learning" && backpackVideoIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  // Per video: its episodes, and each of its words' episode (null = not found).
+  const backpackEpisodes = useMemo(() => {
+    const byId = new Map((shellVideos as any[]).map((v: any) => [v.video_id, v]));
+    const chapters = new Map((backpackChapters as any[]).map((c: any) => [c.video_id, c]));
+    const eps = new Map<string, Episode[]>();
+    const wordEp = new Map<any, number | null>();
+    for (const g of backpackDecks.videos) {
+      const c = chapters.get(g.videoId);
+      const list = c ? episodesFor(c, byId.get(g.videoId)) : [];
+      eps.set(g.videoId, list);
+      const index = sentenceEpisodeIndex(c?.sentences || [], list);
+      for (const w of g.words) wordEp.set(w.id, wordEpisode(w, index));
+    }
+    return { eps, wordEp };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backpackDecks, backpackChapters, shellVideos]);
+  const deckOfWord = (w: any, key: string) => {
+    const [vid, part] = key.slice(3).split("#");
+    if (w.source_video_id !== vid) return false;
+    if (!part) return true;
+    const ep = backpackEpisodes.wordEp.get(w.id) ?? null;
+    return part === "none" ? ep == null : ep === Number(part.slice(1));
+  };
+
+  const deckTitle = (() => {
+    if (deckKey === "all") return "All flashcards";
+    if (deckKey === "other") return "Other words";
+    const [vid, part] = (deckKey || "").slice(3).split("#");
+    const title = backpackDecks.videos.find((g) => g.videoId === vid)?.title || "Video";
+    if (!part) return title;
+    return `${part === "none" ? "Other words" : `Episode ${part.slice(1)}`} · ${title}`;
+  })();
 
   const deckOrderRef = useRef<{ language: string; ids: any[] }>({ language: "", ids: [] });
   const flashDeck = useMemo(() => {
@@ -910,7 +953,7 @@ Return JSON with:
           ? true
           : deckKey === "other"
           ? !w.source_video_id
-          : w.source_video_id === deckKey.slice(3))
+          : deckOfWord(w, deckKey))
     );
     const byLevel = (a: any, b: any) =>
       (a.times_practiced || 0) - (b.times_practiced || 0) ||
@@ -927,7 +970,8 @@ Return JSON with:
     const added = visible.filter((w) => !keptSet.has(w.id)).sort(byLevel).map((w) => w.id);
     order.ids = [...kept, ...added];
     return order.ids.map((id) => byId.get(id));
-  }, [words, dismissedCards, language, deckKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [words, dismissedCards, language, deckKey, backpackEpisodes]);
   const safeCardIdx = Math.min(cardIdx, Math.max(0, flashDeck.length - 1));
 
   // Safety net: many save paths (journal, songs, translator, older video
@@ -2501,7 +2545,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               </div>
             ) : deckKey === null ? (
               <>
-                {newWords.length > 0 && (
+                {newWords.length > 0 && !deckVideo && (
                   <button
                     onClick={() => setTriageOpen(true)}
                     className="mt-3 flex flex-shrink-0 items-center gap-3 rounded-2xl border border-fuchsia-200 bg-white px-4 py-3 text-left shadow-md shadow-fuchsia-100"
@@ -2514,12 +2558,22 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     <span className="text-lg font-bold text-fuchsia-500">›</span>
                   </button>
                 )}
-                <BackpackDeckMenu
-                  decks={backpackDecks}
-                  onOpen={openDeck}
-                  onAdd={() => setAddWordsOpen(true)}
-                  camera={<PhotoWordCapture language={language} compact />}
-                />
+                {deckVideo ? (
+                  <BackpackVideoEpisodes
+                    deck={backpackDecks.videos.find((g) => g.videoId === deckVideo)}
+                    eps={backpackEpisodes.eps.get(deckVideo) || []}
+                    episodeOf={(w: any) => backpackEpisodes.wordEp.get(w.id) ?? null}
+                    onBack={() => setDeckVideo(null)}
+                    onOpen={openDeck}
+                  />
+                ) : (
+                  <BackpackDeckMenu
+                    decks={backpackDecks}
+                    onOpen={(key: string) => (key.startsWith("yt:") ? setDeckVideo(key.slice(3)) : openDeck(key))}
+                    onAdd={() => setAddWordsOpen(true)}
+                    camera={<PhotoWordCapture language={language} compact />}
+                  />
+                )}
               </>
             ) : (
               <>
@@ -2529,7 +2583,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                     onClick={() => openDeck(null)}
                     className="flex items-center gap-1 rounded-full border border-indigo-100 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 shadow-sm"
                   >
-                    ← Decks
+                    {deckVideo && deckKey?.startsWith("yt:") ? "← Episodes" : "← Decks"}
                   </button>
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{deckTitle}</span>
                 </div>
@@ -3877,7 +3931,7 @@ function BackpackDeckMenu({
       <div className="rounded-3xl bg-slate-900 p-4 text-white shadow-xl shadow-slate-900/20">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-lg font-bold">🎒 Practice all flashcards</p>
+            <p className="text-lg font-bold">🎒 Practice all words</p>
             <p className="mt-0.5 text-xs text-slate-400">{deckSummary(decks.all)}</p>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
@@ -3904,7 +3958,7 @@ function BackpackDeckMenu({
       </div>
 
       {decks.videos.length > 0 && (
-        <p className="mb-2 ml-1 mt-5 text-[11px] font-bold uppercase tracking-wider text-slate-500">From your videos</p>
+        <p className="mb-2 ml-1 mt-5 text-[11px] font-bold uppercase tracking-wider text-slate-500">Or practice words from a specific video</p>
       )}
       {decks.videos.map((g) => (
         <button
@@ -3948,6 +4002,101 @@ function BackpackDeckMenu({
             <span className="pr-1 text-lg font-bold text-indigo-500">›</span>
           </button>
         </>
+      )}
+    </div>
+  );
+}
+
+// Backpack · one video's words, by episode: tapping a video in the deck menu
+// opens this list; each episode opens only its flashcards (no video, no
+// sentences). Episodes without saved words are greyed out.
+function BackpackVideoEpisodes({
+  deck, eps, episodeOf, onBack, onOpen,
+}: {
+  deck?: { key: string; videoId: string; title: string; words: any[] };
+  eps: Episode[];
+  episodeOf: (w: any) => number | null;
+  onBack: () => void;
+  onOpen: (key: string) => void;
+}) {
+  if (!deck) return null;
+  const byEp = new Map<number, any[]>();
+  const unmatched: any[] = [];
+  for (const w of deck.words) {
+    const n = episodeOf(w);
+    if (n == null) unmatched.push(w);
+    else byEp.set(n, [...(byEp.get(n) || []), w]);
+  }
+  return (
+    <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto pb-4">
+      <div className="flex flex-shrink-0 items-center gap-2 px-1">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 rounded-full border border-indigo-100 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 shadow-sm"
+        >
+          ← Decks
+        </button>
+      </div>
+      <div className="mt-3 flex items-center gap-3 rounded-2xl bg-slate-900 p-3 text-white shadow-xl shadow-slate-900/20">
+        <div className="h-16 w-28 flex-shrink-0 overflow-hidden rounded-xl bg-slate-700">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`https://i.ytimg.com/vi/${deck.videoId}/mqdefault.jpg`} alt="" className="h-full w-full object-cover" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm font-bold leading-tight">{deck.title}</p>
+          <p className="mt-0.5 text-[11px] text-slate-400">{deckSummary(deck.words)}</p>
+        </div>
+      </div>
+      <button
+        onClick={() => onOpen(deck.key)}
+        className="mt-3 w-full flex-shrink-0 rounded-xl bg-gradient-to-r from-teal-500 to-indigo-500 py-2.5 text-sm font-bold text-white shadow"
+      >
+        Practice all words from this video
+      </button>
+
+      {eps.length > 0 && (
+        <p className="mb-2 ml-1 mt-5 text-[11px] font-bold uppercase tracking-wider text-slate-500">By episode</p>
+      )}
+      {eps.map((ep) => {
+        const ws = byEp.get(ep.number) || [];
+        return (
+          <button
+            key={ep.number}
+            disabled={!ws.length}
+            onClick={() => onOpen(`${deck.key}#e${ep.number}`)}
+            className={`mb-2 flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+              ws.length ? "border-indigo-50 bg-white shadow-sm hover:border-indigo-200" : "border-slate-100 bg-slate-50 text-slate-400"
+            }`}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-2">
+                <p className="text-sm font-extrabold">Episode {ep.number}</p>
+                <p className="text-xs tabular-nums text-slate-400">{fmtTime(ep.start)}–{fmtTime(ep.end)}</p>
+              </div>
+              <p className="mb-1.5 mt-0.5 text-[11px] text-slate-500">{ws.length ? deckSummary(ws) : "No words saved"}</p>
+              {ws.length > 0 && <LevelBar words={ws} />}
+            </div>
+            {ws.length > 0 && <span className="pr-1 text-lg font-bold text-indigo-500">›</span>}
+          </button>
+        );
+      })}
+
+      {/* Not prepared into episodes yet (or still loading): only the button above. */}
+      {!eps.length && (
+        <p className="mt-4 px-1 text-xs text-slate-500">This video isn&apos;t split into episodes yet.</p>
+      )}
+      {eps.length > 0 && unmatched.length > 0 && (
+        <button
+          onClick={() => onOpen(`${deck.key}#none`)}
+          className="mb-2 flex w-full items-center gap-3 rounded-2xl border border-indigo-50 bg-white px-4 py-3 text-left shadow-sm transition hover:border-indigo-200"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-extrabold">Other words from this video</p>
+            <p className="mb-1.5 mt-0.5 text-[11px] text-slate-500">{deckSummary(unmatched)}</p>
+            <LevelBar words={unmatched} />
+          </div>
+          <span className="pr-1 text-lg font-bold text-indigo-500">›</span>
+        </button>
       )}
     </div>
   );
