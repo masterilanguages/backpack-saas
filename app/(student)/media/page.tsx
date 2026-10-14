@@ -583,7 +583,8 @@ export default function MediaLibrary() {
   const addToLibraryMutation = useMutation({
     mutationFn: async (video: any) => {
       const videoId = video.youtube_id || video.youtube_video_id || extractYouTubeId(video.video_url || `https://youtube.com/watch?v=${video.youtube_id}`);
-      const created = await base44.entities.MediaLibrary.create({
+      requestChapterPrep(videoId, userProfile?.language || "hebrew");
+      return base44.entities.MediaLibrary.create({
         title: video.title,
         language: userProfile?.language || "hebrew",
         video_url: `https://www.youtube.com/watch?v=${videoId}`,
@@ -595,9 +596,6 @@ export default function MediaLibrary() {
         thumbnail_url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
         notes: ""
       });
-      // After the row exists: the server only prepares videos in a library.
-      requestChapterPrep(videoId, userProfile?.language || "hebrew");
-      return created;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mediaLibrary'] });
