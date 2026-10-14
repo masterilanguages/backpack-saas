@@ -438,7 +438,7 @@ export default function Home() {
   // Library tab add-flow: search YouTube (query or pasted link, with topic
   // suggestion chips) → results by popularity → publish screen (level+topics).
   const [libView, setLibView] = useState<"grid" | "search" | "publish">("grid");
-  const [libFilter, setLibFilter] = useState<"all" | "song" | "lesson" | "mine">("all");
+  const [libFilter, setLibFilter] = useState<"all" | "Beginner" | "Intermediate" | "Advanced">("all");
   const [libSearch, setLibSearch] = useState("");
   const [libResults, setLibResults] = useState<any[]>([]);
   const [libSearching, setLibSearching] = useState(false);
@@ -2271,7 +2271,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
       toast.success("Video added to the library!");
       setLibView("grid");
       setLibPick(null);
-      setLibFilter(currentUser?.role === "admin" ? "all" : "mine");
+      setLibFilter("all");
       setMood("happy");
     } catch (e: any) {
       console.error(e);
@@ -3474,9 +3474,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               <div className="mt-4 flex gap-2">
                 {[
                   { key: "all", label: "All" },
-                  { key: "song", label: "Songs" },
-                  { key: "lesson", label: "Lessons" },
-                  { key: "mine", label: "My videos" },
+                  { key: "Beginner", label: "Beginner" },
+                  { key: "Intermediate", label: "Intermediate" },
+                  { key: "Advanced", label: "Advanced" },
                 ].map((f) => (
                   <button
                     key={f.key}
@@ -3491,15 +3491,14 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
               </div>
 
               {(() => {
-                const visible =
-                  libFilter === "mine" ? orderedVideos.filter((v: any) => v._mine)
-                  : libFilter === "song" || libFilter === "lesson" ? orderedVideos.filter((v: any) => libMetas[v.video_id]?.kind === libFilter)
-                  : orderedVideos;
+                // Videos saved without a real level count as Beginner, like the player does.
+                const levelOf = (v: any) => (["Intermediate", "Advanced"].includes(v.difficulty_level) ? v.difficulty_level : "Beginner");
+                const visible = libFilter === "all" ? orderedVideos : orderedVideos.filter((v: any) => levelOf(v) === libFilter);
                 if (visible.length === 0) {
                   return (
                     <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
                       <p className="text-sm font-semibold text-slate-700">
-                        {libFilter === "mine" ? "You haven't added any videos yet" : libFilter === "song" ? "No songs yet" : libFilter === "lesson" ? "No lessons yet" : "No videos yet"}
+                        {libFilter === "all" ? "No videos yet" : `No ${libFilter.toLowerCase()} videos yet`}
                       </p>
                       <p className="text-xs text-slate-500">Search YouTube and publish a video to start learning from real content.</p>
                       <button
