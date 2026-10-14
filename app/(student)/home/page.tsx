@@ -4869,18 +4869,34 @@ function DiscoveryPanel({
 
       {/* the sentence: phonetic, native line (words tappable), translation */}
       <div className="mt-3 flex-shrink-0 text-center">
-        <div className="flex items-center justify-center gap-2">
-          {/* Only when the sentence carries both texts, so the swap is instant. */}
-          {canSwapScript && (
+        {/* The button lines up with the sentence's first line (28 px button,
+            21 px line: the text starts 4 px lower so both centres meet). */}
+        <div className="flex items-start justify-center gap-2">
+          {/* Left column: abc/א (only when the sentence carries both texts, so
+              the swap is instant), then Translate. */}
+          <div className="flex flex-shrink-0 flex-col items-center gap-1.5">
+            {canSwapScript && (
+              <button
+                onClick={onToggleHebrewLine}
+                aria-label={hebrewLine ? "Show transliteration" : "Show in Hebrew letters"}
+                className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/80 px-1.5 text-xs font-bold text-slate-700 shadow-sm transition active:scale-95"
+              >
+                {hebrewLine ? <span className="text-sm [font-family:var(--font-hebrew)]">א</span> : "abc"}
+              </button>
+            )}
             <button
-              onClick={onToggleHebrewLine}
-              aria-label={hebrewLine ? "Show transliteration" : "Show in Hebrew letters"}
-              className="flex h-7 min-w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/80 px-1.5 text-xs font-bold text-slate-700 shadow-sm transition active:scale-95"
+              onClick={revealed ? onHideTranslation : onReveal}
+              aria-expanded={revealed}
+              aria-label={revealed ? "Hide translation" : "Translate"}
+              title={revealed ? "Hide translation" : "Translate"}
+              className={`flex h-7 w-7 items-center justify-center rounded-full shadow-sm transition active:scale-95 ${
+                revealed ? "bg-slate-900 text-white" : "bg-white/80 text-slate-700"
+              }`}
             >
-              {hebrewLine ? <span className="text-sm [font-family:var(--font-hebrew)]">א</span> : "abc"}
+              <Languages className="h-4 w-4" />
             </button>
-          )}
-          <div className="min-w-0 flex-1">
+          </div>
+          <div className="min-w-0 flex-1 pt-1">
             {showLatin && !latinTokens ? (
               // No word-by-word Latin for this sentence: shown, not tappable.
               <p dir="ltr" className="text-[14px] font-medium leading-[1.5] text-slate-900">{phonetic}</p>
@@ -4914,20 +4930,12 @@ function DiscoveryPanel({
               </p>
             )}
             {showLatin && !latinTokens && !phonetic && translating && <p className="text-sm text-slate-500">…</p>}
+            {/* The translation belongs to the sentence: it opens right under it. */}
+            {revealed && (
+              <p className="mt-1.5 text-sm text-slate-600">{english || (translating ? "translating…" : "—")}</p>
+            )}
           </div>
         </div>
-        {/* The translation belongs to the sentence, not the audio controls:
-            Hebrew → ask for help → English appears right underneath. */}
-        <button
-          onClick={revealed ? onHideTranslation : onReveal}
-          aria-expanded={revealed}
-          className="mt-2 inline-flex items-center gap-1 rounded-full border border-slate-900/10 bg-white/60 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-white hover:text-slate-900 active:scale-95"
-        >
-          {revealed ? "Hide translation ↑" : "Translate ↓"}
-        </button>
-        {revealed && (
-          <p className="mt-2 text-sm text-slate-600">{english || (translating ? "translating…" : "—")}</p>
-        )}
       </div>
 
       {/* tapped word: meaning at once + add to Backpack */}
