@@ -4,6 +4,7 @@
 // tool_choice, so they get it on "auto" plus an explicit instruction, and a
 // JSON object written as text is accepted as a fallback.
 import Anthropic from "npm:@anthropic-ai/sdk";
+import { classifyLlmError, isAccountLlmError } from "../../../lib/llmErrors.ts";
 
 const DEFAULT_MODEL = Deno.env.get("LLM_MODEL") || "claude-haiku-4-5";
 
@@ -39,12 +40,21 @@ export async function askJson(
   throw new Error("The model returned no JSON");
 }
 
-/** The quality model first; the default model if it errors. */
+/**
+ * The quality model first; the default model if it errors. Not when the
+ * account itself fails (out of credit, bad key): every model would fail the
+ * same way, so the error is passed on with its `kind`.
+ */
 export async function askJsonQuality(prompt: string, schema: Record<string, unknown>, model: string, maxTokens?: number) {
   try {
     return await askJson(prompt, schema, { model, maxTokens });
-  } catch (e) {
-    console.warn("[llm] quality model failed, using the default", e);
+  } catch (e: any) {
+    const kind = classifyLlmError(e);
+    if (isAccountLlmError(kind)) {
+      if (e && typeof e === "object") e.kind = kind;
+      throw e;
+    }
+    console.warn(`[llm] quality model failed (${kind}), using the default`, e);
     return await askJson(prompt, schema, { maxTokens });
   }
 }

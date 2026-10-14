@@ -36,10 +36,11 @@ import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/t
 import { splitIntoSentences } from "@/lib/chapterSentences";
 import { splitIntoEpisodes, episodeKey, estimateEpisodeCount, type Episode } from "@/lib/chapterEpisodes";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
-import { buildLyricSegments, chapterContentKey, splitScriptLine } from "@/lib/songLyrics";
+import { buildLyricSegments, splitScriptLine } from "@/lib/songLyrics";
 import { alignLinesToWords, fitSungLines, wordsFromFragments } from "@/lib/lyricAlign";
 import { QUALITY_MODEL, translitRules, glossPrompt, GLOSS_SCHEMA, cleanGlosses } from "@/lib/chapterPrompts";
 import { requestChapterPrep } from "@/lib/prepareChapter";
+import { untranslatedCount } from "@/lib/chapterPublish";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
 // left over from YouTube's wrong-language caption tracks (e.g. "[موسيقى]").
@@ -1682,8 +1683,9 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
           lyrics_source_url: imported.source_url,
         });
       }
-      const existingChapters = await base44.entities.ChapterContent.filter({ video_id: shellVideo.video_id });
-      await Promise.all((existingChapters || []).map((chapter: any) => base44.entities.ChapterContent.delete(chapterContentKey(chapter))));
+      // The server rebuilds the chapter and replaces the published one only
+      // once the new version is complete (deleting it first left students
+      // with nothing if the rebuild failed).
       prepareTried.current.delete(shellVideo.video_id);
       requestChapterPrep(shellVideo.video_id, shellVideo.language || language, true);
       queryClient.invalidateQueries({ queryKey: ["chapterContent", shellVideo.video_id] });
@@ -1974,9 +1976,11 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
             console.warn("[chapter] translation batch failed", e);
           }
         }));
-        // Nothing translated (e.g. the AI account is out of credit): don't save
-        // a chapter without transliteration or English; it is retried later.
-        if (!sentences.some((x: any) => x.transliteration || x.english)) throw new Error("no sentence could be translated");
+        // Only complete chapters are saved (lib/chapterPublish): with any gap
+        // (e.g. the AI account is out of credit) this view falls back to the
+        // stored transcript and the video stays unprepared, to be retried.
+        const missing = untranslatedCount(sentences);
+        if (missing) throw new Error(`${missing} of ${sentences.length} sentences untranslated`);
         await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences, source: `${res?.source || ""}${lyricLines.length ? "+lyrics" : ""}` });
         queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
       } catch (e) {

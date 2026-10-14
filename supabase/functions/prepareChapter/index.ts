@@ -17,6 +17,8 @@ import { requireUser, serviceClient } from "../_shared/auth.ts";
 import { transcribeMediaSource } from "../_shared/transcription/index.ts";
 import { fetchYoutubeCaptions } from "../_shared/transcription/supadata.ts";
 import { askJsonQuality } from "../_shared/llm.ts";
+import { classifyLlmError } from "../../../lib/llmErrors.ts";
+import { publishChapter } from "../../../lib/chapterPublish.ts";
 import { splitIntoSentences } from "../../../lib/chapterSentences.ts";
 import { alignLinesToWords, fitSungLines, wordsFromFragments } from "../../../lib/lyricAlign.ts";
 import { splitScriptLine } from "../../../lib/songLyrics.ts";
@@ -96,6 +98,7 @@ async function prepare(videoId: string, language: string, force: boolean, opts: 
     .filter((c: any) => c.start < x.end + 0.5 && c.start + c.duration > x.start - 0.5)
     .map((c: any) => stripCaptionNoise(c.text)).filter(Boolean).join(" ");
   let fixedCount = 0;
+  const failedKinds = new Set<string>();
   const batches: any[][] = [];
   for (let b = 0; b < sentences.length; b += 8) batches.push(sentences.slice(b, b + 8));
   await Promise.all(batches.map(async (batch) => {
@@ -116,24 +119,25 @@ async function prepare(videoId: string, language: string, force: boolean, opts: 
         x.english = x.english || it.english || "";
         x.words = cleanGlosses(it.words);
       }
-    } catch (e) {
-      console.warn(`${tag} translation batch failed`, e);
+    } catch (e: any) {
+      const kind = e?.kind || classifyLlmError(e);
+      failedKinds.add(kind);
+      console.warn(`${tag} translation batch failed (${kind})`, e);
     }
   }));
   if (opts.dryRun) return { sentences, source: res?.source, captions: captions.length, fixed: fixedCount };
-  // Nothing translated (e.g. the AI account is out of credit): don't save a
-  // chapter without transliteration or English — it can be prepared again.
-  if (!sentences.some((x: any) => x.transliteration || x.english)) throw new Error("no sentence could be translated");
+  const why = failedKinds.size ? ` (${Array.from(failedKinds).join(", ")})` : "";
 
-  // 4 · Save (replacing an older version only when asked to).
-  if (force) await db.from("chapter_content").delete().eq("video_id", videoId);
-  const { error } = await db.from("chapter_content").insert({
+  // 4 · Publish, only complete (lib/chapterPublish). Any gap (e.g. the AI
+  // account is out of credit) leaves the video unpublished — and an older
+  // published version untouched — so it can be prepared again.
+  const outcome = await publishChapter(db, {
     video_id: videoId,
     language,
     sentences,
     source: `${res?.source || ""}${lyricLines.length ? "+lyrics" : ""}`,
-  });
-  if (error) throw new Error(`save failed: ${error.message}`);
+  }, force, why);
+  if (outcome === "kept_existing") return console.log(`${tag} already published by another run; kept it`);
   console.log(`${tag} ready: ${sentences.length} sentences (${res?.source}; second hearing: ${captions.length ? "youtube captions" : "none"}; ${fixedCount} lines fixed)`);
 }
 
