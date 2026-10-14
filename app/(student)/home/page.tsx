@@ -10,7 +10,7 @@
 //   ACCOUNT   profile menu — Progress and Schedule live here
 // The turtle mascot reacts (idle / happy / sad / cheer) like Duolingo's owl.
 
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { base44 as base44Client } from "@/api/base44Client";
 const base44: any = base44Client;
@@ -37,6 +37,7 @@ import { splitIntoSentences } from "@/lib/chapterSentences";
 import { splitIntoEpisodes, episodeKey, estimateEpisodeCount, type Episode } from "@/lib/chapterEpisodes";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
 import { buildLyricSegments, splitScriptLine } from "@/lib/songLyrics";
+import { latinWords } from "@/lib/latinWords";
 import { alignLinesToWords, fitSungLines, wordsFromFragments } from "@/lib/lyricAlign";
 import { QUALITY_MODEL, translitRules, glossPrompt, GLOSS_SCHEMA, cleanGlosses } from "@/lib/chapterPrompts";
 import { requestChapterPrep } from "@/lib/prepareChapter";
@@ -2053,10 +2054,6 @@ Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
   const discProgressInSentence = discSeg?.end > discSeg?.start
     ? Math.min(1, Math.max(0, (shellTime - discSeg.start) / (discSeg.end - discSeg.start)))
     : 0;
-  // The playhead is in the sentence on screen. Right after Previous / Replay
-  // the player still reports the old time for a moment; lines that follow the
-  // audio wait for it instead of jumping to the end and back.
-  const discPlayheadInSentence = discSeg?.end > discSeg?.start && shellTime >= discSeg.start - 0.5 && shellTime <= discSeg.end + 0.5;
   // Word glosses of a sentence: saved with it, or (chapters prepared before
   // glosses existed) fetched once while the sentence is on screen.
   const glossCacheRef = useRef<Record<string, any[]>>({});
@@ -3120,7 +3117,6 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 title={shellMeta?.name || shellVideo.title}
                 artist={shellMeta?.artist || ""}
                 progress={discProgressInSentence}
-                follow={discPlayheadInSentence ? discProgressInSentence : null}
                 recommendedWords={recommendedWords}
                 onPrev={() => { setWordPopup(null); setDiscIdx((i) => Math.max(0, i - 1)); }}
                 onNext={() => { setWordPopup(null); setDiscIdx((i) => i + 1); }}
@@ -4786,145 +4782,10 @@ function LibraryCard({
   );
 }
 
-// Keeps a sentence on ONE line by shrinking its font to the available width.
-// Only a sentence still too wide at `min` px may wrap (smaller is unreadable).
-function FitLine({
-  fitKey, dir, className = "", max = 24, min = 15, children,
-}: {
-  fitKey: string; dir: "rtl" | "ltr"; className?: string; max?: number; min?: number; children: React.ReactNode;
-}) {
-  const boxRef = useRef<HTMLParagraphElement>(null);
-  const textRef = useRef<HTMLSpanElement>(null);
-  const [fit, setFit] = useState({ size: max, wrap: false });
-  useLayoutEffect(() => {
-    const box = boxRef.current;
-    const text = textRef.current;
-    if (!box || !text) return;
-    const choose = () => {
-      const avail = box.clientWidth;
-      const widthAt = (px: number) => {
-        text.style.fontSize = `${px}px`;
-        text.style.whiteSpace = "nowrap";
-        return text.getBoundingClientRect().width;
-      };
-      const natural = widthAt(max);
-      if (!natural || !avail || natural <= avail) return { size: max, wrap: false };
-      // Proportional first guess, then step down: word padding/underlines
-      // don't scale with the font, so the guess can be slightly too big.
-      let size = Math.min(max, Math.floor(((max * avail) / natural) * 10) / 10);
-      while (size > min && widthAt(size) > avail) size -= 0.5;
-      return size >= min && widthAt(size) <= avail ? { size, wrap: false } : { size: min, wrap: true };
-    };
-    // Measuring leaves its last trial size/nowrap on the span, and React won't
-    // reapply styles whose values didn't change (e.g. two long sentences in a
-    // row, both wrapped): the line then overflowed and its end was cut off.
-    // So the chosen fit is always written back to the span.
-    const measure = () => {
-      const f = choose();
-      text.style.fontSize = `${f.size}px`;
-      text.style.whiteSpace = f.wrap ? "normal" : "nowrap";
-      setFit(f);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(box);
-    // The Hebrew web font can arrive after the first measurement and is wider.
-    document.fonts?.ready.then(measure).catch(() => {});
-    return () => ro.disconnect();
-  }, [fitKey, max, min]);
-  return (
-    <p ref={boxRef} dir={dir} className={className}>
-      <span
-        ref={textRef}
-        className="inline-block"
-        style={{ fontSize: `${fit.size}px`, whiteSpace: fit.wrap ? "normal" : "nowrap" }}
-      >
-        {children}
-      </span>
-    </p>
-  );
-}
-
-// One line of text at a fixed, readable size (no wrapping, no shrinking, no
-// "…"). A line wider than its room scrolls sideways inside its own box, never
-// the page; a short one shows whole and centred. It starts at the reading
-// start (the right edge in Hebrew) whenever resetKey changes, then sits where
-// the audio is (follow: 0–1; null = the playhead isn't in this sentence, stay
-// put) — so it glides while playing and stops on pause — until the student
-// touches or scrolls it: by hand wins until the next reset.
-function ScrollLine({
-  dir, resetKey, follow, className = "", children,
-}: {
-  dir: "rtl" | "ltr"; resetKey: string; follow: number | null; className?: string; children: React.ReactNode;
-}) {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const handRef = useRef(false);
-  // How far the line can scroll (0 = it fits). Kept in state so the audio
-  // position is re-applied when it changes (e.g. the Hebrew font arrives).
-  const [room, setRoom] = useState(0);
-  // Which sides have hidden text (they get a soft fade; a side with nothing
-  // hidden doesn't, so the line's first letters sit right by the button).
-  const [hidden, setHidden] = useState({ left: false, right: false });
-  const edges = () => {
-    const box = boxRef.current;
-    if (!box) return;
-    const max = box.scrollWidth - box.clientWidth;
-    const from = Math.abs(box.scrollLeft); // distance from the reading start
-    // 2 px of slack: with fractional widths the far end can stop a pixel short.
-    const atStart = from < 2, atEnd = from > max - 2;
-    const next = dir === "rtl" ? { left: max > 1 && !atEnd, right: max > 1 && !atStart } : { left: max > 1 && !atStart, right: max > 1 && !atEnd };
-    setHidden((h) => (h.left === next.left && h.right === next.right ? h : next));
-  };
-  useLayoutEffect(() => {
-    const box = boxRef.current;
-    if (!box) return;
-    handRef.current = false;
-    box.scrollLeft = 0; // the start edge, in both directions
-    let live = true;
-    const check = () => { if (live) { setRoom(Math.max(0, box.scrollWidth - box.clientWidth)); edges(); } };
-    check();
-    // The box (screen width) and the text itself (it grows when a web font
-    // arrives after the first measurement).
-    const ro = new ResizeObserver(check);
-    ro.observe(box);
-    if (box.firstElementChild) ro.observe(box.firstElementChild);
-    document.fonts?.ready.then(check).catch(() => {});
-    return () => { live = false; ro.disconnect(); };
-  }, [resetKey]);
-  useEffect(() => {
-    const box = boxRef.current;
-    if (!box || room <= 1 || handRef.current || follow == null) return;
-    // Hold the start for the first part of the sentence, reach the end a bit
-    // before the audio does.
-    const t = Math.min(1, Math.max(0, (follow - 0.15) / 0.7));
-    const left = (dir === "rtl" ? -1 : 1) * t * room;
-    if (Math.abs(box.scrollLeft - left) >= 1) box.scrollTo({ left, behavior: "smooth" });
-  }, [follow, room, dir]);
-  const byHand = () => { handRef.current = true; };
-  const fadeMask = hidden.left || hidden.right
-    ? `linear-gradient(to right, ${hidden.left ? "transparent, #000 16px" : "#000, #000"}, ${hidden.right ? "#000 calc(100% - 16px), transparent" : "#000"})`
-    : undefined;
-  const fade = fadeMask ? { maskImage: fadeMask, WebkitMaskImage: fadeMask } : undefined;
-  return (
-    <div
-      ref={boxRef}
-      dir={dir}
-      onPointerDown={byHand}
-      onTouchStart={byHand}
-      onWheel={byHand}
-      onScroll={edges}
-      className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      style={fade}
-    >
-      <p className={`w-max whitespace-nowrap ${className}`}>{children}</p>
-    </div>
-  );
-}
-
 function DiscoveryPanel({
   mode = "discovery", loading, preparing = false, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
   onTapWord, onAddWord, onClosePopup, hebrewLine, onToggleHebrewLine, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
-  title, artist, progress, follow, recommendedWords,
+  title, artist, progress, recommendedWords,
 }: {
   // "discovery" (step 2): words tappable, recommended words marked.
   // "comprehension" (step 3): less help — words not tappable.
@@ -4944,8 +4805,8 @@ function DiscoveryPanel({
   onTapWord: (key: string, token: string, sentence: string) => void;
   onAddWord: () => void;
   onClosePopup: () => void;
-  // The line above the sentence: Latin transliteration (abc) or the same
-  // sentence in Hebrew letters (א).
+  // The sentence is shown in Latin transliteration (abc) or Hebrew letters (א);
+  // its words are tappable (meaning + add to Backpack) either way.
   hebrewLine: boolean;
   onToggleHebrewLine: () => void;
   playing: boolean;
@@ -4960,8 +4821,6 @@ function DiscoveryPanel({
   artist?: string;
   // How far the video is through the current sentence, 0–1.
   progress: number;
-  // The same, only while the playhead is really in this sentence (else null).
-  follow: number | null;
   recommendedWords: any[];
 }) {
   if (loading) {
@@ -4984,8 +4843,11 @@ function DiscoveryPanel({
   const phonetic =
     (seg.transliteration && !isRTLText(seg.transliteration) && seg.transliteration !== main ? seg.transliteration : "") ||
     split.latin || translation?.phonetic || "";
-  // abc ⇄ א: the Hebrew-letters version is the sentence's own text.
-  const canSwapScript = rtl && !!phonetic;
+  // abc ⇄ א: Latin words lined up one-to-one with the Hebrew ones, so a
+  // tapped Latin word is the same word as its Hebrew one (lib/latinWords).
+  const latinTokens = rtl ? latinWords(tokens, seg.words, phonetic) : null;
+  const canSwapScript = rtl && !!(latinTokens || phonetic);
+  const showLatin = canSwapScript && !hebrewLine;
   const last = idx >= segments.length - 1;
   const popupKeyPrefix = `d${idx}_`;
   const popupOpen = wordPopup && String(wordPopup.key || "").startsWith(popupKeyPrefix);
@@ -5018,33 +4880,42 @@ function DiscoveryPanel({
               {hebrewLine ? <span className="text-sm [font-family:var(--font-hebrew)]">א</span> : "abc"}
             </button>
           )}
-          {canSwapScript && hebrewLine ? (
-            <ScrollLine dir="rtl" resetKey={`${idx}-he`} follow={follow} className="text-sm text-slate-600 [font-family:var(--font-hebrew)]">{main}</ScrollLine>
-          ) : (
-            <ScrollLine dir="ltr" resetKey={`${idx}-la`} follow={follow} className="text-sm italic text-slate-600">{phonetic || (translating ? "…" : " ")}</ScrollLine>
-          )}
+          <div className="min-w-0 flex-1">
+            {showLatin && !latinTokens ? (
+              // No word-by-word Latin for this sentence: shown, not tappable.
+              <p dir="ltr" className="text-[14px] font-medium leading-[1.5] text-slate-900">{phonetic}</p>
+            ) : (
+              <p
+                dir={showLatin ? "ltr" : rtl ? "rtl" : "ltr"}
+                className={`text-[14px] font-medium leading-[1.5] text-slate-900 ${showLatin ? "" : "[font-family:var(--font-hebrew)]"}`}
+              >
+                {tokens.map((tok: string, wi: number) => {
+                  // The Hebrew word is what's looked up and saved, whichever script shows.
+                  const key = `${popupKeyPrefix}${wi}`;
+                  const shown = showLatin && latinTokens ? latinTokens[wi] : tok;
+                  const open = wordPopup?.key === key;
+                  const rec = tappable ? recommendedFor(tok) : null;
+                  const last = wi === tokens.length - 1;
+                  if (!tappable) return <span key={key}>{shown}{last ? "" : " "}</span>;
+                  return (
+                    <span key={key}>
+                      <span
+                        onClick={() => onTapWord(key, tok, main)}
+                        className={`cursor-pointer rounded-md px-0.5 transition ${open ? "bg-white" : "hover:bg-white/60"} ${
+                          rec ? "bg-[linear-gradient(transparent_64%,rgba(217,70,239,.3)_64%)]" : "border-b-2 border-dotted border-slate-400/50"
+                        }`}
+                      >
+                        {shown}
+                      </span>
+                      {last ? "" : " "}
+                    </span>
+                  );
+                })}
+              </p>
+            )}
+            {showLatin && !latinTokens && !phonetic && translating && <p className="text-sm text-slate-500">…</p>}
+          </div>
         </div>
-        <FitLine fitKey={main} dir={rtl ? "rtl" : "ltr"} className="mt-1 font-medium leading-[1.45] text-slate-900">
-          {tokens.map((tok: string, wi: number) => {
-            const key = `${popupKeyPrefix}${wi}`;
-            const open = wordPopup?.key === key;
-            const rec = tappable ? recommendedFor(tok) : null;
-            if (!tappable) return <span key={key}>{tok}{wi < tokens.length - 1 ? " " : ""}</span>;
-            return (
-              <span key={key}>
-                <span
-                  onClick={() => onTapWord(key, tok, main)}
-                  className={`cursor-pointer rounded-md px-0.5 transition ${open ? "bg-white" : "hover:bg-white/60"} ${
-                    rec ? "bg-[linear-gradient(transparent_64%,rgba(217,70,239,.3)_64%)]" : "border-b-2 border-dotted border-slate-400/50"
-                  }`}
-                >
-                  {tok}
-                </span>
-                {wi < tokens.length - 1 ? " " : ""}
-              </span>
-            );
-          })}
-        </FitLine>
         {/* The translation belongs to the sentence, not the audio controls:
             Hebrew → ask for help → English appears right underneath. */}
         <button
