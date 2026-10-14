@@ -4862,13 +4862,26 @@ function ScrollLine({
   // How far the line can scroll (0 = it fits). Kept in state so the audio
   // position is re-applied when it changes (e.g. the Hebrew font arrives).
   const [room, setRoom] = useState(0);
+  // Which sides have hidden text (they get a soft fade; a side with nothing
+  // hidden doesn't, so the line's first letters sit right by the button).
+  const [hidden, setHidden] = useState({ left: false, right: false });
+  const edges = () => {
+    const box = boxRef.current;
+    if (!box) return;
+    const max = box.scrollWidth - box.clientWidth;
+    const from = Math.abs(box.scrollLeft); // distance from the reading start
+    // 2 px of slack: with fractional widths the far end can stop a pixel short.
+    const atStart = from < 2, atEnd = from > max - 2;
+    const next = dir === "rtl" ? { left: max > 1 && !atEnd, right: max > 1 && !atStart } : { left: max > 1 && !atStart, right: max > 1 && !atEnd };
+    setHidden((h) => (h.left === next.left && h.right === next.right ? h : next));
+  };
   useLayoutEffect(() => {
     const box = boxRef.current;
     if (!box) return;
     handRef.current = false;
     box.scrollLeft = 0; // the start edge, in both directions
     let live = true;
-    const check = () => { if (live) setRoom(Math.max(0, box.scrollWidth - box.clientWidth)); };
+    const check = () => { if (live) { setRoom(Math.max(0, box.scrollWidth - box.clientWidth)); edges(); } };
     check();
     // The box (screen width) and the text itself (it grows when a web font
     // arrives after the first measurement).
@@ -4888,10 +4901,10 @@ function ScrollLine({
     if (Math.abs(box.scrollLeft - left) >= 1) box.scrollTo({ left, behavior: "smooth" });
   }, [follow, room, dir]);
   const byHand = () => { handRef.current = true; };
-  // A soft fade on the side(s) where more text is hidden.
-  const fade = room > 1
-    ? { maskImage: "linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent)", WebkitMaskImage: "linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent)" }
+  const fadeMask = hidden.left || hidden.right
+    ? `linear-gradient(to right, ${hidden.left ? "transparent, #000 16px" : "#000, #000"}, ${hidden.right ? "#000 calc(100% - 16px), transparent" : "#000"})`
     : undefined;
+  const fade = fadeMask ? { maskImage: fadeMask, WebkitMaskImage: fadeMask } : undefined;
   return (
     <div
       ref={boxRef}
@@ -4899,10 +4912,11 @@ function ScrollLine({
       onPointerDown={byHand}
       onTouchStart={byHand}
       onWheel={byHand}
+      onScroll={edges}
       className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       style={fade}
     >
-      <p className={`w-max whitespace-nowrap px-3.5 ${className}`}>{children}</p>
+      <p className={`w-max whitespace-nowrap ${className}`}>{children}</p>
     </div>
   );
 }
