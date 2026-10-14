@@ -18,7 +18,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
 import { supabase } from "@/api/supabaseClient";
 import { BackpackLogo } from "@/components/AuthShell";
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, RotateCcw, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight, Lock, GripVertical, Pencil } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight, Lock, GripVertical, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
@@ -3048,7 +3048,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                 onTapWord={(key: string, tok: string, main: string) => tapTranscriptWord(key, tok, main)}
                 onAddWord={savePopupWord}
                 onClosePopup={() => setWordPopup(null)}
-                onReplay={() => playDiscSentence()}
+                showTranslit={shellShowTranslit}
+                onToggleTranslit={() => setShellShowTranslit((v) => !v)}
                 playing={shellPlaying}
                 onPause={pauseDisc}
                 onResume={resumeDisc}
@@ -4677,7 +4678,7 @@ function FitLine({
 
 function DiscoveryPanel({
   mode = "discovery", loading, preparing = false, segments, idx, revealed, translation, translating, wordPopup, recommendedFor, recommendedCount,
-  onTapWord, onAddWord, onClosePopup, onReplay, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
+  onTapWord, onAddWord, onClosePopup, showTranslit, onToggleTranslit, playing, onPause, onResume, onReveal, onHideTranslation, onPrev, onNext, onFinish,
   title, artist, progress, recommendedWords,
 }: {
   // "discovery" (step 2): words tappable, recommended words marked.
@@ -4698,7 +4699,9 @@ function DiscoveryPanel({
   onTapWord: (key: string, token: string, sentence: string) => void;
   onAddWord: () => void;
   onClosePopup: () => void;
-  onReplay: () => void;
+  // The Latin transliteration line: shown with "🔤 Transliteration", hidden with "א".
+  showTranslit: boolean;
+  onToggleTranslit: () => void;
   playing: boolean;
   onPause: () => void;
   onResume: () => void;
@@ -4738,7 +4741,6 @@ function DiscoveryPanel({
   const popupOpen = wordPopup && String(wordPopup.key || "").startsWith(popupKeyPrefix);
   const popupRec = popupOpen ? recommendedFor(wordPopup.clean) : null;
   const tappable = mode === "discovery";
-  const sideBtn = "relative flex h-11 w-11 items-center justify-center rounded-full transition active:scale-95";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-3">
@@ -4748,6 +4750,13 @@ function DiscoveryPanel({
           <p className="line-clamp-2 text-[24px] font-extrabold leading-none tracking-[-0.02em] text-slate-900 [font-family:var(--font-display),var(--font-hebrew)]">{title}</p>
           {artist && <p className="mt-1 truncate text-sm text-slate-600">{artist}</p>}
         </div>
+        <button
+          onClick={onToggleTranslit}
+          aria-label={showTranslit ? "Hide transliteration" : "Show transliteration"}
+          className="flex-shrink-0 rounded-lg bg-white/75 px-2.5 py-1 text-xs font-extrabold text-slate-700 transition active:scale-95"
+        >
+          {showTranslit ? "🔤 Transliteration" : <span className="[font-family:var(--font-hebrew)]">א</span>}
+        </button>
         <span className="flex-shrink-0 rounded-lg bg-white/75 px-2.5 py-1 text-xs font-extrabold text-slate-700">
           {idx + 1} / {segments.length}
         </span>
@@ -4755,7 +4764,7 @@ function DiscoveryPanel({
 
       {/* the sentence: phonetic, native line (words tappable), translation */}
       <div className="mt-3 flex-shrink-0 text-center">
-        <p className="text-sm italic text-slate-600">{phonetic || (translating ? "…" : " ")}</p>
+        <p className="text-sm italic text-slate-600">{showTranslit ? phonetic || (translating ? "…" : " ") : " "}</p>
         <FitLine fitKey={main} dir={rtl ? "rtl" : "ltr"} className="mt-1 font-medium leading-[1.45] text-slate-900">
           {tokens.map((tok: string, wi: number) => {
             const key = `${popupKeyPrefix}${wi}`;
@@ -4833,7 +4842,7 @@ function DiscoveryPanel({
         </div>
       </div>
 
-      {/* transport: Previous · Play · Next · Replay (left slot keeps Play centred) */}
+      {/* transport: Previous · Play · Next (empty side slots keep Play centred) */}
       <div className="mt-1 flex flex-shrink-0 items-center justify-between">
         <span className="h-11 w-11" aria-hidden="true" />
         <button onClick={onPrev} disabled={idx === 0} aria-label="Previous sentence" className="flex h-12 w-12 items-center justify-center text-slate-900 disabled:opacity-30">
@@ -4855,16 +4864,15 @@ function DiscoveryPanel({
             <SkipForward className="h-7 w-7 fill-current" />
           </button>
         )}
-        <button onClick={onReplay} aria-label="Replay sentence" className={`${sideBtn} text-slate-500`}>
-          <RotateCcw className="h-[22px] w-[22px]" />
-        </button>
+        <span className="h-11 w-11" aria-hidden="true" />
       </div>
       <div className="flex flex-shrink-0 justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
+        {/* same widths as the buttons above, so "Finish" sits under its button */}
         <span className="w-11" />
-        <span className="w-12 text-center">{last ? "" : ""}</span>
-        <span />
+        <span className="w-12" />
+        <span className="w-[68px]" />
         <span className="w-12 text-center text-emerald-600">{last ? "Finish" : ""}</span>
-        <span className="w-11 text-center">Replay</span>
+        <span className="w-11" />
       </div>
 
     </div>
