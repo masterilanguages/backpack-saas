@@ -1,172 +1,122 @@
 // prepareChapter — makes a video's chapter sentences (Sentence discovery) on
 // the server, right when the video is added in Media, so no student waits on
-// "Preparing the sentences…". Same steps the app used to run on first open:
+// "Preparing the sentences…". The steps live in ./pipeline.ts: each one's
+// result is kept in chapter_prep (migration 2100) and reused on a retry, and
+// one run at a time holds the video.
 //
-//   1. ElevenLabs (via transcribeMediaSource) hears the audio, word by word.
-//   2. Songs with imported lyrics: the lyric lines are timed word by word
-//      against what was heard (lib/lyricAlign). Otherwise the heard words are
-//      grouped into sentences (lib/chapterSentences).
-//   3. Claude (Opus) adds transliteration, English and a gloss per word.
-//   4. The sentences are saved in chapter_content (shared by all students).
+// Who may ask: admins (any video, and rebuilds); other users only for a video
+// in their own school's catalog or their own saved videos (./access.ts).
 //
 // Request: { videoId, language: "hebrew", force?: boolean }
+//   force: rebuild and replace the published chapter (e.g. after importing
+//   lyrics); cached steps whose inputs did not change are still reused.
+//   Admins only. Other users may only start the first preparation of a video
+//   in the shared library or in their own saved videos (./access.ts).
 // Replies at once ({ status: "ready" | "started" }) and works in the
 // background; the app sees the result when the chapter_content row appears.
+// Internal: { …, continuing: true } with the service role key — a run that
+// left translation to a new run (see pipeline.ts).
 import { handleCors, json } from "../_shared/cors.ts";
 import { requireUser, serviceClient } from "../_shared/auth.ts";
 import { transcribeMediaSource } from "../_shared/transcription/index.ts";
 import { fetchYoutubeCaptions } from "../_shared/transcription/supadata.ts";
 import { askJsonQuality } from "../_shared/llm.ts";
-import { classifyLlmError } from "../../../lib/llmErrors.ts";
-import { publishChapter } from "../../../lib/chapterPublish.ts";
-import { splitIntoSentences } from "../../../lib/chapterSentences.ts";
-import { alignLinesToWords, fitSungLines, wordsFromFragments } from "../../../lib/lyricAlign.ts";
-import { splitScriptLine } from "../../../lib/songLyrics.ts";
-import { QUALITY_MODEL, glossPrompt, GLOSS_SCHEMA, reviewGlossPrompt, REVIEW_GLOSS_SCHEMA, cleanGlosses, promptLanguageLabel } from "../../../lib/chapterPrompts.ts";
+import { runPrep, type PrepDeps, type PrepInput } from "./pipeline.ts";
+import { MemoryPrepStore, SupabasePrepStore, type PrepStore } from "./store.ts";
+import { inSchoolCatalog, isAdmin, prepAccess, type Caller } from "./access.ts";
 
-// The WHOLE source is prepared: it is split into ~30 s episodes for learning
-// (lib/chapterEpisodes), never shortened. This guard only stops runaway
-// lengths (e.g. an hour-long upload); 15 minutes covers songs and stories.
-const CHAPTER_MAX_SECONDS = 900;
+function liveDeps(db: any, store: PrepStore): PrepDeps {
+  return {
+    store,
+    // Imported lyrics shape the chapter every student shares, so only the
+    // school catalogs' (curated by admins) count — never a student's own
+    // saved copy, whose text could be wrong.
+    async loadSavedTranscript(videoId) {
+      const { data } = await db.from("media_library").select("processed_transcript").eq("video_id", videoId);
+      const row = (data || []).find((r: any) => Array.isArray(r?.processed_transcript) && r.processed_transcript.length);
+      return row ? row.processed_transcript : [];
+    },
+    async transcribe(videoId, code) {
+      const res = await transcribeMediaSource({ kind: "youtube", videoId }, { language: code });
+      return { transcript: res?.transcript || [], words: res?.words, source: res?.source || "", error: res?.error };
+    },
+    fetchCaptions: (videoId, code) => fetchYoutubeCaptions(videoId, code),
+    translate: (prompt, schema, model, maxTokens) => askJsonQuality(prompt, schema, model, maxTokens),
+    now: () => Date.now(),
+    log: (m) => console.log(m),
+  };
+}
 
-const LANGUAGE_CODE: Record<string, string> = {
-  english: "en", spanish: "es", hebrew: "he", french: "fr", portuguese: "pt", italian: "it",
-};
-
-const stripCaptionNoise = (text: unknown) =>
-  String(text || "").replace(/\[[^\]]{1,60}\]/g, " ").replace(/[♪♫🎵🎶]/g, " ").replace(/\s+/g, " ").trim();
-
-async function prepare(videoId: string, language: string, force: boolean, opts: { dryRun?: boolean; ignoreLyrics?: boolean } = {}) {
-  const db = serviceClient();
-  const tag = `[prepareChapter ${videoId}]`;
-
-  // The saved transcript tells us whether published lyrics were imported.
-  let saved: any[] = [];
-  for (const table of ["media_library", "user_saved_video"]) {
-    const { data } = await db.from(table).select("processed_transcript").eq("video_id", videoId).limit(1);
-    if (Array.isArray(data?.[0]?.processed_transcript) && data[0].processed_transcript.length) {
-      saved = data[0].processed_transcript;
-      break;
-    }
-  }
-  const savedLines = saved
-    .map((segment: any) => {
-      const { native, latin } = splitScriptLine(stripCaptionNoise(segment?.hebrew || segment?.text));
-      return { text: native, transliteration: segment?.transliteration || latin, english: segment?.english || "", lyric: !!segment?.lyric, glued: !!latin };
-    })
-    .filter((line: any) => line.text);
-  const lyricLines = !opts.ignoreLyrics && (savedLines.some((l: any) => l.lyric) || savedLines.filter((l: any) => l.glued).length >= 3) ? savedLines : [];
-
-  // 1 · Hear the audio (ElevenLabs first, Supadata as fallback) and, in
-  // parallel, YouTube's own captions as a second hearing (not needed when the
-  // text comes from imported lyrics).
-  const code = LANGUAGE_CODE[language] || language;
-  const [res, captions]: [any, any[]] = await Promise.all([
-    transcribeMediaSource({ kind: "youtube", videoId }, { language: code }),
-    lyricLines.length ? Promise.resolve([]) : fetchYoutubeCaptions(videoId, code).catch(() => []),
-  ]);
-  const allFrags = (res?.transcript || [])
-    .map((f: any) => ({ text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0) }))
-    .filter((f: any) => f.text);
-  if (!allFrags.length) throw new Error(res?.error || "no timed transcript");
-
-  // 2 · Sentences with their times.
-  let sentences: any[];
-  if (lyricLines.length) {
-    const words = Array.isArray(res?.words) && res.words.length ? res.words : wordsFromFragments(allFrags);
-    const timing = fitSungLines(alignLinesToWords(lyricLines.map((l: any) => l.text), words));
-    sentences = lyricLines
-      .map((l: any, i: number) => ({
-        start: timing[i].start,
-        end: Math.min(timing[i].end, CHAPTER_MAX_SECONDS),
-        hebrew: l.text, text: l.text, transliteration: l.transliteration, english: l.english,
-      }))
-      .filter((x: any) => x.start < CHAPTER_MAX_SECONDS - 1 && x.end > x.start);
-  } else {
-    sentences = splitIntoSentences(allFrags.filter((f: any) => f.start < CHAPTER_MAX_SECONDS), CHAPTER_MAX_SECONDS)
-      .map((x) => ({ start: x.start, end: x.end, hebrew: x.text, text: x.text, transliteration: "", english: "" }));
-  }
-  if (!sentences.length) throw new Error("no sentences");
-
-  // 3 · Transliteration + English + word glosses, batches of 8 in parallel.
-  // Heard text (no imported lyrics) is first reviewed against the second
-  // hearing: clearly misheard words are fixed; what ElevenLabs heard is kept
-  // in `heard` for every line that changed.
-  const label = promptLanguageLabel(language);
-  const review = !lyricLines.length;
-  const altFor = (x: any) => captions
-    .filter((c: any) => c.start < x.end + 0.5 && c.start + c.duration > x.start - 0.5)
-    .map((c: any) => stripCaptionNoise(c.text)).filter(Boolean).join(" ");
-  let fixedCount = 0;
-  const failedKinds = new Set<string>();
-  const batches: any[][] = [];
-  for (let b = 0; b < sentences.length; b += 8) batches.push(sentences.slice(b, b + 8));
-  await Promise.all(batches.map(async (batch) => {
-    try {
-      const t = review
-        ? await askJsonQuality(reviewGlossPrompt(label, batch.map((x: any) => ({ text: x.text, alt: altFor(x) }))), REVIEW_GLOSS_SCHEMA, QUALITY_MODEL, 12000)
-        : await askJsonQuality(glossPrompt(label, batch.map((x: any) => x.text)), GLOSS_SCHEMA, QUALITY_MODEL, 8000);
-      for (const it of t?.items || []) {
-        const x = batch[Math.round(Number(it?.i))];
-        if (!x) continue;
-        const fixed = String(it?.fixed || "").trim();
-        if (review && fixed && fixed !== x.text) {
-          x.heard = x.text;
-          x.text = x.hebrew = fixed;
-          fixedCount++;
-        }
-        x.transliteration = x.transliteration || it.transliteration || "";
-        x.english = x.english || it.english || "";
-        x.words = cleanGlosses(it.words);
-      }
-    } catch (e: any) {
-      const kind = e?.kind || classifyLlmError(e);
-      failedKinds.add(kind);
-      console.warn(`${tag} translation batch failed (${kind})`, e);
-    }
-  }));
-  if (opts.dryRun) return { sentences, source: res?.source, captions: captions.length, fixed: fixedCount };
-  const why = failedKinds.size ? ` (${Array.from(failedKinds).join(", ")})` : "";
-
-  // 4 · Publish, only complete (lib/chapterPublish). Any gap (e.g. the AI
-  // account is out of credit) leaves the video unpublished — and an older
-  // published version untouched — so it can be prepared again.
-  const outcome = await publishChapter(db, {
-    video_id: videoId,
-    language,
-    sentences,
-    source: `${res?.source || ""}${lyricLines.length ? "+lyrics" : ""}`,
-  }, force, why);
-  if (outcome === "kept_existing") return console.log(`${tag} already published by another run; kept it`);
-  console.log(`${tag} ready: ${sentences.length} sentences (${res?.source}; second hearing: ${captions.length ? "youtube captions" : "none"}; ${fixedCount} lines fixed)`);
+// The next run of a job that ran out of time, as a new invocation.
+function continueInNewRun(input: PrepInput) {
+  return fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/prepareChapter`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ videoId: input.videoId, language: input.language, force: input.force, continuing: true }),
+  }).then((r) => r.body?.cancel()).catch((e) => console.error(`[prepareChapter ${input.videoId}] could not continue`, e));
 }
 
 Deno.serve(async (req) => {
   const pre = handleCors(req);
   if (pre) return pre;
-  const auth = await requireUser(req);
-  if (!auth.ok) return json({ error: auth.error }, auth.status);
+  const bearer = (req.headers.get("Authorization") || "").replace("Bearer ", "").trim();
+  const internal = !!bearer && bearer === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  let caller: Caller = { kind: "internal" };
+  let email = "";
+  let userId = "";
+  if (!internal) {
+    const auth = await requireUser(req);
+    if (!auth.ok) return json({ error: auth.error }, auth.status);
+    caller = { kind: "user", role: String((auth.user.app_metadata as any)?.user_role || "user") };
+    email = String(auth.user.email || "");
+    userId = String(auth.user.id || "");
+  }
 
   const body = await req.json().catch(() => ({}));
   const videoId = String(body?.videoId || "").trim();
   const language = String(body?.language || "hebrew").toLowerCase();
   const force = body?.force === true;
-  // Testing: run the pipeline and return the result without saving anything.
+  const continuing = internal && body?.continuing === true;
+  const db = serviceClient();
+
+  // Testing: run the pipeline in memory and return the result without saving
+  // anything (no chapter_prep, no chapter_content). It still PAYS for the
+  // transcription and Claude, so it is refused unless called with the service
+  // role key and an explicit confirmation — never from the app.
   if (body?.dryRun === true) {
-    try {
-      return json(await prepare(videoId, language, false, { dryRun: true, ignoreLyrics: body?.ignoreLyrics === true }));
-    } catch (e: any) {
-      return json({ error: e?.message || String(e) }, 500);
+    if (!internal || body?.confirmPaidCalls !== true) {
+      return json({ error: "dryRun makes paid calls: service role key and confirmPaidCalls: true required" }, 403);
     }
+    const out = await runPrep(liveDeps(db, new MemoryPrepStore()), { videoId, language, force: false, continuing: false, ignoreLyrics: body?.ignoreLyrics === true });
+    return json(out, "sentences" in out ? 200 : 500);
   }
   if (!/^[\w-]{6,20}$/.test(videoId)) return json({ error: "Provide a YouTube videoId" }, 400);
 
-  if (!force) {
-    const { data } = await serviceClient().from("chapter_content").select("video_id").eq("video_id", videoId).limit(1);
+  // Rebuilds are admin-only; others may only start the first preparation of
+  // a video in the shared library or in their own saved videos (./access.ts).
+  const access = isAdmin(caller)
+    ? prepAccess({ caller, force })
+    : prepAccess({
+        caller, force,
+        // Only the catalog of the caller's own school(s) counts.
+        inSharedLibrary: inSchoolCatalog(
+          ((await db.from("media_library").select("org_id").eq("video_id", videoId)).data || []).map((r: any) => r.org_id ?? null),
+          userId ? ((await db.from("memberships").select("org_id").eq("user_id", userId)).data || []).map((r: any) => String(r.org_id)) : [],
+        ),
+        inOwnLibrary: !!email && !!(await db.from("user_saved_video").select("video_id").eq("video_id", videoId)
+          .ilike("created_by", email.replace(/[\\%_]/g, "\\$&")).limit(1)).data?.length,
+      });
+  if (!access.ok) return json({ error: access.error }, access.status);
+
+  if (!force && !continuing) {
+    const { data } = await db.from("chapter_content").select("video_id").eq("video_id", videoId).limit(1);
     if (data?.length) return json({ status: "ready" });
   }
 
-  const work = prepare(videoId, language, force).catch((e) => console.error(`[prepareChapter ${videoId}] failed`, e));
+  const input: PrepInput = { videoId, language, force, continuing };
+  const work = runPrep(liveDeps(db, new SupabasePrepStore(db)), input)
+    .then((out) => (out.status === "continue" ? continueInNewRun(input) : undefined))
+    .catch((e) => console.error(`[prepareChapter ${videoId}] failed`, e));
   // Keep working after the reply (Supabase background task).
   (globalThis as any).EdgeRuntime?.waitUntil?.(work);
   return json({ status: "started" }, 202);
