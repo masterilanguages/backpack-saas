@@ -621,7 +621,13 @@ export default function Home() {
   const [prepStatuses, setPrepStatuses] = useState<Record<string, PrepStatus>>({});
   const preparingRef = useRef<Set<string>>(new Set());
   const askedRef = useRef<Record<string, number>>({});
-  const chapterIds = useMemo(() => new Set<string>((allChapterContent as any[]).map((c: any) => c.video_id)), [allChapterContent]);
+  // Chapters that arrived while the student was elsewhere in Backpack (the
+  // Library's chapter list only refreshes on the Library tab).
+  const [arrivedIds, setArrivedIds] = useState<Set<string>>(() => new Set());
+  const chapterIds = useMemo(
+    () => new Set<string>([...(allChapterContent as any[]).map((c: any) => c.video_id), ...arrivedIds]),
+    [allChapterContent, arrivedIds]
+  );
   const unprepared = useMemo(
     () => (allChaptersFetched ? (shellVideos as any[]).filter((v: any) => v.video_id && !chapterIds.has(v.video_id)) : []),
     [allChaptersFetched, shellVideos, chapterIds]
@@ -643,10 +649,11 @@ export default function Home() {
           if (v) {
             toast.success(`Your lesson "${v.display_name || v.title}" is ready`, {
               duration: 10000,
-              action: { label: "Open", onClick: () => openChapter(v) },
+              action: { label: "Open", onClick: () => { setTab("library"); openChapter(v); } },
             });
           }
         }
+        setArrivedIds((prev) => new Set([...prev, ...arrived]));
         queryClient.invalidateQueries({ queryKey: ["chapterContentAll"] });
       }
       const next: Record<string, PrepStatus> = {};
