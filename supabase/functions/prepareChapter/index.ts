@@ -23,7 +23,7 @@ import { fetchYoutubeCaptions } from "../_shared/transcription/supadata.ts";
 import { askJsonQuality } from "../_shared/llm.ts";
 import { runPrep, type PrepDeps, type PrepInput } from "./pipeline.ts";
 import { MemoryPrepStore, SupabasePrepStore, type PrepStore } from "./store.ts";
-import { inSchoolCatalog, isAdmin, prepAccess, type Caller } from "./access.ts";
+import { inSchoolCatalog, isAdmin, prepAccess, stoppedForUsers, type Caller } from "./access.ts";
 
 function liveDeps(db: any, store: PrepStore): PrepDeps {
   return {
@@ -111,6 +111,12 @@ Deno.serve(async (req) => {
   if (!force && !continuing) {
     const { data } = await db.from("chapter_content").select("video_id").eq("video_id", videoId).limit(1);
     if (data?.length) return json({ status: "ready" });
+  }
+  // A preparation that stopped for good is restarted only by an admin: a
+  // student's (or an old tab's) request would only pay again.
+  if (!isAdmin(caller) && !continuing) {
+    const { data } = await db.from("chapter_prep").select("status, attempts, error_kind, locked_until").eq("video_id", videoId).limit(1);
+    if (stoppedForUsers(data?.[0] || null, Date.now())) return json({ status: "stopped" }, 409);
   }
 
   const input: PrepInput = { videoId, language, force, continuing };

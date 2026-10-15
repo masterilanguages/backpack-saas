@@ -85,13 +85,17 @@ function fakeHeard(): Heard {
   return { transcript, words: [], source: "elevenlabs_scribe" };
 }
 
-function fakes(h: Harness, opts: { failWhen?: (prompt: string, call: number) => any; incomplete?: boolean; noGlosses?: boolean; onTranscribe?: () => Promise<void> } = {}) {
+function fakes(h: Harness, opts: { failWhen?: (prompt: string, call: number) => any; incomplete?: boolean; noGlosses?: boolean; noAudio?: boolean; onTranscribe?: () => Promise<void> } = {}) {
   const calls = { transcribe: 0, captions: 0, translate: [] as { prompt: string; model: string; maxTokens: number }[], logs: [] as string[] };
   let saved: any[] = [];
   const deps: PrepDeps = {
     store: h.store,
     loadSavedTranscript: async () => saved,
-    transcribe: async () => { calls.transcribe++; await opts.onTranscribe?.(); return fakeHeard(); },
+    transcribe: async () => {
+      calls.transcribe++;
+      await opts.onTranscribe?.();
+      return opts.noAudio ? { transcript: [], source: "none", error: "ElevenLabs: service unavailable" } : fakeHeard();
+    },
     fetchCaptions: async () => { calls.captions++; return []; },
     translate: async (prompt, _schema, model, maxTokens) => {
       calls.translate.push({ prompt, model, maxTokens });
@@ -145,6 +149,33 @@ const scenarios: Record<string, (h: Harness) => Promise<void>> = {
     await runPrep(deps, input("v-timings"));
     const line = calls.logs.find((m) => m.includes("timings:")) || "";
     for (const stage of ["transcribe", "sentences", "translate", "publish", "total"]) assert(line.includes(stage), line);
+  },
+
+  async "ElevenLabs gives no transcript: failed (transcription), nothing translated or published"(h) {
+    const { deps, calls } = fakes(h, { noAudio: true });
+    const out = await runPrep(deps, input("v-noaudio"));
+    assertEquals([out.status, (out as any).errorKind], ["failed", "transcription"]);
+    assertEquals([calls.transcribe, calls.translate.length], [1, 0]);
+    assertEquals(await h.published("v-noaudio"), null);
+    assertEquals((await h.prep("v-noaudio")).status, "failed");
+  },
+
+  async "the function dies mid-translation (no clean stop): the next run reuses the transcription and the finished batches"(h) {
+    // A killed worker never releases the video: emulate it with a store whose
+    // release does nothing, and a batch that never comes back in this run.
+    const dying = Object.create(h.store);
+    dying.release = async () => true;
+    let killed = true;
+    const { deps, calls } = fakes(h, { failWhen: (p) => (killed && p.includes("משפט 8.") ? overloaded() : null) });
+    await runPrep({ ...deps, store: dying }, input("v-killed", { leaseSeconds: 1 }));
+    const left = await h.prep("v-killed");
+    assertEquals(left.status, "translating"); // stuck mid-way, as after a crash
+    assertEquals(Object.keys(left.batches).sort(), ["0", "2"]);
+    await h.expire(1); // its lease runs out
+    killed = false;
+    const before = calls.translate.length;
+    assertEquals((await runPrep(deps, input("v-killed"))).status, "published");
+    assertEquals([calls.transcribe, calls.translate.length - before], [1, 1]); // no new transcription, one batch
   },
 
   async "Claude out of credit: blocked, transcription kept; after the top-up no new transcription"(h) {

@@ -32,16 +32,14 @@ import JournalLessonView from "@/components/journal/JournalLessonView";
 import WordCard from "@/components/backpack/WordCard";
 import AddWordsSheet from "@/components/home/AddWordsSheet";
 import PhotoWordCapture from "@/components/home/PhotoWordCapture";
-import { transcribeMediaSource, youtubeSource, stripCaptionNoise } from "@/lib/transcription";
-import { splitIntoSentences } from "@/lib/chapterSentences";
+import { stripCaptionNoise } from "@/lib/transcription";
 import { splitIntoEpisodes, episodeKey, estimateEpisodeCount, type Episode } from "@/lib/chapterEpisodes";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
 import { buildLyricSegments, splitScriptLine } from "@/lib/songLyrics";
 import { latinWords } from "@/lib/latinWords";
-import { alignLinesToWords, fitSungLines, wordsFromFragments } from "@/lib/lyricAlign";
 import { QUALITY_MODEL, translitRules, glossPrompt, GLOSS_SCHEMA, cleanGlosses } from "@/lib/chapterPrompts";
-import { requestChapterPrep } from "@/lib/prepareChapter";
-import { untranslatedCount } from "@/lib/chapterPublish";
+import { requestChapterPrep, chapterPrepStatus, waitForServerChapter } from "@/lib/prepareChapter";
+import { prepAction, cardPrep, newlyReady, type PrepStatus, type CardPrepState } from "@/lib/chapterPrepStatus";
 import { sentenceEpisodeIndex, wordEpisode } from "@/lib/backpackEpisodes";
 
 // The app teaches no Arabic — any Arabic script in a transcript is corruption
@@ -587,7 +585,7 @@ export default function Home() {
     () => Array.from(new Set((shellVideos as any[]).map((v: any) => v.video_id).filter(Boolean))) as string[],
     [shellVideos]
   );
-  const { data: allChapterContent = [] } = useQuery({
+  const { data: allChapterContent = [], isFetched: allChaptersFetched } = useQuery({
     queryKey: ["chapterContentAll", sourceIds.join(",")],
     queryFn: () => base44.entities.ChapterContent.filter({ video_id: sourceIds }),
     enabled: sourceIds.length > 0 && (tab === "path" || tab === "library"),
@@ -612,6 +610,79 @@ export default function Home() {
   }, [allChapterContent, shellVideos]);
   // Opening the library never rebuilds a prepared chapter: that used to run
   // once per browser and device, each time a paid transcription.
+
+  // Add video → lesson ready (phase 2A). The Library videos still without a
+  // chapter follow the server's preparation: while any is waiting, every 10 s
+  // their chapters and preparation statuses are read (no AI, no
+  // transcription). A run cut off mid-way is resumed (at most once a minute
+  // per video; a video with no server record yet is asked for once). When a
+  // chapter arrives the card turns "Ready to learn" and — wherever the student
+  // is in Backpack — a notice opens it. Nothing here prepares anything itself.
+  const [prepStatuses, setPrepStatuses] = useState<Record<string, PrepStatus>>({});
+  const preparingRef = useRef<Set<string>>(new Set());
+  const askedRef = useRef<Record<string, number>>({});
+  const chapterIds = useMemo(() => new Set<string>((allChapterContent as any[]).map((c: any) => c.video_id)), [allChapterContent]);
+  const unprepared = useMemo(
+    () => (allChaptersFetched ? (shellVideos as any[]).filter((v: any) => v.video_id && !chapterIds.has(v.video_id)) : []),
+    [allChaptersFetched, shellVideos, chapterIds]
+  );
+  const unpreparedKey = Array.from(new Set(unprepared.map((v: any) => v.video_id))).join(",");
+  useEffect(() => {
+    if (!unpreparedKey) return;
+    let cancelled = false;
+    const tick = async () => {
+      const ids = unpreparedKey.split(",");
+      const arrived = new Set<string>(
+        ((await base44.entities.ChapterContent.filter({ video_id: ids }).catch(() => [])) || []).map((c: any) => c.video_id)
+      );
+      if (cancelled) return;
+      if (arrived.size) {
+        for (const id of newlyReady(preparingRef.current, arrived)) {
+          preparingRef.current.delete(id);
+          const v = unprepared.find((x: any) => x.video_id === id);
+          if (v) {
+            toast.success(`Your lesson "${v.display_name || v.title}" is ready`, {
+              duration: 10000,
+              action: { label: "Open", onClick: () => openChapter(v) },
+            });
+          }
+        }
+        queryClient.invalidateQueries({ queryKey: ["chapterContentAll"] });
+      }
+      const next: Record<string, PrepStatus> = {};
+      for (const id of ids) {
+        if (arrived.has(id)) continue;
+        const status = await chapterPrepStatus(id);
+        if (cancelled) return;
+        next[id] = status;
+        const card = cardPrep(false, status);
+        if (card.state === "preparing") preparingRef.current.add(id);
+        else preparingRef.current.delete(id);
+        // No record yet: ask once. Cut off mid-way: resume, at most once a minute.
+        const last = askedRef.current[id];
+        if (card.autoResume && (status ? !last || Date.now() - last > 60_000 : !last)) {
+          askedRef.current[id] = Date.now();
+          const v = unprepared.find((x: any) => x.video_id === id);
+          requestChapterPrep(id, v?.language || language);
+        }
+      }
+      setPrepStatuses((m) => ({ ...m, ...next }));
+    };
+    tick();
+    const timer = setInterval(tick, 10_000);
+    return () => { cancelled = true; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unpreparedKey]);
+  // The card's state; none until the Library's chapters are known.
+  const prepOf = (v: any): CardPrepState | undefined =>
+    v.video_id && allChaptersFetched ? cardPrep(chapterIds.has(v.video_id), prepStatuses[v.video_id] ?? null) : undefined;
+  // "Try again" on a card: the server resumes, reusing the finished stages.
+  const retryPrep = (v: any) => {
+    askedRef.current[v.video_id] = Date.now();
+    preparingRef.current.add(v.video_id);
+    setPrepStatuses((m) => ({ ...m, [v.video_id]: { status: "queued", busy: true, resumable: false } }));
+    requestChapterPrep(v.video_id, v.language || language);
+  };
 
   // Where a student is in a source: episodes done, the next one, the challenge.
   const sourceProgressOf = (v: any) => {
@@ -1535,6 +1606,29 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
     setShellSlow(false);
     setShellTime(0);
 
+    // A YouTube video with a prepared chapter: its lines come from the chapter
+    // (Hebrew, transliteration, English and times, shared by every student),
+    // so opening it never transcribes or translates in the browser (phase 2A).
+    if (v.video_id) {
+      setShellSegsLoading(true);
+      const chapter: any = await queryClient
+        .fetchQuery({
+          queryKey: ["chapterContent", v.video_id],
+          queryFn: async () => (await base44.entities.ChapterContent.filter({ video_id: v.video_id }))?.[0] || null,
+          staleTime: Infinity,
+        })
+        .catch(() => null);
+      setShellSegsLoading(false);
+      if (shellVideoIdRef.current !== v.id) return; // the student moved on
+      if (Array.isArray(chapter?.sentences) && chapter.sentences.length) {
+        setShellSegments(chapter.sentences.map((x: any) => ({
+          start: x.start, end: x.end, hebrew: x.hebrew || x.text, text: x.text || x.hebrew,
+          transliteration: x.transliteration, english: x.english,
+        })));
+        return;
+      }
+    }
+
     // Scrub the stored transcript: drop caption-noise markers and ALL Arabic
     // script (legacy wrong-language caption data — the app teaches no Arabic).
     // Beyond-repair transcripts are discarded and re-transcribed:
@@ -1571,31 +1665,10 @@ Return JSON: { "sentences": ["...", "...", "..."] }`,
       writeEntity.update(v.id, { processed_transcript: cleaned }).catch(() => {});
     }
 
-    // No usable transcript (missing or corrupt) → transcribe the audio now
-    // (and persist when we own the row, so next open is instant).
-    let displaySegs = cleaned;
-    if (cleaned.length === 0 && v.video_id) {
-      setShellSegsLoading(true);
-      try {
-        const data: any = await transcribeMediaSource(youtubeSource(v.video_id), { language: v.language || language });
-        const segs = (data?.transcript || [])
-          .map((s: any) => ({
-            text: scrubSegmentText(s.text),
-            transliteration: scrubSegmentText(s.text),
-            english: "",
-            start: s.start,
-          }))
-          .filter((s: any) => s.text.length > 0);
-        setShellSegments(segs);
-        displaySegs = segs;
-        if (segs.length > 0 && writeEntity) {
-          writeEntity.update(v.id, { processed_transcript: segs }).catch(() => {});
-        }
-      } catch (e) {
-        console.error(e);
-      }
-      setShellSegsLoading(false);
-    }
+    // No usable transcript and no chapter yet: the server prepares the video
+    // (asked when it was added; the sentence view and the Library card follow
+    // its status). The browser no longer transcribes it — that paid twice.
+    const displaySegs = cleaned;
 
     // Hebrew videos must show a LATIN transliteration row ("ha-sipur shelanu…"),
     // not Hebrew script in the transliteration field. Legacy transcripts stored
@@ -1868,168 +1941,19 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
     prepareTried.current.add(vid);
     (async () => {
       setChapterPreparing(true);
-      try {
-        const lang = shellVideo.language || language;
-        // Songs with imported lyrics: the lyrics give the words, the audio the
-        // times. Lines are timed word by word against the transcription below.
-        // (Imports made before the marker existed are recognised by the
-        // Hebrew+romanization lines Letras.com produced.)
-        const savedLines = (Array.isArray(shellVideo.processed_transcript) ? shellVideo.processed_transcript : [])
-          .map((segment: any) => {
-            const { native, latin } = splitScriptLine(stripCaptionNoise(segment?.hebrew || segment?.text));
-            return { text: native, transliteration: segment?.transliteration || latin, english: segment?.english || "", lyric: !!segment?.lyric, glued: !!latin };
-          })
-          .filter((line: any) => line.text);
-        const lyricLines = savedLines.some((l: any) => l.lyric) || savedLines.filter((l: any) => l.glued).length >= 3 ? savedLines : [];
-        // Supadata's free plan rejects simultaneous requests ("Limit Exceeded")
-        // — e.g. the shell transcribing the same new video at the same time —
-        // so wait and retry a couple of times.
-        let res: any = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          if (attempt) await new Promise((r) => setTimeout(r, 6000 * attempt));
-          res = await transcribeMediaSource(youtubeSource(vid), { language: lang, allowTimingOnly: true });
-          if (!/limit/i.test(String(res?.error || ""))) break;
-        }
-        const frags = (res?.transcript || [])
-          .map((f: any) => ({ text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0) }))
-          .filter((f: any) => f.text && f.start < CHAPTER_MAX_SECONDS);
-        if (!frags.length) throw new Error(res?.error || "no timed transcript");
-
-        let sentences: any[] = [];
-        if (lyricLines.length) {
-          // Every spoken word with its time (ElevenLabs); other engines only
-          // time fragments, whose words are spread evenly.
-          const words = Array.isArray(res?.words) && res.words.length
-            ? res.words
-            : wordsFromFragments((res?.transcript || []).map((f: any) => ({
-                text: stripCaptionNoise(f.text), start: Number(f.start) || 0, end: (Number(f.start) || 0) + (Number(f.duration) || 0),
-              })));
-          const timing = fitSungLines(alignLinesToWords(lyricLines.map((l: any) => l.text), words));
-          sentences = lyricLines
-            .map((l: any, i: number) => ({
-              start: timing[i].start,
-              end: Math.min(timing[i].end, CHAPTER_MAX_SECONDS),
-              hebrew: l.text,
-              text: l.text,
-              transliteration: l.transliteration,
-              english: l.english,
-            }))
-            .filter((x: any) => x.start < CHAPTER_MAX_SECONDS - 1 && x.end > x.start);
-          if (!sentences.length) throw new Error("could not time the lyrics");
-        } else if (res?.timing_only) {
-          // The only timed track is in another language (e.g. a French dub —
-          // checked: it follows the original speech sentence by sentence). Pair
-          // its timings with the video's stored transcript: the model returns
-          // only index ranges, the Hebrew text is ours.
-          const lines = (Array.isArray(shellVideo.processed_transcript) ? shellVideo.processed_transcript : [])
-            .map((s: any) => stripCaptionNoise(s?.hebrew || s?.text))
-            .filter(Boolean);
-          if (!lines.length) throw new Error("no stored transcript to pair with the timings");
-          // The model only says in which fragment each line STARTS (asking for
-          // ranges on both sides made it produce overlapping ranges).
-          const a: any = await base44.integrations.Core.InvokeLLM({
-            prompt: `A ${languageLabel(lang)} video. List A: its original ${languageLabel(lang)} lines, in order. List B: timed fragments of a translation of the same video (${res.language || "other language"}), in order. B covers only the beginning of the video, so the last A lines may not be in B at all.
-A:
-${lines.map((t: string, i: number) => `${i}: ${t}`).join("\n")}
-
-B:
-${frags.map((f: any, i: number) => `${i}: ${f.text}`).join("\n")}
-
-For every A line that is said within B, give the number of the B fragment where that line STARTS being said. Several A lines can start in the same fragment. Numbers never go backwards. Leave out A lines that come after the end of B.
-Return JSON: { "starts": [ { "a": A line number, "b": B fragment number } ] }`,
-            response_json_schema: {
-              type: "object",
-              properties: { starts: { type: "array", items: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } } } } },
-            },
-            max_tokens: 4000,
-          });
-          const given = new Map<number, number>();
-          for (const x of a?.starts || []) {
-            const ai = Math.round(Number(x?.a)), bi = Math.round(Number(x?.b));
-            if (ai >= 0 && ai < lines.length && bi >= 0 && bi < frags.length) given.set(ai, bi);
-          }
-          const lastLine = given.size ? Math.max(...Array.from(given.keys())) : -1;
-          // Fragment each line starts in: a skipped line inherits the previous
-          // one's, and it never goes backwards.
-          const lineFrag: number[] = [];
-          for (let i = 0; i <= lastLine; i++) {
-            const prev = i ? lineFrag[i - 1] : 0;
-            lineFrag.push(Math.max(prev, given.get(i) ?? prev));
-          }
-          // Lines starting in the same fragment share its time by length.
-          const starts: number[] = [];
-          for (let i = 0; i <= lastLine; ) {
-            let j = i;
-            while (j + 1 <= lastLine && lineFrag[j + 1] === lineFrag[i]) j++;
-            const f = frags[lineFrag[i]];
-            const lens = lines.slice(i, j + 1).map((t: string) => Math.max(1, t.length));
-            const total = lens.reduce((x: number, y: number) => x + y, 0);
-            let t = f.start;
-            for (let k = i; k <= j; k++) { starts.push(t); t += ((f.end - f.start) * lens[k - i]) / total; }
-            i = j + 1;
-          }
-          for (let i = 0; i <= lastLine; i++) {
-            const end = i < lastLine ? starts[i + 1] : frags[frags.length - 1].end;
-            sentences.push({
-              start: starts[i],
-              end: Math.min(end, CHAPTER_MAX_SECONDS),
-              hebrew: lines[i],
-              text: lines[i],
-              transliteration: "",
-              english: "",
-            });
-          }
-          sentences = sentences.filter((x: any) => x.start < CHAPTER_MAX_SECONDS && x.end > x.start);
-          if (!sentences.length) throw new Error("could not pair the transcript with the timings");
-        } else {
-        // 1 · Sentences cut on the fragments' real edges (see
-        // lib/chapterSentences; AI grouping merged whole dialogues into
-        // 20–30 s blocks).
-        sentences = splitIntoSentences(frags, CHAPTER_MAX_SECONDS).map((x) => ({
-          start: x.start,
-          end: x.end,
-          hebrew: x.text,
-          text: x.text,
-          transliteration: "",
-          english: "",
-        }));
-        }
-        if (!sentences.length) throw new Error("no sentences");
-
-        // 2 · Phonetic + English + a gloss per word (so tapping a word is
-        // instant), in batches of 8 run in parallel. A failed batch is filled
-        // per sentence when shown.
-        const batches: any[][] = [];
-        for (let b = 0; b < sentences.length; b += 8) batches.push(sentences.slice(b, b + 8));
-        await Promise.all(batches.map(async (batch) => {
-          try {
-            const t: any = await invokeQuality({
-              prompt: glossPrompt(languageLabel(lang), batch.map((x: any) => x.text)),
-              response_json_schema: GLOSS_SCHEMA,
-              max_tokens: 8000,
-            });
-            for (const it of t?.items || []) {
-              const x = batch[Math.round(Number(it?.i))];
-              if (!x) continue;
-              x.transliteration = x.transliteration || it.transliteration || "";
-              x.english = x.english || it.english || "";
-              x.words = cleanGlosses(it.words);
-            }
-          } catch (e) {
-            console.warn("[chapter] translation batch failed", e);
-          }
-        }));
-        // Only complete chapters are saved (lib/chapterPublish): with any gap
-        // (e.g. the AI account is out of credit) this view falls back to the
-        // stored transcript and the video stays unprepared, to be retried.
-        const missing = untranslatedCount(sentences);
-        if (missing) throw new Error(`${missing} of ${sentences.length} sentences untranslated`);
-        await base44.entities.ChapterContent.create({ video_id: vid, language: lang, sentences, source: `${res?.source || ""}${lyricLines.length ? "+lyrics" : ""}` });
-        queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
-      } catch (e) {
-        console.error("[chapter] could not prepare timed sentences, using the stored transcript", e);
-        setChapterPrepFailed(vid);
-      }
+      const lang = shellVideo.language || language;
+      const rowId = shellVideo.id;
+      // Chapters are prepared and published only by the server (prepareChapter,
+      // chapter_prep): the browser never transcribes, translates or writes
+      // chapter_content. It asks the server (unless a run is already on it or
+      // a retry would only pay again, e.g. no AI credit) and waits; if no
+      // chapter comes, the stored transcript is shown (lib/chapterPrepStatus).
+      const action = prepAction(await chapterPrepStatus(vid));
+      if (action === "request" || action === "resume") requestChapterPrep(vid, lang);
+      const result = action === "ready" || action === "stopped" ? action : await waitForServerChapter(vid, () => shellVideoIdRef.current === rowId);
+      if (result === "ready") queryClient.invalidateQueries({ queryKey: ["chapterContent", vid] });
+      else if (result === "abandoned") prepareTried.current.delete(vid);
+      else setChapterPrepFailed(vid);
       setChapterPreparing(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3769,7 +3693,13 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       video={v}
                       meta={libMetas[v.video_id] || null}
                       progress={sourceProgressOf(v)}
-                      onOpen={() => (v.video_id ? openChapter(v) : openShellVideo(v))}
+                      prep={prepOf(v)}
+                      onOpen={() => {
+                        const prep = prepOf(v);
+                        if (prep?.state === "failed" && prep.retry) retryPrep(v);
+                        else if (v.video_id) openChapter(v);
+                        else openShellVideo(v);
+                      }}
                     />
                     {/* Admins rename any video from here, prepared or not. */}
                     {canRename && (
@@ -4767,11 +4697,13 @@ function LibraryReorderItem({ value, onDrop, children }: { value: string; onDrop
 }
 
 function LibraryCard({
-  video, meta, progress, onOpen,
+  video, meta, progress, prep, onOpen,
 }: {
   video: any;
   meta: VideoMeta | null;
   progress: { count: number; done: number; next: number | null; started: boolean; challengeDone: boolean; before: number | null; after: number | null };
+  // The lesson's preparation (Add video → Ready to learn), when known.
+  prep?: CardPrepState;
   onOpen: () => void;
 }) {
   const short = meta;
@@ -4780,11 +4712,21 @@ function LibraryCard({
   const dur = fmtMinutes(video.duration_minutes);
   const { count, done, next, started, challengeDone } = progress;
   const allEpisodes = done >= count;
-  const cta = challengeDone ? "Review" : allEpisodes ? "Challenge" : started ? "Continue" : "Start";
-  // Episode X of Y, or where the source stands once its episodes are done.
-  const where = challengeDone
+  const pending = prep && prep.state !== "ready" ? prep : null;
+  const cta = pending
+    ? pending.state === "failed" && pending.retry ? "Try again" : ""
+    : challengeDone ? "Review" : allEpisodes ? "Challenge" : started ? "Continue" : "Start";
+  // Episode X of Y, or where the source stands once its episodes are done —
+  // or, while its lesson isn't ready, the server's real state (no made-up %).
+  const where = pending
+    ? pending.state === "preparing" ? "Preparing your lesson…"
+      : pending.state === "unavailable" ? "Temporarily unavailable"
+      : "Couldn't prepare this video"
+    : challengeDone
     ? progress.before != null ? `${progress.before}% → ${progress.after}%` : `Understood ${progress.after}%`
-    : allEpisodes ? "Final challenge" : `Episode ${next ?? 1} of ${count}`;
+    : allEpisodes ? "Final challenge"
+    : prep && !started ? "Ready to learn"
+    : `Episode ${next ?? 1} of ${count}`;
   return (
     <button
       onClick={onOpen}
@@ -4815,7 +4757,7 @@ function LibraryCard({
           })}
         </span>
         <span className="flex items-center gap-2">
-          <span className="truncate text-[11px] font-bold text-slate-500">{where}</span>
+          <span className={`truncate text-[11px] font-bold ${pending?.state === "failed" || pending?.state === "unavailable" ? "text-rose-600" : pending ? "animate-pulse text-slate-500 motion-reduce:animate-none" : "text-slate-500"}`}>{where}</span>
           {video._mine && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">Mine</span>}
           <span className="ml-auto text-xs font-extrabold text-slate-900">{cta}</span>
         </span>

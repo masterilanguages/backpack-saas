@@ -34,3 +34,25 @@ export function prepAccess(q: AccessQuestion): AccessAnswer {
   if (q.inSharedLibrary || q.inOwnLibrary) return { ok: true };
   return { ok: false, status: 403, error: "This video is not in your library" };
 }
+
+// Same rule as chapter_prep_status (migration 2100): a retry can fix it — a
+// run cut off, or a temporary AI error — and fewer than 5 attempts were made.
+const IN_PROGRESS = ["queued", "transcribing", "translating", "publishing", "pending_recovery"];
+const RETRYABLE_KINDS = ["rate_limit", "overloaded", "timeout", "lease_lost", "incomplete", "unknown"];
+
+/**
+ * A preparation that stopped for good (failed transcription, no AI credit,
+ * 5 attempts used): a student asking again would only pay again, so only an
+ * admin may restart it. A run in progress or a retryable stop is not stopped.
+ */
+export function stoppedForUsers(
+  row: { status: string; attempts: number; error_kind: string | null; locked_until: string | null } | null,
+  nowMs: number,
+): boolean {
+  if (!row || row.status === "ready") return false;
+  const leaseFree = !row.locked_until || new Date(row.locked_until).getTime() <= nowMs;
+  if (!leaseFree) return false; // a run holds it: the request just finds it busy
+  const resumable = row.attempts < 5 &&
+    (IN_PROGRESS.includes(row.status) || (row.status === "failed" && RETRYABLE_KINDS.includes(row.error_kind || "")));
+  return !resumable;
+}
