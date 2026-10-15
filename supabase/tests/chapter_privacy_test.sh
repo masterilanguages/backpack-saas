@@ -121,60 +121,76 @@ insert into public.user_saved_video (video_id, created_by, org_id) values ('priv
 SQL
 ); check "data" "" "$out"
 
-echo "== before 2120 (the leak being fixed)"
+# What every role reads, and every policy and grant on the existing tables:
+# taken before 2120 and compared after it — they must not change.
+seen()     { as "$1" "$2" "select coalesce(string_agg(video_id, ',' order by video_id), '-') from chapter_content;" "${3:-user}"; }
+policies() { qs <<<"select md5(string_agg(tablename||'|'||policyname||'|'||cmd||'|'||roles::text||'|'||coalesce(qual,'')||'|'||coalesce(with_check,''), E'\n' order by tablename, policyname)) from pg_policies where tablename in ('chapter_content','media_library','user_saved_video','chapter_prep');"; }
+grants()   { qs <<<"select md5(string_agg(grantee||'|'||table_name||'|'||privilege_type, E'\n' order by grantee, table_name, privilege_type)) from information_schema.role_table_grants where table_schema='public' and table_name in ('chapter_content','media_library','user_saved_video','chapter_prep');"; }
+snapshot() {
+  echo "S1=$(seen $S1 s1@x) S2=$(seen $S2 s2@x) S3=$(seen $S3 s3@x) C1=$(seen $C1 c1@x) A1=$(seen $A1 a1@x) P1=$(seen $P1 p1@x) ADM=$(seen $S2 s2@x admin) ANON=$(anon "select count(*) from chapter_content;") SVC=$(svc "select count(*) from chapter_content;") POL=$(policies) GR=$(grants)"
+}
+
+echo "== before 2120: chapter reads (unchanged after) and the status leak (fixed after)"
+BEFORE=$(snapshot)
+echo "$BEFORE" | tr ' ' '\n' | sed 's/^/    /' | head -9
 check "S2 (didn't save it) reads S1's private status"     "transcribing|true|false" "$(status $S2 s2@x priv-s1)"
-check "S3 (other school) reads S1's private chapter"       "1" "$(reads $S3 s3@x priv-done)"
 check "a student sees the 'blocked' account problem"      "blocked|false|false" "$(status $S2 s2@x blk)"
 
 out=$(qs < supabase/migrations/2120_chapter_privacy.sql); check "2120 applies" "" "$out"
 out=$(qs < supabase/migrations/2120_chapter_privacy.sql); check "2120 applies twice (idempotent)" "" "$out"
 
-echo "== 1. a student's own private video, before its chapter exists"
-check "S1 sees its preparation status (busy, before chapter_content exists)" "transcribing|true|false" "$(status $S1 s1@x priv-s1)"
+echo "== 1. nothing else changes: chapters, policies and grants are identical"
+AFTER=$(snapshot)
+check "every role reads exactly the same chapters, and every policy and grant is the same" "$BEFORE" "$AFTER"
+check "chapter_content_read is still 1900's (true, to authenticated)" "true|{authenticated}" "$(qs <<<"select qual||'|'||roles::text from pg_policies where tablename='chapter_content' and policyname='chapter_content_read';")"
+check "S2 still reads S1's private chapter, as before 2120"  "1" "$(reads $S2 s2@x priv-done)"
+check "S3 (other school) still reads it too, as before"      "1" "$(reads $S3 s3@x priv-done)"
+
+echo "== 2. a student's own private video: its status, before its chapter exists"
+check "S1 sees its preparation status (busy, no chapter yet)" "transcribing|true|false" "$(status $S1 s1@x priv-s1)"
 check "S2, same school, didn't save it: nothing"          "" "$(status $S2 s2@x priv-s1)"
 check "S3, other school: nothing"                         "" "$(status $S3 s3@x priv-s1)"
-check "S1 reads its own private chapter"                  "1" "$(reads $S1 s1@x priv-done)"
-check "S2 can't read S1's private chapter"                "0" "$(reads $S2 s2@x priv-done)"
-check "S3 can't read S1's private chapter"                "0" "$(reads $S3 s3@x priv-done)"
 
-echo "== 2. two students saved the same video: one shared chapter"
-check "S1 reads the shared chapter"                       "1" "$(reads $S1 s1@x same)"
-check "S3 (other school, saved it too) reads it"          "1" "$(reads $S3 s3@x same)"
-check "S2 (didn't save it) can't"                         "0" "$(reads $S2 s2@x same)"
-check "the chapter is stored once"                        "1" "$(qs <<<"select count(*) from chapter_content where video_id='same';")"
-check "S3 doesn't learn who else saved it"                "1" "$(as $S3 s3@x "select count(*) from user_saved_video where video_id='same';")"
-
-echo "== 3. coach, school admin, platform admin"
+echo "== 3. coach, school admin, platform admin, catalog"
 check "S1's coach sees S1's private status"               "transcribing|true|false" "$(status $C1 c1@x priv-s1)"
-check "S1's coach reads S1's private chapter"             "1" "$(reads $C1 c1@x priv-done)"
 check "school A admin sees S1's private status"           "transcribing|true|false" "$(status $A1 a1@x priv-s1)"
-check "school A admin can't read school B's catalog chapter" "0" "$(reads $A1 a1@x cat-b)"
-check "platform admin reads every chapter"                "4" "$(as $P1 p1@x "select count(*) from chapter_content;")"
 check "platform admin sees any status"                    "transcribing|true|false" "$(status $P1 p1@x priv-s1)"
+out=$(svc "insert into chapter_prep (video_id, language, status, attempts, lock_token, locked_until) values ('cat-b', 'hebrew', 'translating', 1, gen_random_uuid(), now() + interval '3 minutes');")
+check "S3 sees the status of its school's catalog video"  "translating|true|false" "$(status $S3 s3@x cat-b)"
+check "S2 (another school) doesn't"                       "" "$(status $S2 s2@x cat-b)"
 
-echo "== 4. the school catalog"
-check "S2 reads its school's catalog chapter"             "1" "$(reads $S2 s2@x cat-a)"
-check "S2 can't read another school's catalog chapter"    "0" "$(reads $S2 s2@x cat-b)"
-check "S3 reads its own school's catalog chapter"         "1" "$(reads $S3 s3@x cat-b)"
+echo "== 4. two students saved the same video"
+out=$(svc "insert into chapter_prep (video_id, language, status, attempts) values ('same', 'hebrew', 'ready', 1);")
+check "S1 sees the shared video's status"                 "ready|false|false" "$(status $S1 s1@x same)"
+check "S3 (other school, saved it too) sees it"           "ready|false|false" "$(status $S3 s3@x same)"
+check "S2 (didn't save it) doesn't"                       "" "$(status $S2 s2@x same)"
+check "S3 doesn't learn who else saved it"                "1" "$(as $S3 s3@x "select count(*) from user_saved_video where video_id='same';")"
 
 echo "== 5. account problems stay with admins"
 check "S1 sees its blocked preparation as 'failed'"       "failed|false|false" "$(status $S1 s1@x blk)"
 check "platform admin sees 'blocked'"                     "blocked|false|false" "$(status $P1 p1@x blk)"
 check "an app-role admin sees 'blocked'"                  "blocked|false|false" "$(status $S1 s1@x blk admin)"
 
-echo "== 6. anonymous and server"
+echo "== 6. the new helpers can't be used to get around it"
 contains "anon can't call chapter_prep_status"            "permission denied" "$(anon "select * from chapter_prep_status('cat-a');")"
-check "anon reads no chapter"                             "0" "$(anon "select count(*) from chapter_content;")"
-check "service_role (prepareChapter) still reads every chapter" "4" "$(svc "select count(*) from chapter_content;")"
-check "service_role still gets any status"                "transcribing|true|false" "$(svc "select status||'|'||busy||'|'||resumable from chapter_prep_status('priv-s1');")"
+contains "anon can't call the private helper"             "permission denied" "$(anon "select * from private.chapter_prep_status_raw('priv-s1');")"
+check "anon has no usage on schema private"               "f" "$(qs <<<"select has_schema_privilege('anon','private','usage');")"
+check "can_see_video only tells the caller what it can already see" "f" "$(as $S2 s2@x "select can_see_video('priv-s1');")"
+check "...and is true for the owner"                      "t" "$(as $S1 s1@x "select can_see_video('priv-s1');")"
 check "students still can't read chapter_prep directly"   "permission denied for table chapter_prep" "$(as $S1 s1@x "select count(*) from chapter_prep;" | grep -o 'permission denied for table chapter_prep')"
+check "service_role (prepareChapter) still gets any status" "transcribing|true|false" "$(svc "select status||'|'||busy||'|'||resumable from chapter_prep_status('priv-s1');")"
 check "chapter_prep_status is SECURITY INVOKER now"       "f" "$(qs <<<"select prosecdef from pg_proc where proname='chapter_prep_status';")"
+# The private helper is executable by signed-in users (the public function
+# runs as them and calls it); what keeps it out of reach is that the API only
+# exposes its configured schemas (public, graphql_public). Checked separately
+# against the Data API.
 
-echo "== 7. rollback restores 2100/1900, and 2120 re-applies"
+echo "== 7. rollback restores 2100 exactly; nothing else to undo"
 rb=$(sed -n '/^-- ROLLBACK/,$p' supabase/migrations/2120_chapter_privacy.sql | grep '^-- ' | sed 's/^-- //' | grep -v '^ROLLBACK\|^---')
 out=$(printf "%s\n" "$rb" | qs); check "rollback applies" "" "$out"
-check "after rollback: the old behavior (S2 reads S1's status)" "transcribing|true|false" "$(status $S2 s2@x priv-s1)"
-check "after rollback: private schema gone"               "0" "$(qs <<<"select count(*) from pg_namespace where nspname='private';")"
+check "after rollback: 2100's behavior (S2 reads S1's status)" "transcribing|true|false" "$(status $S2 s2@x priv-s1)"
+check "after rollback: chapters, policies and grants still identical" "$BEFORE" "$(snapshot)"
+check "after rollback: private schema and can_see_video gone" "0|0" "$(qs <<<"select (select count(*) from pg_namespace where nspname='private')||'|'||(select count(*) from pg_proc where proname='can_see_video');")"
 out=$(qs < supabase/migrations/2120_chapter_privacy.sql); check "2120 re-applies after rollback" "" "$out"
 check "and protects again"                                "" "$(status $S2 s2@x priv-s1)"
 

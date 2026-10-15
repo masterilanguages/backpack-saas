@@ -1,36 +1,37 @@
--- Chapters and their preparation status are visible only to people who can
--- see the video in a library (phase 2A, step 1).
+-- A video's preparation status is visible only to people who can see the
+-- video in a library (phase 2A, step 1). Nothing else changes.
 --
 -- Why: chapter_prep_status (2100) is SECURITY DEFINER, granted to every
--- signed-in user, and answered for ANY video id: anyone who knew the YouTube
--- id of a video another student saved privately could learn that it is in the
--- system and its state ('blocked' even tells that the AI account is out of
--- credit). And chapter_content (1900) could be read by every signed-in user,
--- for every video.
+-- signed-in user, and answers for ANY video id. Once prepareChapter writes
+-- chapter_prep, anyone knowing the YouTube id of a video another student
+-- saved privately could learn it is being prepared, and 'blocked' would tell
+-- every student that the AI account has no credit. That information exists
+-- only since phase 2A, so its protection ships with it.
 --
--- Who can see a video is already decided by the RLS of the two libraries,
--- and nothing new is invented here:
+-- Who can see a video is already decided by the libraries' RLS, which this
+-- migration only CONSULTS (it changes no policy anywhere):
 --   media_library     the school's catalog: its members (org_id among
 --                     my_org_ids(), or no org) and platform admins
 --   user_saved_video  a student's own videos: the student, their coach, the
 --                     school's admins and platform admins
--- public.can_see_video() asks exactly that, AS THE CALLER (security
--- invoker), so those policies decide. Two students who saved the same
--- YouTube video both see its (shared) chapter. Nobody learns who else saved it.
+-- public.can_see_video() asks exactly that, AS THE CALLER (security invoker).
 --
 -- After this migration:
 --   chapter_prep_status(id)  a row only if the caller can see the video;
 --                            'blocked' reads 'failed' unless the caller is an
 --                            admin (app role admin or platform admin).
---   chapter_content          SELECT only for videos the caller can see
---                            (platform admins: all). Writes unchanged here
---                            (2110 closes them later).
+--   UNCHANGED                chapter_content and its policies (read by every
+--                            signed-in user, as since 1900), media_library,
+--                            user_saved_video, schools, coaches, admins.
 --   service_role             unchanged (bypasses RLS): prepareChapter keeps
 --                            reading and writing everything.
 --
--- The status itself is read from chapter_prep (no policies, no grants to
--- students) by private.chapter_prep_status_raw(), SECURITY DEFINER, in a
--- schema the API doesn't expose: students can't call it directly.
+-- The status is read from chapter_prep (no policies, no grants to students)
+-- by private.chapter_prep_status_raw(), SECURITY DEFINER, in the `private`
+-- schema. Signed-in users may execute it (the public function runs as them
+-- and calls it), but the API exposes only its configured schemas (public,
+-- graphql_public): `private` must NOT be added to the Data API's exposed
+-- schemas, as Supabase advises for security definer functions.
 
 begin;
 
@@ -83,21 +84,12 @@ $$;
 revoke all on function public.chapter_prep_status(text) from public, anon;
 grant execute on function public.chapter_prep_status(text) to authenticated, service_role;
 
--- Chapters: readable only for videos the caller can see.
-drop policy if exists chapter_content_read on public.chapter_content;
-create policy chapter_content_read on public.chapter_content
-  for select to authenticated
-  using (public.is_platform_admin() or public.can_see_video(video_id));
-
 commit;
 
 -- ----------------------------------------------------------------------------
--- ROLLBACK (uncomment to restore 2100 / 1900 exactly):
+-- ROLLBACK (uncomment to restore 2100 exactly; nothing else was changed):
 -- ----------------------------------------------------------------------------
 -- begin;
--- drop policy if exists chapter_content_read on public.chapter_content;
--- create policy chapter_content_read on public.chapter_content
---   for select to authenticated using (true);
 -- create or replace function public.chapter_prep_status(p_video_id text)
 -- returns table (status text, busy boolean, resumable boolean)
 -- language sql stable security definer set search_path = public as $$
