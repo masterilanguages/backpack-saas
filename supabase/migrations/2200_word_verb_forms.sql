@@ -44,6 +44,11 @@
 
 begin;
 
+-- Production safety: give up (and roll back everything) rather than queue
+-- behind another transaction holding word, which would block saves.
+set local lock_timeout = '5s';
+set local statement_timeout = '60s';
+
 alter table public.word
   add column if not exists lemma_key  text,
   add column if not exists verb_forms jsonb,

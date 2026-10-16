@@ -140,6 +140,15 @@ SQL
 check "production-like word table built" "3" "$(echo "select count(*) from word" | qs)"
 
 echo "== 1. migration 2200"
+# Another transaction holds word (e.g. a long write): 2200 must give up after
+# its 5 s lock_timeout and leave nothing half done, not queue and block saves.
+echo "begin; lock table public.word in row exclusive mode; select pg_sleep(9); commit;" | qs >/dev/null 2>&1 &
+HOLDER=$!; sleep 1
+t0=$(date +%s); out=$(qs < supabase/migrations/2200_word_verb_forms.sql); t1=$(date +%s)
+contains "with word locked by another transaction, 2200 gives up (lock timeout)" "lock timeout" "$out"
+check "…within seconds, not waiting for the other transaction" "t" "$([ $((t1 - t0)) -le 7 ] && echo t || echo "f ($((t1 - t0)) s)")"
+check "…and changes nothing (no column, no table)" "0|0" "$(echo "select (select count(*) from information_schema.columns where table_name='word' and column_name='lemma_key')||'|'||(select count(*) from pg_class where relname='verb_lexicon')" | qs)"
+wait $HOLDER
 out=$(qs < supabase/migrations/2200_word_verb_forms.sql); check "2200 applies over existing rows (incl. duplicates)" "" "$out"
 out=$(qs < supabase/migrations/2200_word_verb_forms.sql); check "2200 applies twice (idempotent)" "" "$out"
 check "existing rows untouched: no lemma_key, verb_forms, verb_check" "3|0|0|0" "$(echo "select count(*)||'|'||count(lemma_key)||'|'||count(verb_forms)||'|'||count(verb_check) from word" | qs)"
