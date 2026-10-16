@@ -969,7 +969,9 @@ Return JSON with:
 
   // Words still waiting for the Learn/Skip decision, or skipped, aren't studied.
   const inStudy = (w: any) => w.learn_status !== "new" && w.learn_status !== "skipped";
-  const newWords = useMemo(() => (words as any[]).filter((w) => w.learn_status === "new"), [words]);
+  // Newest first: the words just saved from a video are the first to decide.
+  const newWords = useMemo(() => (words as any[]).filter((w) => w.learn_status === "new")
+    .sort((a: any, b: any) => String(b.created_date || "").localeCompare(String(a.created_date || ""))), [words]);
   // Words still waiting for their verb check (tab closed, slow analysis).
   useResumeVerbChecks(words as any[], () => queryClient.invalidateQueries({ queryKey: ["wordRatings"] }));
   const [triageOpen, setTriageOpen] = useState(false);
