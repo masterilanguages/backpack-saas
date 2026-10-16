@@ -5270,7 +5270,7 @@ function WordTriage({
           initial={{ opacity: 0, y: 12, scale: 0.97 }}
           animate={leaving ? { x: leaving * 420, rotate: leaving * 12, opacity: 0 } : { opacity: 1, y: 0, scale: 1, x: 0, rotate: 0 }}
           transition={{ duration: 0.25 }}
-          className="max-h-full w-full cursor-grab touch-pan-y select-none overflow-y-auto overscroll-contain rounded-[22px] bg-white px-5 pb-5 pt-4 text-center shadow-[0_0_0_1px_#ECECF3] active:cursor-grabbing"
+          className="max-h-full w-full cursor-grab touch-pan-y select-none overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-[22px] bg-white px-5 pb-5 pt-4 text-center shadow-[0_0_0_1px_#ECECF3] active:cursor-grabbing"
         >
           {/* A verb names the video of its form below, under "In the video". */}
           {deckVideoTitle(w) && !isVerbCard(w) && (
@@ -5291,20 +5291,24 @@ function WordTriage({
           )}
 
           {showPriority ? (
-            <div className="mt-4" onPointerDownCapture={(e) => e.stopPropagation()}>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Priority (optional)</p>
-              <div className="mt-2 flex justify-center gap-1.5">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setPriority(priority === n ? null : n)}
-                    className={`h-9 w-9 rounded-full text-sm font-bold ${priority === n ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500"}`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1 text-[10px] text-slate-400">How important it is to you — not how well you know it</p>
+            // One compact row in place of the link, so opening it barely grows the card.
+            <div
+              ref={(el) => el?.scrollIntoView({ block: "nearest", behavior: "smooth" })}
+              className="mt-4 flex items-center justify-center gap-2"
+              onPointerDownCapture={(e) => e.stopPropagation()}
+              title="How important it is to you — not how well you know it"
+            >
+              <span className="text-[12px] font-semibold text-slate-400">Priority</span>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setPriority(priority === n ? null : n)}
+                  aria-pressed={priority === n}
+                  className={`h-8 w-8 rounded-full text-[13px] font-bold transition ${priority === n ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+                >
+                  {n}
+                </button>
+              ))}
             </div>
           ) : (
             <button onClick={() => setShowPriority(true)} className="mt-4 text-[12px] font-semibold text-slate-400 underline decoration-dotted underline-offset-2">
