@@ -3135,7 +3135,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
             </div>
 
             {/* Transcript — tap a line to jump there; active line highlighted */}
-            <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-3 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {shellSegsLoading ? (
                 <div className="flex flex-col items-center gap-2 py-10">
                   <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
@@ -4850,7 +4850,7 @@ function DiscoveryPanel({
   const tappable = mode === "discovery";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-3">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {/* title + position */}
       <div className="mt-4 flex flex-shrink-0 items-end justify-between gap-3">
         <div className="min-w-0">
