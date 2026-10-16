@@ -3,7 +3,7 @@
 // import-free apart from lib/verbs, tested with
 // `deno test --unstable-sloppy-imports lib/verbCard.test.ts`.
 
-import { CONJUGATION_SLOTS, plainSpelling, slotFor, stripNikud, type VerbOccurrence } from "./verbs";
+import { CONJUGATION_SLOTS, plainSpelling, sameVerbLetters, slotFor, stripNikud, type VerbOccurrence } from "./verbs";
 
 type Card = {
   word?: string | null;
@@ -94,39 +94,89 @@ export const SLOT_LABELS: Record<string, Record<string, string>> = {
 };
 export const TENSES_SHOWN = Object.keys(CONJUGATION_SLOTS) as (keyof typeof CONJUGATION_SLOTS)[];
 
-/** Every cell the student met on this card, as "tense:slot". */
-export function seenSlots(w: Card): Set<string> {
+/** Every cell the student met on this card, as "tense:slot" (checked against the table when given). */
+export function seenSlots(w: Card, table?: Record<string, Record<string, { he: string }>> | null): Set<string> {
   const out = new Set<string>();
   for (const o of verbForms(w)) {
-    const s = slotFor(o);
+    const s = usedSlot(table, o);
     if (s) out.add(`${s.tense}:${s.slot}`);
   }
   return out;
 }
 
+/** Particles that attach in front of a Hebrew word (ו, ה, ש, כ, ל, ב, מ — up to three: וכשה…). */
+const PARTICLES = /^[הוכלבמש]{1,3}$/;
+
 /**
- * The sentence split for display with the verb marked: whole words whose
- * spelling (no nikud, no punctuation) is the form; if none, the first word
- * containing the form without its prefix.
+ * The sentence split for display with the verb marked: the words whose
+ * spelling (no nikud, no punctuation) is the form; else the form with
+ * particles attached in the sentence (וכשהנחת for שהנחת). Never a partial
+ * match (הלך must not mark לך): nothing is marked rather than the wrong word.
  */
 export function highlightParts(sentence: string, surface: string): { text: string; hit: boolean }[] {
   const s = String(sentence || "");
   const target = plainSpelling(surface);
   if (!s || !target) return s ? [{ text: s, hit: false }] : [];
   const tokens = s.split(/(\s+)/);
-  let hits = tokens.map((t) => !/^\s+$/.test(t) && plainSpelling(t) === target);
+  const plain = tokens.map((t) => (/^\s*$/.test(t) ? "" : plainSpelling(t)));
+  let hits = plain.map((p) => !!p && p === target);
   if (!hits.some(Boolean)) {
-    const stem = plainSpelling(stripNikud(surface).replace(/^[הוכלבמש]/, ""));
-    const i = stem.length >= 2 ? tokens.findIndex((t) => !/^\s+$/.test(t) && plainSpelling(t).includes(stem)) : -1;
-    hits = tokens.map((_, j) => j === i);
+    hits = plain.map((p) => !!p && p.length > target.length && p.endsWith(target) && PARTICLES.test(p.slice(0, p.length - target.length)));
   }
   const parts: { text: string; hit: boolean }[] = [];
   tokens.forEach((t, j) => {
     const last = parts[parts.length - 1];
-    if (last && last.hit === hits[j] && !hits[j]) last.text += t;
+    if (last && !last.hit && !hits[j]) last.text += t;
     else if (t) parts.push({ text: t, hit: hits[j] });
   });
   return parts;
+}
+
+/**
+ * The cell of the conjugation table to highlight for a form. The grammar of
+ * the analysis decides, as long as that cell really is the form; if it is
+ * not, and exactly one cell is spelled like the form, that cell is used.
+ */
+export function usedSlot(
+  table: Record<string, Record<string, { he: string }>> | null | undefined,
+  occ: Partial<VerbOccurrence> | null | undefined,
+): { tense: keyof typeof CONJUGATION_SLOTS; slot: string } | null {
+  if (!occ) return null;
+  const byGrammar = slotFor(occ);
+  if (!table) return byGrammar;
+  const surface = stripNikud(occ.surface || "");
+  const spellings = [occ.form || "", surface, surface.slice(1), surface.slice(2), surface.slice(3)].filter((x) => x.length >= 2);
+  // Same spelling first; only if none, the same letters apart from ו/י
+  // (the sentence's full spelling of a defective form: יכתוב / יִכְתֹּב).
+  const find = (same: (cell: string, form: string) => boolean) => {
+    const out: { tense: keyof typeof CONJUGATION_SLOTS; slot: string }[] = [];
+    for (const tense of TENSES_SHOWN) {
+      for (const [slot, cell] of Object.entries(table[tense] || {})) {
+        if (cell?.he && spellings.some((f) => same(plainSpelling(cell.he), plainSpelling(f)))) out.push({ tense, slot });
+      }
+    }
+    return out;
+  };
+  let matches = find((a, b) => a === b);
+  if (!matches.length) matches = find((a, b) => sameVerbLetters(a, b));
+  if (byGrammar && matches.some((m) => m.tense === byGrammar.tense && m.slot === byGrammar.slot)) return byGrammar;
+  if (matches.length === 1) return matches[0];
+  return byGrammar;
+}
+
+/**
+ * The video sentence a word was taken from: the first one where it is a word
+ * of the sentence (alone or with particles attached), not just letters inside
+ * another word (בת in בתוך). Falls back to the first sentence containing it.
+ */
+export function findVideoSentence<T extends { hebrew?: string; text?: string }>(segments: T[], word: string, norm: (t: string) => string): T | undefined {
+  const key = norm(word || "");
+  if (!key) return undefined;
+  const asWord = segments.find((sg) => String(sg.hebrew || sg.text || "").split(/\s+/).some((tok) => {
+    const t = norm(tok);
+    return t === key || (t.length > key.length && t.endsWith(key) && PARTICLES.test(t.slice(0, t.length - key.length)));
+  }));
+  return asWord || segments.find((sg) => norm(sg.hebrew || sg.text || "").includes(key));
 }
 
 /** Whether the student already saved this exact word (as a word, or as a form of a verb card). */

@@ -272,3 +272,14 @@ test("recommended · a failed insert skips that word, as before", async () => {
     assert(!calls.created.some((r) => r.word === "נשמה"));
   }
 });
+
+test("recommended · verbs on: the sentence is the one where the word is a word (בת not inside בתוך); off: as before", async () => {
+  const segs = [{ hebrew: "בתוך הבית" }, { hebrew: "יש לי בת" }];
+  const c = { recommended: [{ hebrew: "בת", meaning: "daughter" }], words: [], segments: segs, language: "hebrew", video: VIDEO, norm };
+  const off = fakes();
+  await saveRecommendedWords(c, off.deps, OFF);
+  assertEquals(off.calls.created[0].example_sentence, "בתוך הבית");
+  const on = fakes();
+  await saveRecommendedWords(c, on.deps, ON);
+  assertEquals(on.calls.created[0].example_sentence, "יש לי בת");
+});

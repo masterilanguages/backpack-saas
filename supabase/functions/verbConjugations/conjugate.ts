@@ -14,7 +14,7 @@
 
 import {
   CONJUGATION_SCHEMA, conjugationPrompt, hasConjugations, lemmaKey, normalizeBinyan,
-  parseConjugations, plainSpelling, sameVerbLetters, VERB_PROMPT_VERSION,
+  plainSpelling, sameVerbLetters, validateConjugations, VERB_PROMPT_VERSION,
 } from "../../../lib/verbs.ts";
 import { classifyLlmError, isAccountLlmError } from "../../../lib/llmErrors.ts";
 import { DailyLimitError, type LexiconRow, type LexiconStore } from "./store.ts";
@@ -150,9 +150,9 @@ export async function getConjugations(deps: ConjugateDeps, req: ConjugateRequest
     return { status: "failed", error: "The conjugation table could not be made right now" };
   }
 
-  const table = parseConjugations(raw);
+  const { table, problems } = validateConjugations(raw, req.binyan);
   if (!table) {
-    deps.log(`${tag} incomplete table, not stored`);
+    deps.log(`${tag} table rejected, not stored: ${problems.slice(0, 5).join("; ")}`);
     await giveBack("incomplete table", false);
     return { status: "failed", error: "The conjugation table came back incomplete" };
   }

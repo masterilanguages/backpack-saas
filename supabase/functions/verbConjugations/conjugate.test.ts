@@ -5,7 +5,8 @@
 // migration 2200 in a local PostgreSQL.
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import postgres from "npm:postgres@3.4.4";
-import { CONJUGATION_SLOTS, CONJUGATION_SCHEMA, lemmaKey } from "../../../lib/verbs.ts";
+import { CONJUGATION_SCHEMA, lemmaKey } from "../../../lib/verbs.ts";
+import { clone, LEHANIACH } from "../../../lib/testTables.ts";
 import { getConjugations, handleConjugationRequest, LEASE_SECONDS, MAX_TOKENS, type ConjugateDeps, type ConjugateRequest } from "./conjugate.ts";
 import { DailyLimitError, MemoryLexiconStore, type LexiconPatch, type LexiconRow, type LexiconStore } from "./store.ts";
 
@@ -14,11 +15,7 @@ const VERB: ConjugateRequest = { language: "hebrew", lemma: "לְהַנִּיח�
 const KEY = lemmaKey(VERB.lemma, VERB.binyan);
 
 function fullTable() {
-  const t: any = {};
-  for (const [tense, slots] of Object.entries(CONJUGATION_SLOTS)) {
-    t[tense] = Object.fromEntries(slots.map((s) => [s, { he: `צורה-${tense}-${s}`, phonetic: `${tense}-${s}` }]));
-  }
-  return { conjugations: t };
+  return { conjugations: clone(LEHANIACH) as any };
 }
 
 // ---------------------------------------------------------------- stores
@@ -94,7 +91,7 @@ const scenarios: Record<string, (h: Harness) => Promise<void>> = {
     const { deps, calls } = fakes(h);
     const first = await getConjugations(deps, VERB);
     assertEquals(first.status, "ready");
-    assert(first.status === "ready" && !first.cached && first.entry.conjugations.past["2ms"].he === "צורה-past-2ms");
+    assert(first.status === "ready" && !first.cached && first.entry.conjugations.past["2ms"].he === "הִנַּחְתָּ");
     const second = await getConjugations(deps, VERB);
     assert(second.status === "ready" && second.cached);
     assertEquals(calls.llm.length, 1);
@@ -151,15 +148,15 @@ const scenarios: Record<string, (h: Harness) => Promise<void>> = {
     await h.expire();
     const fast = fakes(h, () => {
       const t = fullTable();
-      t.conjugations.past["2ms"].he = "FAST";
+      t.conjugations.past["2ms"].he = "הֵנַחְתָּ"; // a different (made) answer
       return t;
     });
     const second = await getConjugations(fast.deps, VERB);
     assert(second.status === "ready" && !second.cached);
     release(fullTable());
     const first = await pending;
-    assert(first.status === "ready" && first.cached && first.entry.conjugations.past["2ms"].he === "FAST");
-    assertEquals((await h.store.get("hebrew", KEY))?.conjugations.past["2ms"].he, "FAST");
+    assert(first.status === "ready" && first.cached && first.entry.conjugations.past["2ms"].he === "הֵנַחְתָּ");
+    assertEquals((await h.store.get("hebrew", KEY))?.conjugations.past["2ms"].he, "הֵנַחְתָּ");
   },
 
   "request: only verbs on the caller's own cards may cost a call": async (h) => {

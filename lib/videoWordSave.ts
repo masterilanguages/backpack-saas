@@ -13,7 +13,7 @@
 // Pure (dependencies passed in): `deno test --unstable-sloppy-imports lib/videoWordSave.test.ts`.
 
 import { markForVerbCheck, saveWordToBackpack, verbsEnabledFor, type SaveWordDeps, type SaveWordOptions, type SaveWordResult, type WordRow } from "./saveWord";
-import { knownAnalysisFromCards } from "./verbCard";
+import { findVideoSentence, knownAnalysisFromCards } from "./verbCard";
 
 export type VideoRef = { video_id?: string | null; title?: string | null } | null | undefined;
 
@@ -76,11 +76,16 @@ export async function saveRecommendedWords(
   const { norm } = ctx;
   const have = new Set(ctx.words.map((w: any) => norm(w.word || "")).filter(Boolean));
   const todo: { r: Recommended; row: WordRow; sentence: string | null }[] = [];
+  const verbsOn = verbsEnabledFor(ctx.language, opts);
   for (const r of ctx.recommended) {
     const key = norm(r.hebrew || "");
     if (!key || have.has(key)) continue;
     have.add(key);
-    const seg = ctx.segments.find((sg: any) => norm(sg.hebrew || sg.text || "").includes(key));
+    // Verbs on: the sentence where it is a word of the sentence, not letters
+    // inside another word (the card shows that exact sentence). Off: as before.
+    const seg = verbsOn
+      ? findVideoSentence(ctx.segments, r.hebrew || "", norm)
+      : ctx.segments.find((sg: any) => norm(sg.hebrew || sg.text || "").includes(key));
     const sentence = seg ? seg.hebrew || seg.text : null;
     todo.push({
       r, sentence,
@@ -100,7 +105,7 @@ export async function saveRecommendedWords(
     });
   }
 
-  const verbs = verbsEnabledFor(ctx.language, opts);
+  const verbs = verbsOn;
   let added = 0;
   const results: SaveWordResult[] = [];
   const pendingIds: string[] = [];

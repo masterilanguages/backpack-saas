@@ -9,7 +9,7 @@ import { isRTLLanguage, isRTLText, languageLabel, needsTransliteration } from "@
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
 import { generateLessonAudio } from "@/lib/audio/lessonAudio";
 import VerbDetails from "./VerbDetails";
-import { isVerbCard, pickOccurrence } from "@/lib/verbCard";
+import { highlightParts, isVerbCard, pickOccurrence } from "@/lib/verbCard";
 
 function SentenceWords({ words, onAddToBackpack, showHebrew = true, showTransliteration = true, lang = 'hebrew' }) {
   // Native-script line direction follows the actual generated text (RTL for Hebrew/Arabic, LTR for Latin).
@@ -90,7 +90,7 @@ const REVIEW_STYLE = {
 // Each slide is three single lines: phonetic (top, blue) · native script (every
 // word tappable → "= meaning · + Add") · English (grey). Long lines shrink
 // their font instead of wrapping. Inline styles: Tailwind doesn't scan .jsx.
-function UsageExamples({ examples, videoSentence, loading, lang, showEnglish, onAddToBackpack, target }) {
+function UsageExamples({ examples, videoSentence, loading, lang, showEnglish, onAddToBackpack, target, videoHighlight = null }) {
   const stem = String(target || '').replace(/[֑-ׇ]/g, '').replace(/^[הוכלבמש]/, '');
   const [slide, setSlide] = useState(0);
   const [active, setActive] = useState(null); // word index on the current slide
@@ -169,7 +169,12 @@ function UsageExamples({ examples, videoSentence, loading, lang, showEnglish, on
                   {j < words.length - 1 ? ' ' : ''}
                 </span>
               ))
-            : sentence}
+            : ex.from_video && videoHighlight
+              // Verb card: the form met in the video, marked in its sentence.
+              ? highlightParts(sentence, videoHighlight).map((p, j) => p.hit
+                  ? <mark key={j} style={{ background: '#fde68a', color: '#1e1b4b', fontWeight: 800, borderRadius: 4, padding: '0 2px' }}>{p.text}</mark>
+                  : <span key={j}>{p.text}</span>)
+              : sentence}
         </div>
         {showEnglish !== false && (
           <div style={{ ...line, color: '#94a3b8', lineHeight: 1.3, fontSize: fit(ex.english, 11, 0.5) }}>{ex.english || ' '}</div>
@@ -569,6 +574,7 @@ export default function WordCard({
             lang={lang}
             showEnglish
             target={verbOcc?.surface || word.word}
+            videoHighlight={verbOcc?.surface || null}
             onAddToBackpack={(w, meaning, hebrew) => handleAddWordFromSentence(w, meaning, hebrew)}
           />
         </div>

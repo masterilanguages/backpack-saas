@@ -15,9 +15,9 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import {
   conjugationRequest, grammarChips, highlightParts, otherOccurrences, pickOccurrence,
-  seenSlots, SLOT_LABELS, TENSES_SHOWN, verbForms,
+  seenSlots, SLOT_LABELS, TENSES_SHOWN, usedSlot, verbForms,
 } from "@/lib/verbCard";
-import { CONJUGATION_SLOTS, slotFor, type VerbOccurrence } from "@/lib/verbs";
+import { CONJUGATION_SLOTS, type VerbOccurrence } from "@/lib/verbs";
 import { isRTLText } from "@/lib/language";
 
 /** Taps and drags inside must not move or swipe the card around it. */
@@ -111,9 +111,7 @@ export default function VerbDetails({
 
 function ConjugationPanel({ word, occ, language, load, compact = false }: { word: any; occ: VerbOccurrence; language: string; load: LoadConjugations; compact?: boolean }) {
   const [open, setOpen] = useState(false);
-  const used = slotFor(occ);
-  const [tab, setTab] = useState<string>(used?.tense || "past");
-  const seen = useMemo(() => seenSlots(word), [word]);
+  const [picked, setPicked] = useState<string | null>(null);
   const canLoad = /hebrew/i.test(language) && !!word?.lemma_key;
   const q = useQuery({
     queryKey: ["verbConjugations", language, word?.lemma_key],
@@ -127,6 +125,12 @@ function ConjugationPanel({ word, occ, language, load, compact = false }: { word
   });
   if (!canLoad) return null;
   const table = q.data?.status === "ready" ? q.data.entry?.conjugations : null;
+  // The cell of the form used, confirmed against the table's own forms.
+  const used = usedSlot(table, occ);
+  const seen = seenSlots(word, table);
+  const tenses = table ? TENSES_SHOWN.filter((t) => Object.keys(table[t] || {}).length) : TENSES_SHOWN;
+  const tab = picked && tenses.includes(picked as any) ? picked : used?.tense || tenses[0] || "past";
+  const setTab = setPicked;
   const cells = (table?.[tab] || {}) as Record<string, { he: string; phonetic?: string }>;
   const waiting = q.isFetching || q.data?.status === "pending";
   const failed = q.isError || q.data?.status === "failed" || q.data?.status === "limited";
@@ -144,7 +148,7 @@ function ConjugationPanel({ word, occ, language, load, compact = false }: { word
       {open && (
         <div className="mt-1.5 rounded-xl border border-indigo-100 bg-white p-2">
           <div className="flex gap-1 overflow-x-auto pb-1">
-            {TENSES_SHOWN.map((t) => (
+            {tenses.map((t) => (
               <button
                 key={t}
                 onClick={(e) => { stop(e); setTab(t); }}

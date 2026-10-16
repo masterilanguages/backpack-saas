@@ -1,11 +1,12 @@
 /// <reference lib="deno.ns" />
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { clone, LEHANIACH, LESUDAR, LIVNOT } from "./testTables.ts";
 import {
   CONJUGATION_SLOTS, hasConjugations, lemmaKey, mergeOccurrence, normalizeBinyan, occurrenceFrom,
   occurrenceKey, parseConjugations, parseVerbAnalysis, plainSpelling, slotFor, stripNikud, MAX_OCCURRENCES,
   type VerbOccurrence,
-  keyOfAnalysis, sameVerbLetters,
+  keyOfAnalysis, sameVerbLetters, validateConjugations,
 } from "./verbs.ts";
 
 // The acceptance example of "Verbos en Flashcards": שהנחת → לְהַנִּיחַ.
@@ -169,22 +170,34 @@ Deno.test("hasConjugations: '{}' (the column default) is not a table", () => {
   assertEquals(hasConjugations({ past: { "1s": { he: "הִנַּחְתִּי", phonetic: "hinachti" } } }), true);
 });
 
-function fullTable() {
-  const t: any = {};
-  for (const [tense, slots] of Object.entries(CONJUGATION_SLOTS)) {
-    t[tense] = Object.fromEntries(slots.map((s) => [s, { he: `צורה-${tense}-${s}`, phonetic: `${tense}-${s}` }]));
+Deno.test("validateConjugations: real tables of different root classes pass", () => {
+  for (const [t, b] of [[LEHANIACH, "hifil"], [LIVNOT, "paal"]] as const) {
+    const { table, problems } = validateConjugations({ conjugations: t }, b);
+    assertEquals(problems, []);
+    assertEquals(Object.keys(table!).sort(), ["future", "imperative", "past", "present"]);
   }
-  return t;
-}
+  assertEquals(parseConjugations({ conjugations: LEHANIACH }, "hifil")!.past!["2ms"], { he: "הִנַּחְתָּ", phonetic: "hinachta" });
+});
 
-Deno.test("parseConjugations: keeps known cells only; too incomplete → null (not cached)", () => {
-  const full = parseConjugations({ conjugations: { ...fullTable(), pluperfect: { x: { he: "x" } } } })!;
-  assertEquals(Object.keys(full).sort(), ["future", "imperative", "past", "present"]);
-  assertEquals(full.past!["2ms"], { he: "צורה-past-2ms", phonetic: "past-2ms" });
-  const t = fullTable();
-  t.past.extra = { he: "x" };
-  assertEquals(parseConjugations(t)!.past!.extra, undefined);
-  assertEquals(parseConjugations({ conjugations: { past: fullTable().past } }), null);
-  assertEquals(parseConjugations(null), null);
-  assertEquals(parseConjugations({ conjugations: "nope" }), null);
+Deno.test("validateConjugations: pual/hufal have no imperative; one given is dropped", () => {
+  assertEquals(validateConjugations({ conjugations: LESUDAR }, "pual").problems, []);
+  const withImp = { ...clone(LESUDAR), imperative: { ms: { he: "סֻדַּר" } } };
+  assertEquals(parseConjugations({ conjugations: withImp }, "Pu'al")!.imperative, undefined);
+  // Any other binyan must have it.
+  assert(validateConjugations({ conjugations: LESUDAR }, "piel").problems.some((x) => x.startsWith("imperative.")));
+});
+
+Deno.test("validateConjugations: incomplete or wrong tables are never stored", () => {
+  const bad = (mutate: (t: any) => void) => { const t = clone(LEHANIACH); mutate(t); return validateConjugations({ conjugations: t }, "hifil"); };
+  assertEquals(bad((t) => { delete t.future["2fs"]; }).problems, ["future.2fs: missing"]);
+  assertEquals(bad((t) => { t.past["1s"].he = "אֲנִי הִנַּחְתִּי"; }).problems, ["past.1s: more than one word"]);
+  assertEquals(bad((t) => { t.past["1s"].he = "hinachti"; }).problems, ["past.1s: not Hebrew letters"]);
+  assertEquals(bad((t) => { t.past["1s"].he = "הנחתי"; }).problems, ["past.1s: no nikud"]);
+  // A form in the wrong cell: past 2ms in the 1s cell, future 3ms in the 2ms cell…
+  assertEquals(bad((t) => { t.past["1s"].he = "הִנַּחְתָּ"; }).table, null);
+  assertEquals(bad((t) => { t.future["2ms"].he = "יַנִּיחַ"; }).table, null);
+  assertEquals(bad((t) => { t.present.mp.he = "מַנִּיחוֹת"; }).table, null);
+  assertEquals(bad((t) => { t.imperative.p.he = "הַנִּיחִי"; }).table, null);
+  assertEquals(validateConjugations(null).table, null);
+  assertEquals(validateConjugations({ conjugations: "nope" }).table, null);
 });

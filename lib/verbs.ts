@@ -236,26 +236,56 @@ export function hasConjugations(c: unknown): boolean {
  * Validates a generated table: only known cells, each with native spelling.
  * null when too little came back to be worth caching for everyone.
  */
-export function parseConjugations(raw: any): ConjugationTable | null {
+/** Binyanim without an imperative (passives). */
+export const NO_IMPERATIVE = ["pual", "hufal"];
+
+/**
+ * The person/number marks every Hebrew verb carries, checked on the spelling
+ * without nikud: past suffixes, future prefixes (+ suffixes), present and
+ * imperative endings. They hold for every binyan and root class.
+ */
+const HEBREW_SHAPE: Record<string, Record<string, RegExp>> = {
+  past: { "1s": /תי$/, "2ms": /ת$/, "2fs": /ת$/, "3fs": /ה$/, "1p": /נו$/, "2mp": /תם$/, "2fp": /תן$/, "3p": /ו$/ },
+  present: { fs: /[תה]$/, mp: /ים$/, fp: /ות$/ },
+  future: { "1s": /^א/, "2ms": /^ת/, "2fs": /^ת.*י$/, "3ms": /^י/, "3fs": /^ת/, "1p": /^נ/, "2p": /^ת.*ו$/, "3p": /^י.*ו$/ },
+  imperative: { fs: /י$/, p: /ו$/ },
+};
+
+/**
+ * Checks a generated table before it is stored for everyone: complete (every
+ * cell; no imperative for pual/hufal), each cell ONE Hebrew word with nikud
+ * and the marks of its person and tense. A table with any problem is not
+ * stored (the verb is retried once, then reported as unavailable).
+ */
+export function validateConjugations(raw: any, binyan?: string): { table: ConjugationTable | null; problems: string[] } {
   const src = raw?.conjugations ?? raw;
-  if (!src || typeof src !== "object") return null;
+  const problems: string[] = [];
+  if (!src || typeof src !== "object") return { table: null, problems: ["no table"] };
+  const noImperative = NO_IMPERATIVE.includes(normalizeBinyan(binyan));
   const out: ConjugationTable = {};
-  let filled = 0, total = 0;
   for (const [tense, slots] of Object.entries(CONJUGATION_SLOTS) as [keyof typeof CONJUGATION_SLOTS, string[]][]) {
-    total += slots.length;
+    if (tense === "imperative" && noImperative) continue;
     const t = src[tense];
-    if (!t || typeof t !== "object") continue;
     const cells: Record<string, ConjugationCell> = {};
     for (const s of slots) {
-      const c = t[s];
+      const c = t && typeof t === "object" ? t[s] : null;
       const he = str(typeof c === "string" ? c : c?.he, 40);
-      if (!he) continue;
+      if (!he) { problems.push(`${tense}.${s}: missing`); continue; }
+      if (/\s/.test(he)) { problems.push(`${tense}.${s}: more than one word`); continue; }
+      if (!/^[\u05D0-\u05EA\u0591-\u05C7]+$/.test(he)) { problems.push(`${tense}.${s}: not Hebrew letters`); continue; }
+      if (!/[\u05B0-\u05BC\u05C1\u05C2\u05C7]/.test(he)) { problems.push(`${tense}.${s}: no nikud`); continue; }
+      const shape = HEBREW_SHAPE[tense]?.[s];
+      if (shape && !shape.test(stripNikud(he))) { problems.push(`${tense}.${s}: ${he} is not a ${tense} ${s} form`); continue; }
       cells[s] = { he, phonetic: str(typeof c === "object" ? c?.phonetic : "", 40) };
-      filled++;
     }
-    if (Object.keys(cells).length) out[tense] = cells;
+    out[tense] = cells;
   }
-  return filled >= Math.ceil(total * 0.75) ? out : null;
+  return { table: problems.length ? null : out, problems };
+}
+
+/** A valid table or null (see validateConjugations). */
+export function parseConjugations(raw: any, binyan?: string): ConjugationTable | null {
+  return validateConjugations(raw, binyan).table;
 }
 
 // -------------------------------------------------------------------- prompts
@@ -345,5 +375,6 @@ Return { "conjugations": { tense: { cell: { "he": the form in ${label} script${/
 - past: 1s, 2ms, 2fs, 3ms, 3fs, 1p, 2mp, 2fp, 3p
 - present: ms, fs, mp, fp (masculine/feminine singular/plural)
 - future: 1s, 2ms, 2fs, 3ms, 3fs, 1p, 2p, 3p (modern common-gender plurals)
-- imperative: ms, fs, p
-(1/2/3 = person, m/f = gender, s/p = singular/plural.)${translitRules}`;
+- imperative: ms, fs, p${/hebrew/i.test(label) ? " (leave imperative out for pual and hufal, which have none)" : ""}
+(1/2/3 = person, m/f = gender, s/p = singular/plural.)
+Each "he" is the verb form alone: one word, no pronoun, no prefix particle.${translitRules}`;

@@ -5,7 +5,9 @@ import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.t
 import {
   conjugationRequest, deckSentence, deckVideoTitle, grammarChips, hasSavedWord, highlightParts, isVerbCard,
   knownAnalysisFromCards, otherOccurrences, pickOccurrence, seenSlots, verbForms, wordVideoIds,
+  findVideoSentence, usedSlot,
 } from "./verbCard.ts";
+import { LEHANIACH } from "./testTables.ts";
 
 const F1 = { surface: "שהנחת", tense: "past", person: 2, gender: "m", number: "sg", sentence: "ולפני שהנחת את הספר", video_id: "v1", video_title: "Song 1", added_at: "2026-10-16T10:00:00Z", phonetic: "shehenachta", translation: "that you put", prefix: "ש", form: "הנחת" } as any;
 const F2 = { surface: "הנחתי", tense: "past", person: 1, number: "sg", sentence: "הנחתי לך", video_id: "v2", video_title: "Song 2", added_at: "2026-10-16T12:00:00Z" } as any;
@@ -55,6 +57,40 @@ Deno.test("highlightParts: the exact word, with nikud and punctuation ignored", 
   assertEquals(highlightParts("וכשהנחת אותו", "שהנחת").filter((x) => x.hit).map((x) => x.text), ["וכשהנחת"]);
   assertEquals(highlightParts("אין כאן כלום", "שהנחת").some((x) => x.hit), false);
   assertEquals(highlightParts("", "x"), []);
+});
+
+Deno.test("highlightParts: never a partial match inside another word", () => {
+  // הלך must not mark לך ("to you") or ללכת.
+  assertEquals(highlightParts("אמרתי לך ללכת כי הוא הלך", "הלך").filter((x) => x.hit).map((x) => x.text), ["הלך"]);
+  assertEquals(highlightParts("אמרתי לך ללכת", "הלך").some((x) => x.hit), false);
+  // בת is not marked inside בתוך; the real one is.
+  assertEquals(highlightParts("בתוך הבית יש בת", "בת").filter((x) => x.hit).map((x) => x.text), ["בת"]);
+  // The exact word is preferred over the same letters with a particle.
+  assertEquals(highlightParts("רץ ורץ", "רץ").filter((x) => x.hit).map((x) => x.text), ["רץ"]);
+  // A form the sentence doesn't contain is not guessed at.
+  assertEquals(highlightParts("הנחת את הספר", "שהנחת").some((x) => x.hit), false);
+});
+
+Deno.test("usedSlot: the analysis' cell when it is the form; otherwise the single cell spelled like it", () => {
+  assertEquals(usedSlot(LEHANIACH, F1), { tense: "past", slot: "2ms" });
+  // Same letters as 2fs (הנחת): the grammar of the sentence decides.
+  assertEquals(usedSlot(LEHANIACH, { ...F1, gender: "f" }), { tense: "past", slot: "2fs" });
+  // Analysis said future, but the form is past 1s: the table's cell wins.
+  assertEquals(usedSlot(LEHANIACH, { surface: "הנחתי", form: "הנחתי", tense: "future", person: 1, number: "sg" }), { tense: "past", slot: "1s" });
+  // Plene spelling in the sentence (מניחים) still finds מַנִּיחִים; analysis without gender, table decides.
+  assertEquals(usedSlot(LEHANIACH, { surface: "שמניחים", tense: "present", number: "pl" }), { tense: "present", slot: "mp" });
+  // No table yet: the analysis.
+  assertEquals(usedSlot(null, F1), { tense: "past", slot: "2ms" });
+  assertEquals(usedSlot(LEHANIACH, null), null);
+});
+
+Deno.test("findVideoSentence: the sentence where it is a word, not letters inside another word", () => {
+  const norm = (t: string) => String(t || "").replace(/[\u0591-\u05C7]/g, "").replace(/[.,!?״"']/g, "").trim();
+  const segs = [{ hebrew: "בתוך הבית" }, { hebrew: "יש לי בת." }, { text: "שאני הולך" }, { hebrew: "אני כאן" }];
+  assertEquals(findVideoSentence(segs, "בת", norm)?.hebrew, "יש לי בת.");
+  assertEquals(findVideoSentence(segs, "אני", norm)?.text, "שאני הולך");   // with ש attached: the same word
+  assertEquals(findVideoSentence(segs, "הול", norm)?.text, "שאני הולך");   // only inside a word: as before
+  assertEquals(findVideoSentence(segs, "", norm), undefined);
 });
 
 Deno.test("hasSavedWord: as a word (as before) or as a form of a verb card", () => {
