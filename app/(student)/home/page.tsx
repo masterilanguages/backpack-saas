@@ -4818,6 +4818,12 @@ function DiscoveryPanel({
   finished?: { title: string; actions: { label: string; go: () => void }[] };
   recommendedWords: any[];
 }) {
+  // A newly opened word is brought into view inside the sentence area (the controls below don't move).
+  const popupRef = useRef<HTMLDivElement>(null);
+  const openKey = wordPopup && String(wordPopup.key || "").startsWith(`d${idx}_`) ? String(wordPopup.key) : null;
+  useEffect(() => {
+    if (openKey) popupRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [openKey]);
   if (loading) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10">
@@ -4850,7 +4856,10 @@ function DiscoveryPanel({
   const tappable = mode === "discovery";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex min-h-0 flex-1 flex-col px-5 pb-3">
+      {/* Title, sentence and word popup scroll here if they don't fit; the
+          scrubber and Play below stay put, so opening a word never moves them. */}
+      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {/* title + position */}
       <div className="mt-4 flex flex-shrink-0 items-end justify-between gap-3">
         <div className="min-w-0">
@@ -4937,7 +4946,10 @@ function DiscoveryPanel({
 
       {/* tapped word: meaning at once + add to Backpack */}
       {tappable && popupOpen && (
-        <div className="mt-3 flex flex-shrink-0 items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-sm">
+        <div
+          ref={popupRef}
+          className="mt-3 flex flex-shrink-0 items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-sm"
+        >
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
               <span dir={rtl ? "rtl" : "ltr"} className="text-lg font-bold text-slate-900">{wordPopup.clean}</span>
@@ -4965,6 +4977,8 @@ function DiscoveryPanel({
           <button onClick={onClosePopup} aria-label="Close" className="flex-shrink-0 p-1 text-slate-400"><X className="h-4 w-4" /></button>
         </div>
       )}
+
+      </div>
 
       {/* scrubber: one tick per sentence, the current one fills as it plays */}
       <div className="mt-4 flex-shrink-0">
