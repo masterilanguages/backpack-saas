@@ -11,6 +11,7 @@ import { Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { languageLabel, nativeScriptInstruction, isRTLText } from "@/lib/language";
+import { checkLater, markRow } from "@/lib/saveWordDeps";
 
 /** Split free text into distinct words/phrases: newlines, commas, semicolons. */
 function parseEntries(text) {
@@ -99,7 +100,7 @@ Return JSON: { "items": [ { "input", "word", "phonetic", "translation" } ] }`,
         // Match by echoed input, falling back to position.
         const info = infoByInput.get(entry.toLowerCase()) || result?.items?.[i] || {};
         if (isDuplicate(entry, info)) { dupes++; continue; }
-        const row = await base44.entities.Word.create({
+        const row = await base44.entities.Word.create(markRow({
           word: info.word || entry,
           translation: info.translation || "",
           phonetic: info.phonetic || entry,
@@ -107,9 +108,11 @@ Return JSON: { "items": [ { "input", "word", "phonetic", "translation" } ] }`,
           language,
           times_practiced: 0,
           mastered: false,
-        });
+        }));
         created.push(row);
       }
+      // Verbs on: all of them checked together in the background.
+      checkLater(created, () => onAdded?.([]));
 
       if (created.length > 0) {
         toast.success(`${created.length} card${created.length > 1 ? "s" : ""} added! 🎒`);

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { languageLabel, nativeScriptInstruction } from "@/lib/language";
+import { checkLater, markRow } from "@/lib/saveWordDeps";
 
 /**
  * Accepts a pasted list of words (one per line, or comma-separated).
@@ -87,6 +88,7 @@ export default function PasteWordsList({ userProfile, onWordsAdded }) {
     // Create all words at level 0, skipping duplicates
     let added = 0;
     let skipped = 0;
+    const createdRows = [];
     const lang = userProfile?.language || "hebrew";
     for (const w of parsed) {
       if (!w.phonetic) continue;
@@ -94,7 +96,7 @@ export default function PasteWordsList({ userProfile, onWordsAdded }) {
         // Scope dedup to this user's own words (word_sel is world-readable)
         const existing = await base44.entities.Word.filter({ phonetic: w.phonetic, created_by: me?.email });
         if (existing.length > 0) { skipped++; continue; }
-        await base44.entities.Word.create({
+        createdRows.push(await base44.entities.Word.create(markRow({
           word: w.hebrew || w.phonetic,
           translation: w.translation || w.phonetic,
           phonetic: w.phonetic,
@@ -103,13 +105,15 @@ export default function PasteWordsList({ userProfile, onWordsAdded }) {
           times_practiced: 0,
           mastered: false,
           vocab_level: 0,
-        });
+        })));
         added++;
       } catch (e) {
         console.error("Failed to add word:", w.phonetic, e);
       }
     }
 
+    // Verbs on: all of them checked together in the background.
+    checkLater(createdRows, () => onWordsAdded?.());
     const skippedMsg = skipped > 0 ? ` (${skipped} duplicate${skipped > 1 ? "s" : ""} skipped)` : "";
     toast.success(`${added} word${added !== 1 ? "s" : ""} added to New cards!${skippedMsg} ✨`);
     setText("");

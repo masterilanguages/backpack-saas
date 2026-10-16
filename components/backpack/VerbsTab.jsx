@@ -6,6 +6,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud, needsTransliteration } from "@/lib/language";
+import VerbDetails from "./VerbDetails";
+import { isVerbCard } from "@/lib/verbCard";
 
 // Detect if a word is likely a verb by phonetic pattern
 function looksLikeVerb(word) {
@@ -205,7 +207,8 @@ ${valueInstruction}`,
   const toggleExpand = async (word) => {
     const isExpanded = expanded[word.id];
     setExpanded(prev => ({ ...prev, [word.id]: !isExpanded }));
-    if (!isExpanded && !word.verb_conjugations && !localConjugations[word.id] && !generating[word.id]) {
+    // Verb cards (one per infinitive) use the shared table in VerbDetails.
+    if (!isExpanded && !isVerbCard(word) && !word.verb_conjugations && !localConjugations[word.id] && !generating[word.id]) {
       await generateConjugations(word);
     }
   };
@@ -239,7 +242,7 @@ ${valueInstruction}`,
                 )}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                {conj && <span className="text-[10px] text-green-500 font-semibold">✓ conjugated</span>}
+                {conj && !isVerbCard(word) && <span className="text-[10px] text-green-500 font-semibold">✓ conjugated</span>}
                 {generating[word.id] ? (
                   <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
                 ) : isExpanded ? (
@@ -252,7 +255,9 @@ ${valueInstruction}`,
 
             {isExpanded && (
               <div className="px-4 pb-4">
-                {generating[word.id] ? (
+                {isVerbCard(word) ? (
+                  <VerbDetails word={word} language={word.language || "hebrew"} />
+                ) : generating[word.id] ? (
                   <div className="flex items-center justify-center gap-2 py-4">
                     <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
                     <span className="text-slate-400 text-sm">Generating conjugations...</span>

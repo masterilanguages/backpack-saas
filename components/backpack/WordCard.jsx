@@ -872,6 +872,13 @@ export default function WordCard({
         </div>
       )}
 
+      {/* Verb card (one per infinitive): the form met, its grammar, conjugations */}
+      {isVerbCard(word) && (
+        <div className="px-2 pt-2" onClick={e => e.stopPropagation()}>
+          <VerbDetails word={word} language={lang} compact showSentence={false} hideMeaning={!showingEnglish} />
+        </div>
+      )}
+
 
 
       {/* Example sentence */}

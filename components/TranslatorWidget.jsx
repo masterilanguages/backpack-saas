@@ -9,6 +9,7 @@ import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { languageLabel, usesNikud, isRTLLanguage, isRTLText, nativeScriptInstruction } from "@/lib/language";
+import { checkLater, markRow } from "@/lib/saveWordDeps";
 
 export default function TranslatorWidget() {
   const queryClient = useQueryClient();
@@ -40,8 +41,9 @@ export default function TranslatorWidget() {
   }, []);
 
   const createWordMutation = useMutation({
-    mutationFn: (wordData) => base44.entities.Word.create(wordData),
-    onSuccess: () => {
+    mutationFn: (wordData) => base44.entities.Word.create(markRow(wordData)),
+    onSuccess: (created) => {
+      checkLater(created, () => queryClient.invalidateQueries({ queryKey: ["wordRatings"] }));
       queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
       toast.success("Added to backpack! 🎒");
       setWordAdded(true);

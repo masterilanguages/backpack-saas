@@ -33,7 +33,7 @@ import WordCard from "@/components/backpack/WordCard";
 import VerbDetails from "@/components/backpack/VerbDetails";
 import { deckSentence, deckVideoTitle, hasSavedWord, isVerbCard, pickOccurrence, wordVideoIds } from "@/lib/verbCard";
 import { savePopupWord as saveVideoPopupWord, saveRecommendedWords } from "@/lib/videoWordSave";
-import { saveWordDeps, saveWordOptions, verbFormsEnabled } from "@/lib/saveWordDeps";
+import { checkLater, markRow, runVerbChecks, saveWordDeps, saveWordOptions, useResumeVerbChecks } from "@/lib/saveWordDeps";
 import AddWordsSheet from "@/components/home/AddWordsSheet";
 import PhotoWordCapture from "@/components/home/PhotoWordCapture";
 import { stripCaptionNoise } from "@/lib/transcription";
@@ -924,9 +924,10 @@ Return JSON with:
   };
 
   const handleAddWordFromSentence = async (wordText: any, meaning: any, hebrew: any) => {
-    const exists = (words as any[]).find((w) => (w.phonetic || w.word)?.toLowerCase() === wordText.toLowerCase());
+    const exists = (words as any[]).find((w) => (w.phonetic || w.word)?.toLowerCase() === wordText.toLowerCase())
+      || (hebrew && hasSavedWord(words as any[], hebrew));
     if (exists) { toast.info("Already in backpack!"); return; }
-    await base44.entities.Word.create({
+    const created = await base44.entities.Word.create(markRow({
       word: hebrew || wordText,
       translation: meaning,
       phonetic: wordText,
@@ -934,7 +935,8 @@ Return JSON with:
       language,
       times_practiced: 0,
       mastered: false,
-    });
+    }));
+    checkLater(created, () => queryClient.invalidateQueries({ queryKey: ["wordRatings"] }));
     queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
     toast.success(`"${wordText}" added! 🎒`);
   };
@@ -968,6 +970,8 @@ Return JSON with:
   // Words still waiting for the Learn/Skip decision, or skipped, aren't studied.
   const inStudy = (w: any) => w.learn_status !== "new" && w.learn_status !== "skipped";
   const newWords = useMemo(() => (words as any[]).filter((w) => w.learn_status === "new"), [words]);
+  // Words still waiting for their verb check (tab closed, slow analysis).
+  useResumeVerbChecks(words as any[], () => queryClient.invalidateQueries({ queryKey: ["wordRatings"] }));
   const [triageOpen, setTriageOpen] = useState(false);
 
   const backpackDecks = useMemo(() => {
@@ -2200,13 +2204,18 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
       // the student already has) — lib/videoWordSave. With verbs on (one AI
       // call for the whole lesson) it runs in the background, so the next
       // episode doesn't wait for it.
-      const savingWords = saveRecommendedWords(
-        { recommended: recommendedWords, words: words as any[], segments: discSegments, language: vidLang, video: shellVideo, norm: normHe },
-        saveWordDeps, saveWordOptions,
-      )
-        .then(({ added }) => { if (added) queryClient.invalidateQueries({ queryKey: ["wordRatings"] }); })
-        .catch((e) => console.error("[chapter] could not add recommended words", e));
-      if (!verbFormsEnabled(vidLang)) await savingWords;
+      try {
+        const { added, pendingIds } = await saveRecommendedWords(
+          { recommended: recommendedWords, words: words as any[], segments: discSegments, language: vidLang, video: shellVideo, norm: normHe },
+          saveWordDeps, saveWordOptions,
+        );
+        if (added) queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
+        // Verbs on: the words are already saved; their check (one call for
+        // the lesson) runs in the background and survives a closed tab.
+        if (pendingIds.length) runVerbChecks(pendingIds, (r) => { if (r?.checked) queryClient.invalidateQueries({ queryKey: ["wordRatings"] }); });
+      } catch (e) {
+        console.error("[chapter] could not add recommended words", e);
+      }
       // An episode: straight on to the next episode's sentences in this same
       // player (finishing this one is what opens it), first sentence waiting
       // for Play. The last episode shows its "what next" card.
@@ -2288,6 +2297,8 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
         saveWordDeps, saveWordOptions,
       );
       const savedAs = res.analysis && res.word?.word ? { word: res.word.word, translation: res.word.translation || "" } : null;
+      // Analysis too slow / failed: saved as before, checked in the background.
+      checkLater(res.word, () => queryClient.invalidateQueries({ queryKey: ["wordRatings"] }));
       queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
       setWordPopup((p: any) => (p ? { ...p, saving: false, added: true, savedAs } : p));
       setMood("happy");

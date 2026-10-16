@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { languageLabel, isRTLText, needsTransliteration } from "@/lib/language";
 import { generateLessonAudio } from "@/lib/audio/lessonAudio";
 import type { LessonVocab } from "@/lib/journal/generateLesson";
+import { checkLater, markRow } from "@/lib/saveWordDeps";
 
 // base44 shim entities are built dynamically; TS can't see entity keys. Cast to
 // any for ergonomic access — the runtime shape is guaranteed by the shim.
@@ -127,7 +128,7 @@ Return: "translation" (English meaning), "transliteration" (${
     if (!info) return;
     setSaving(true);
     try {
-      await base44.entities.Word.create({
+      const created = await base44.entities.Word.create(markRow({
         word,
         translation: info.translation,
         phonetic: info.transliteration || word,
@@ -141,7 +142,8 @@ Return: "translation" (English meaning), "transliteration" (${
         source_library_lesson_id: libraryLessonId,
         sentence_context: sentenceContext,
         word_status: "saved",
-      });
+      }));
+      checkLater(created);
       setSaved(true);
       toast.success("Added to Backpack 🎒");
     } catch (e) {

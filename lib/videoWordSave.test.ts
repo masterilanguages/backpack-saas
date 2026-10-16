@@ -5,6 +5,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { clearVerbAnalysisCache, type SaveWordDeps } from "./saveWord.ts";
 import { savePopupWord, saveRecommendedWords } from "./videoWordSave.ts";
+import { processVerbChecks, type VerbCheckDeps } from "./verbChecks.ts";
 import { mergeOccurrence } from "./verbs.ts";
 
 const VIDEO = { video_id: "vid-1", title: "Song 1" };
@@ -15,7 +16,7 @@ const norm = (t: string) => String(t || "").replace(/[֑-ׇ]/g, "").replace(/[.,
 const VERBS: Record<string, any> = {
   "שהנחת": { is_verb: true, lemma: "לְהַנִּיחַ", lemma_phonetic: "lehaniach", lemma_meaning: "to put", binyan: "hifil", tense: "past", person: 2, gender: "m", number: "sg", prefix: "ש", form: "הנחת", phonetic: "shehenachta", translation: "that you put" },
   "הנחתי": { is_verb: true, lemma: "לְהַנִּיחַ", lemma_phonetic: "lehaniach", lemma_meaning: "to put", binyan: "hifil", tense: "past", person: 1, number: "sg", form: "הנחתי", phonetic: "hinachti", translation: "I put" },
-  "אוהבת": { is_verb: true, lemma: "לֶאֱהֹב", lemma_phonetic: "le'ehov", lemma_meaning: "to love", binyan: "paal", tense: "present", gender: "f", number: "sg", form: "אוהבת", phonetic: "ohevet", translation: "loves" },
+  "אוהבת": { is_verb: true, lemma: "לֶאֱהֹב", lemma_plain: "לאהוב", lemma_phonetic: "le'ehov", lemma_meaning: "to love", binyan: "paal", tense: "present", gender: "f", number: "sg", form: "אוהבת", phonetic: "ohevet", translation: "loves" },
 };
 
 /** Fake model: single questions name the word in quotes; batches number them. */
@@ -93,7 +94,7 @@ test("popup · flag on, a conjugated verb: the infinitive's card, keeping the fo
   assertEquals(out.outcome, "verb-created");
   assertEquals(calls.created.length, 0);
   const { card, occ } = calls.verbs[0];
-  assertEquals([card.word, card.phonetic, card.translation, card.lemma_key, card.learn_status], ["לְהַנִּיחַ", "lehaniach", "to put", "להנח|hifil", "new"]);
+  assertEquals([card.word, card.phonetic, card.translation, card.lemma_key, card.learn_status], ["לְהַנִּיחַ", "lehaniach", "to put", "להניח|hifil", "new"]);
   assertEquals([occ.surface, occ.sentence, occ.video_id, occ.video_title, occ.tense, occ.person], ["שהנחת", S1, "vid-1", "Song 1", "past", 2]);
 });
 
@@ -103,7 +104,7 @@ test("popup · the same form in another song: no AI call, joins the card with th
   const myWords = [...cards.values()];
   const out = await savePopupWord({ clean: "שֶׁהֵנַחְתָּ", translation: "that you left", sentence: "שהנחת לי" }, { language: "hebrew", video: VIDEO2, words: myWords }, deps, ON);
   assertEquals([out.outcome, out.aiCalls, calls.single.length], ["verb-merged", 0, 1]);
-  const forms = cards.get("להנח|hifil").verb_forms;
+  const forms = cards.get("להניח|hifil").verb_forms;
   assertEquals(forms.map((f: any) => [f.video_id, f.sentence]), [["vid-1", S1], ["vid-2", "שהנחת לי"]]);
   assertEquals(forms[1].translation, "that you left"); // this sentence's meaning, not the old one
 });
@@ -141,54 +142,125 @@ function legacyRecommendedRows() {
 }
 const ctx = (words: any[] = HAVE) => ({ recommended: RECOMMENDED, words, segments: SEGMENTS, language: "hebrew", video: VIDEO, norm });
 
+/**
+ * The database side of the later check, as in migration 2200: claim hands
+ * pending rows out once; resolve converts a row into its infinitive's card,
+ * or adds the form to the card the student has (dropping the untouched row).
+ */
+function checker(f: ReturnType<typeof fakes>) {
+  const rows = new Map<string, any>();
+  const deps = f.deps;
+  const create = deps.createWord;
+  deps.createWord = async (row) => { const r = await create(row); rows.set(r.id, { ...r }); return r; };
+  const check: VerbCheckDeps = {
+    async claim(ids) {
+      const got = [...rows.values()].filter((r) => r.verb_check === "pending" && (!ids || ids.includes(r.id)));
+      for (const r of got) r.verb_check = "checking";
+      return got.map((r) => ({ ...r }));
+    },
+    async resolve(id, card, occ) {
+      const r = rows.get(id);
+      if (!r || r.verb_check !== "checking") return { action: "skipped" };
+      if (!card) { r.verb_check = "done"; return { action: "not-verb", word: r }; }
+      const have = f.cards.get(card.lemma_key);
+      if (have) {
+        have.verb_forms = mergeOccurrence(have.verb_forms, occ!);
+        if (!r.times_practiced && !r.image_url) { rows.delete(id); return { action: "merged", word: have }; }
+        r.verb_check = "done"; return { action: "merged-kept", word: have };
+      }
+      Object.assign(r, { word: card.word, phonetic: card.phonetic, translation: card.translation, lemma_key: card.lemma_key, verb_forms: [occ], is_verb: true, verb_check: "done" });
+      f.cards.set(card.lemma_key, r);
+      return { action: "converted", word: r };
+    },
+    analyze: deps.analyze, label: deps.label, translitRules: deps.translitRules, log: () => {},
+  };
+  return { rows, check };
+}
+
 test("recommended · flag off: the same rows as before, in order, no AI call", async () => {
   const { deps, calls } = fakes();
   const out = await saveRecommendedWords(ctx(), deps, OFF);
   assertEquals(calls.created, legacyRecommendedRows());
-  assertEquals([out.added, out.aiCalls, calls.batch.length + calls.single.length], [4, 0, 0]);
+  assertEquals([out.added, out.aiCalls, out.pendingIds.length, calls.batch.length + calls.single.length], [4, 0, 0, 0]);
 });
 
-test("recommended · flag on: ONE call for the whole lesson; verbs become cards, the rest as before", async () => {
+test("recommended · flag on: saved at once as before (marked), no AI call while saving", async () => {
+  const { deps, calls } = fakes();
+  const out = await saveRecommendedWords(ctx(), deps, ON);
+  assertEquals(calls.created, legacyRecommendedRows().map((r) => ({ ...r, verb_check: "pending" })));
+  assertEquals([out.added, out.aiCalls, out.pendingIds.length, calls.batch.length + calls.single.length], [4, 0, 4, 0]);
+});
+
+test("recommended · then ONE call checks the whole lesson: verbs become cards, the rest stay as saved", async () => {
+  const f = fakes();
+  const db = checker(f);
+  const out = await saveRecommendedWords(ctx(), f.deps, ON);
+  const r = await processVerbChecks(db.check, ON, out.pendingIds);
+  assertEquals([r.aiCalls, f.calls.batch.length, f.calls.single.length, r.checked], [1, 1, 0, 4]);
+  assertEquals(r.actions, { converted: 2, "not-verb": 2 });
+  assertEquals([...f.cards.keys()].sort(), ["לאהוב|paal", "להניח|hifil"]);
+  const noun = [...db.rows.values()].find((x) => x.word === "נשמה");
+  assertEquals([noun.translation, noun.example_sentence, noun.verb_check], ["soul", "יש נשמה בעולם", "done"]);
+  const verb = f.cards.get("להניח|hifil");
+  assertEquals([verb.word, verb.verb_forms[0].surface, verb.verb_forms[0].sentence, verb.verb_forms[0].video_id], ["לְהַנִּיחַ", "שהנחת", S1, "vid-1"]);
+});
+
+test("recommended · the tab closed before the check: the words are kept, the next visit checks them", async () => {
+  const f = fakes();
+  const db = checker(f);
+  await saveRecommendedWords(ctx(), f.deps, ON);          // …and the tab is closed here
+  assertEquals([...db.rows.values()].filter((x) => x.verb_check === "pending").length, 4);
+  clearVerbAnalysisCache();                                // a new visit: a new session
+  const r = await processVerbChecks(db.check, ON, null);  // useResumeVerbChecks
+  assertEquals([r.aiCalls, r.checked], [1, 4]);
+  assertEquals((await processVerbChecks(db.check, ON, null)).aiCalls, 0); // nothing left
+});
+
+test("recommended · two tabs checking at once: each word is claimed once, one call in all", async () => {
+  const f = fakes();
+  const db = checker(f);
+  const out = await saveRecommendedWords(ctx(), f.deps, ON);
+  const [a, b] = await Promise.all([processVerbChecks(db.check, ON, out.pendingIds), processVerbChecks(db.check, ON, out.pendingIds)]);
+  assertEquals(a.checked + b.checked, 4);
+  assertEquals(f.calls.batch.length, 1);
+});
+
+test("recommended · the check fails: nothing is lost, the words stay as saved and are retried later", async () => {
+  const f = fakes({ failBatch: true });
+  const db = checker(f);
+  const out = await saveRecommendedWords(ctx(), f.deps, ON);
+  const r = await processVerbChecks(db.check, ON, out.pendingIds);
+  assertEquals([r.aiCalls, r.checked, f.calls.single.length], [1, 0, 0]);
+  assertEquals([...db.rows.values()].map((x) => x.word).sort(), ["אוהבת", "נשמה", "ספר", "שהנחת"]);
+  assert([...db.rows.values()].every((x) => x.verb_check === "checking")); // claimable again after 3 min (SQL)
+});
+
+test("recommended · a word the model skipped is not asked alone and not marked done (retried later)", async () => {
+  const f = fakes({ dropBatchItem: "אוהבת" });
+  const db = checker(f);
+  const out = await saveRecommendedWords(ctx(), f.deps, ON);
+  const r = await processVerbChecks(db.check, ON, out.pendingIds);
+  assertEquals([f.calls.batch.length, f.calls.single.length, r.checked], [1, 0, 3]);
+  assertEquals([...db.rows.values()].find((x) => x.word === "אוהבת").verb_check, "checking");
+});
+
+test("recommended · forms already on the student's cards join them at once, without a call", async () => {
   const { deps, calls, cards } = fakes();
-  const out = await saveRecommendedWords(ctx(), deps, ON);
-  assertEquals([out.added, out.aiCalls, calls.batch.length, calls.single.length], [4, 1, 1, 0]);
-  for (const w of ["שהנחת", "אוהבת", "נשמה", "ספר"]) assert(calls.batch[0].includes(`"${w}"`));
-  assert(!calls.batch[0].includes(`"שלום"`));
-  const legacy = legacyRecommendedRows();
-  assertEquals(calls.created, legacy.filter((r) => r.word === "נשמה" || r.word === "ספר"));
-  assertEquals([...cards.keys()].sort(), ["לאהב|paal", "להנח|hifil"]);
-  assertEquals(cards.get("להנח|hifil").verb_forms[0].sentence, S1);
+  const verbCard = { word: "לְהַנִּיחַ", phonetic: "lehaniach", translation: "to put", lemma_key: "להניח|hifil", verb_forms: [{ surface: "שהנחת", tense: "past", person: 2, gender: "m", number: "sg", video_id: "vid-0" }] };
+  const out = await saveRecommendedWords({ ...ctx([verbCard]), recommended: [RECOMMENDED[0]] }, deps, ON);
+  assertEquals([out.added, out.pendingIds.length, calls.batch.length + calls.single.length], [1, 0, 0]);
+  assertEquals(cards.get("להניח|hifil").verb_forms[0].video_id, "vid-1");
 });
 
-test("recommended · the batch fails: one call only, every word saved as before", async () => {
-  const { deps, calls } = fakes({ failBatch: true });
-  const out = await saveRecommendedWords(ctx(), deps, ON);
-  assertEquals([out.added, out.aiCalls, calls.single.length], [4, 1, 0]);
-  assertEquals(calls.created, legacyRecommendedRows());
-});
-
-test("recommended · a word the model skipped is saved as before, without a second call", async () => {
-  const { deps, calls } = fakes({ dropBatchItem: "אוהבת" });
-  await saveRecommendedWords(ctx(), deps, ON);
-  assertEquals([calls.batch.length, calls.single.length], [1, 0]);
-  assert(calls.created.some((r) => r.word === "אוהבת"));
-});
-
-test("recommended · forms already on the student's cards are not sent to the model", async () => {
-  const { deps, calls } = fakes();
-  const verbCard = { word: "לְהַנִּיחַ", phonetic: "lehaniach", translation: "to put", lemma_key: "להנח|hifil", verb_forms: [{ surface: "שהנחת", tense: "past", person: 2, gender: "m", number: "sg", video_id: "vid-0" }] };
-  await saveRecommendedWords(ctx([...HAVE, verbCard]), deps, ON);
-  assert(!calls.batch[0].includes(`"שהנחת"`));
-  const onlyKnown = { ...ctx([verbCard]), recommended: [RECOMMENDED[0]] };
-  const again = await saveRecommendedWords(onlyKnown, deps, ON);
-  assertEquals([again.aiCalls, calls.batch.length], [0, 1]);
-});
-
-test("recommended · then tapping one of those words in the same sentence costs no call", async () => {
-  const { deps, calls } = fakes();
-  await saveRecommendedWords(ctx(), deps, ON);
-  const out = await savePopupWord({ clean: "אוהבת", translation: "loves", sentence: "את אוהבת אותי" }, { language: "hebrew", video: VIDEO, words: [] }, deps, ON);
-  assertEquals([out.aiCalls, calls.single.length], [0, 0]);
+test("popup · an analysis that timed out is checked later from the session cache: no second call", async () => {
+  const f = fakes();
+  const db = checker(f);
+  const slow = f.deps.analyze;
+  f.deps.analyze = async (prompt, schema) => { await new Promise((r) => setTimeout(r, 60)); return slow(prompt, schema); };
+  const out = await savePopupWord({ clean: "שהנחת", translation: "that you put", sentence: S1 }, { language: "hebrew", video: VIDEO, words: [] }, f.deps, { ...ON, timeoutMs: 10 });
+  assertEquals(out.outcome, "analysis-failed");
+  const r = await processVerbChecks(db.check, ON, [out.word.id]);
+  assertEquals([r.aiCalls, f.calls.single.length, f.calls.batch.length, r.actions.converted], [0, 1, 0, 1]);
 });
 
 test("recommended · a failed insert skips that word, as before", async () => {

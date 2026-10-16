@@ -35,6 +35,7 @@ export default function VerbDetails({
   language = "hebrew",
   showSentence = true,
   hideMeaning = false,
+  compact = false,
   loadConjugations = defaultLoad,
   className = "",
 }: {
@@ -46,6 +47,8 @@ export default function VerbDetails({
   showSentence?: boolean;
   /** Study mode before the student taps to reveal: no meaning. */
   hideMeaning?: boolean;
+  /** Small grid tiles (/library): tighter, no other forms list. */
+  compact?: boolean;
   loadConjugations?: LoadConjugations;
   className?: string;
 }) {
@@ -60,19 +63,19 @@ export default function VerbDetails({
 
   return (
     <div className={`w-full text-left ${className}`}>
-      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
+      <div className={`rounded-2xl border border-indigo-100 bg-indigo-50 ${compact ? "p-2" : "p-3"}`}>
         <p className="truncate text-[10px] font-bold uppercase tracking-wider text-indigo-400">
           📺 From the video{occ.video_title ? ` · ${occ.video_title}` : ""}
         </p>
         <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5" dir={rtl ? "rtl" : "ltr"}>
-          <span className="text-xl font-extrabold leading-tight text-indigo-950">{occ.surface}</span>
-          {occ.phonetic && <span dir="ltr" className="text-sm italic text-indigo-500">{occ.phonetic}</span>}
+          <span className={`${compact ? "text-base" : "text-xl"} font-extrabold leading-tight text-indigo-950`}>{occ.surface}</span>
+          {occ.phonetic && <span dir="ltr" className={`${compact ? "text-xs" : "text-sm"} italic text-indigo-500`}>{occ.phonetic}</span>}
         </div>
         {occ.translation && !hideMeaning && <p className="mt-0.5 text-sm font-medium text-slate-700">“{occ.translation}”</p>}
         {chips.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {chips.map((c) => (
-              <span key={c} className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-indigo-700 ring-1 ring-indigo-100">{c}</span>
+              <span key={c} className={`rounded-full bg-white ${compact ? "px-1.5 text-[10px]" : "px-2 text-[11px]"} py-0.5 font-semibold text-indigo-700 ring-1 ring-indigo-100`}>{c}</span>
             ))}
           </div>
         )}
@@ -85,7 +88,7 @@ export default function VerbDetails({
             )}
           </p>
         )}
-        {others.length > 0 && (
+        {others.length > 0 && !compact && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5" onPointerDownCapture={stop}>
             <span className="text-[11px] text-slate-400">Also seen as</span>
             {others.map((o) => (
@@ -101,12 +104,12 @@ export default function VerbDetails({
           </div>
         )}
       </div>
-      <ConjugationPanel word={word} occ={occ} language={language} load={loadConjugations} />
+      <ConjugationPanel word={word} occ={occ} language={language} load={loadConjugations} compact={compact} />
     </div>
   );
 }
 
-function ConjugationPanel({ word, occ, language, load }: { word: any; occ: VerbOccurrence; language: string; load: LoadConjugations }) {
+function ConjugationPanel({ word, occ, language, load, compact = false }: { word: any; occ: VerbOccurrence; language: string; load: LoadConjugations; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const used = slotFor(occ);
   const [tab, setTab] = useState<string>(used?.tense || "past");
@@ -133,7 +136,7 @@ function ConjugationPanel({ word, occ, language, load }: { word: any; occ: VerbO
       <button
         onClick={(e) => { stop(e); setOpen((v) => !v); }}
         aria-expanded={open}
-        className="flex w-full items-center justify-between rounded-xl border border-indigo-100 bg-white px-3 py-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50/60"
+        className={`flex w-full items-center justify-between rounded-xl border border-indigo-100 bg-white ${compact ? "px-2 py-1 text-xs" : "px-3 py-2 text-sm"} font-bold text-indigo-600 hover:bg-indigo-50/60`}
       >
         <span>Conjugations</span>
         <span className={`text-xs transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
@@ -151,9 +154,9 @@ function ConjugationPanel({ word, occ, language, load }: { word: any; occ: VerbO
               </button>
             ))}
           </div>
-          <div className="mt-1 max-h-64 overflow-y-auto overscroll-contain">
+          <div className={`mt-1 ${compact ? "max-h-48" : "max-h-64"} overflow-y-auto overscroll-contain`}>
             {table ? (
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              <div className={`grid grid-cols-2 gap-1.5 ${compact ? "" : "sm:grid-cols-3"}`}>
                 {(CONJUGATION_SLOTS as any)[tab].map((s: string) => {
                   const c = cells[s];
                   const isUsed = used?.tense === tab && used.slot === s;

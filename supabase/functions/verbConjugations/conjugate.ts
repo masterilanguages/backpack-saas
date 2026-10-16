@@ -14,7 +14,7 @@
 
 import {
   CONJUGATION_SCHEMA, conjugationPrompt, hasConjugations, lemmaKey, normalizeBinyan,
-  parseConjugations, VERB_PROMPT_VERSION,
+  parseConjugations, plainSpelling, sameVerbLetters, VERB_PROMPT_VERSION,
 } from "../../../lib/verbs.ts";
 import { classifyLlmError, isAccountLlmError } from "../../../lib/llmErrors.ts";
 import { DailyLimitError, type LexiconRow, type LexiconStore } from "./store.ts";
@@ -31,6 +31,8 @@ export const SUPPORTED_LANGUAGES = ["hebrew"];
 
 export type ConjugateRequest = {
   language: string;
+  /** The card's key (from the full spelling). Must be the lemma's letters. */
+  lemma_key?: string;
   lemma: string;
   lemma_phonetic?: string;
   lemma_meaning?: string;
@@ -70,13 +72,20 @@ export function parseRequest(body: any): ConjugateRequest | string {
   if (!SUPPORTED_LANGUAGES.includes(language)) return `Conjugation tables are only made for: ${SUPPORTED_LANGUAGES.join(", ")}`;
   const lemma = clip(body?.lemma, 40);
   if (!lemma || !lemmaKey(lemma)) return "Provide the verb's infinitive (lemma)";
+  const binyan = normalizeBinyan(body?.binyan);
+  // The card's own key (made from the standard full spelling, lib/verbs
+  // keyOfAnalysis): only when it is the same verb's letters and binyan.
+  const given = clip(body?.lemma_key, 80);
+  const [base, keyBinyan = ""] = given.split("|");
+  const keyOk = !!given && plainSpelling(base) === base && sameVerbLetters(base, lemma) && keyBinyan === binyan;
   if (language === "hebrew" && !/^[א-ת֑-ׇ\s'"׳״-]+$/.test(lemma)) return "The lemma must be written in Hebrew letters";
   return {
     language,
+    lemma_key: keyOk ? given : undefined,
     lemma,
     lemma_phonetic: clip(body?.lemma_phonetic, 60) || undefined,
     lemma_meaning: clip(body?.lemma_meaning, 80) || undefined,
-    binyan: normalizeBinyan(body?.binyan) || undefined,
+    binyan: binyan || undefined,
     root: clip(body?.root, 20) || undefined,
   };
 }
@@ -89,7 +98,7 @@ const entryOf = (r: LexiconRow): LexiconEntry => ({
 export async function getConjugations(deps: ConjugateDeps, req: ConjugateRequest, requestedBy: string | null = null): Promise<ConjugateResult> {
   const { store } = deps;
   const lang = req.language;
-  const key = lemmaKey(req.lemma, req.binyan);
+  const key = req.lemma_key || lemmaKey(req.lemma, req.binyan);
   const tag = `[verbConjugations ${lang}:${key}]`;
   const maxAttempts = deps.maxAttempts ?? MAX_ATTEMPTS;
 
@@ -185,7 +194,7 @@ export type Caller = {
 export async function handleConjugationRequest(deps: ConjugateDeps, caller: Caller, body: any): Promise<{ status: number; body: any }> {
   const req = parseRequest(body);
   if (typeof req === "string") return { status: 400, body: { error: req } };
-  const key = lemmaKey(req.lemma, req.binyan);
+  const key = req.lemma_key || lemmaKey(req.lemma, req.binyan);
   if (!caller.admin && !(await caller.ownsVerb(req.language, key))) {
     return { status: 403, body: { error: "This verb is not in your Backpack" } };
   }

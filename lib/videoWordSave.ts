@@ -5,13 +5,14 @@
 // with it on, a conjugated verb becomes (or joins) its infinitive's card.
 //
 // AI use: a word the student already met as a form of a verb card reuses that
-// analysis (no call); recommended words are analyzed together (one call per
-// lesson, not one per word). The popup's own lookup and the chapter glosses
-// are not touched.
+// analysis (no call). Recommended words are saved at once as before, marked
+// 'pending', and analyzed together in the background by lib/verbChecks (one
+// call per lesson): closing the tab loses no word. The popup's own lookup and
+// the chapter glosses are not touched.
 //
 // Pure (dependencies passed in): `deno test --unstable-sloppy-imports lib/videoWordSave.test.ts`.
 
-import { analyzeWordsTogether, saveWordToBackpack, type SaveWordDeps, type SaveWordOptions, type SaveWordResult, type WordRow } from "./saveWord";
+import { markForVerbCheck, saveWordToBackpack, verbsEnabledFor, type SaveWordDeps, type SaveWordOptions, type SaveWordResult, type WordRow } from "./saveWord";
 import { knownAnalysisFromCards } from "./verbCard";
 
 export type VideoRef = { video_id?: string | null; title?: string | null } | null | undefined;
@@ -70,8 +71,8 @@ export async function saveRecommendedWords(
     norm: (t: string) => string;
   },
   deps: SaveWordDeps,
-  opts: SaveWordOptions & { batchTimeoutMs?: number },
-): Promise<{ added: number; aiCalls: number; results: SaveWordResult[] }> {
+  opts: SaveWordOptions,
+): Promise<{ added: number; aiCalls: number; results: SaveWordResult[]; pendingIds: string[] }> {
   const { norm } = ctx;
   const have = new Set(ctx.words.map((w: any) => norm(w.word || "")).filter(Boolean));
   const todo: { r: Recommended; row: WordRow; sentence: string | null }[] = [];
@@ -99,33 +100,27 @@ export async function saveRecommendedWords(
     });
   }
 
-  // Analyses: from the student's own verb cards, else one call for the rest.
-  const fromCards = todo.map((t) => knownAnalysisFromCards(ctx.words, t.r.hebrew || ""));
-  const askIdx = todo.map((_, i) => i).filter((i) => fromCards[i] === undefined);
-  const batch = await analyzeWordsTogether(
-    askIdx.map((i) => ({ surface: todo[i].r.hebrew || "", sentence: todo[i].sentence || "", language: ctx.language })),
-    deps, opts,
-  );
-  const known: any[] = fromCards.slice();
-  askIdx.forEach((i, n) => { known[i] = batch.results[n]; });
-
+  const verbs = verbsEnabledFor(ctx.language, opts);
   let added = 0;
   const results: SaveWordResult[] = [];
-  for (let i = 0; i < todo.length; i++) {
-    const t = todo[i];
+  const pendingIds: string[] = [];
+  for (const t of todo) {
     try {
-      const res = await saveWordToBackpack({
-        row: t.row,
-        surface: t.r.hebrew || "",
-        sentence: t.sentence,
-        // Never a second call per word: no answer (or a failed batch) = saved as today.
-        knownAnalysis: known[i] === undefined ? null : known[i],
-      }, deps, opts);
-      results.push(res);
+      // A form already on one of the student's verb cards: joins it now (no call).
+      const known = verbs ? knownAnalysisFromCards(ctx.words, t.r.hebrew || "") : undefined;
+      if (known !== undefined) {
+        results.push(await saveWordToBackpack({ row: t.row, surface: t.r.hebrew || "", sentence: t.sentence, knownAnalysis: known }, deps, opts));
+      } else {
+        // Saved at once as before; with verbs on, marked to be checked later.
+        const row = markForVerbCheck(t.row, opts);
+        const created = await deps.createWord(row);
+        results.push({ word: created, outcome: verbs ? "pending" : "plain", aiCalls: 0, analysis: null });
+        if (verbs && created?.id) pendingIds.push(String(created.id));
+      }
       added++;
     } catch (e) {
       deps.log?.("[chapter] could not add recommended word", { word: t.r, error: e });
     }
   }
-  return { added, aiCalls: batch.aiCalls, results };
+  return { added, aiCalls: 0, results, pendingIds };
 }

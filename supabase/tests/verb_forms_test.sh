@@ -142,7 +142,7 @@ check "production-like word table built" "3" "$(echo "select count(*) from word"
 echo "== 1. migration 2200"
 out=$(qs < supabase/migrations/2200_word_verb_forms.sql); check "2200 applies over existing rows (incl. duplicates)" "" "$out"
 out=$(qs < supabase/migrations/2200_word_verb_forms.sql); check "2200 applies twice (idempotent)" "" "$out"
-check "existing rows untouched: no lemma_key, no verb_forms" "3|0|0" "$(echo "select count(*)||'|'||count(lemma_key)||'|'||count(verb_forms) from word" | qs)"
+check "existing rows untouched: no lemma_key, verb_forms, verb_check" "3|0|0|0" "$(echo "select count(*)||'|'||count(lemma_key)||'|'||count(verb_forms)||'|'||count(verb_check) from word" | qs)"
 
 echo "== 2. other words are saved exactly as before"
 as a@x.com >/dev/null <<'SQL'
@@ -247,6 +247,68 @@ C=$(echo "select lock_token from verb_lexicon_claim('hebrew','k3','x')" | qs)
 echo "select verb_lexicon_fail('hebrew','k3','$C','no credit', true)" | qs >/dev/null
 check "an account failure (refund) does not use up an attempt" "0" "$(echo "select attempts from verb_lexicon where lemma_key='k3'" | qs)"
 
+echo "== 7b. words checked later (verb_check): persistence, one checker per word, progress kept"
+as p@x.com >/dev/null <<'SQL'
+insert into word (word, translation, language, category, example_sentence, verb_check)
+select 'pw' || g, 'm' || g, 'hebrew', 'wordbank', 'sentence ' || g, 'pending' from generate_series(1, 8) g;
+SQL
+as q@x.com >/dev/null <<'SQL'
+insert into word (word, language, verb_check) values ('other-user', 'hebrew', 'pending');
+SQL
+for i in 1 2; do echo "select string_agg(word, ',' order by word) from claim_verb_checks(null, 5)" | as p@x.com > "$TMP/claim.$i" 2>&1 & done; wait
+c1=$(cat "$TMP/claim.1"); c2=$(cat "$TMP/claim.2")
+both=$(printf "%s,%s" "$c1" "$c2" | tr ',' '\n' | grep -c .)
+uniq=$(printf "%s,%s" "$c1" "$c2" | tr ',' '\n' | grep . | sort -u | wc -l | tr -d ' ')
+check "two tabs claiming at once never get the same word" "$both" "$uniq"
+check "…together they got all 8 (5 + 3)" "8" "$uniq"
+check "claiming again while they are being checked returns nothing" "" "$(echo "select word from claim_verb_checks()" | as p@x.com)"
+check "another student's pending word is never handed out" "0" "$(printf "%s,%s" "$c1" "$c2" | grep -c other-user)"
+check "each claim counts an attempt" "1" "$(echo "select max(verb_check_attempts) from word where created_by='p@x.com'" | qs)"
+echo "update word set verb_check_at = now() - interval '4 minutes' where word in ('pw1','pw2')" | qs >/dev/null
+check "a word whose checker vanished (3 min) can be claimed again" "pw1,pw2" "$(echo "select string_agg(word, ',' order by word) from claim_verb_checks(array(select id from word where word in ('pw1','pw2')))" | as p@x.com)"
+echo "update word set verb_check_at = now() - interval '4 minutes' where word = 'pw1'" | qs >/dev/null
+echo "select count(*) from claim_verb_checks()" | as p@x.com >/dev/null
+check "after 2 attempts a word is given up and left as it was" "done|pw1|m1" "$(echo "select verb_check||'|'||word||'|'||translation from word where word='pw1'" | qs)"
+
+ID3=$(echo "select id from word where word='pw3'" | qs)
+check "not a verb: marked done, nothing else changes" "not-verb|done|pw3|m3|sentence 3" \
+  "$(echo "select r->>'action' from resolve_verb_check('$ID3', null, null) r" | as p@x.com)|$(echo "select verb_check||'|'||word||'|'||translation||'|'||example_sentence from word where id='$ID3'" | qs)"
+ID4=$(echo "select id from word where word='pw4'" | qs)
+echo "update word set times_practiced = 4, learn_status = 'learning' where id = '$ID4'" | qs >/dev/null
+out=$(as p@x.com <<SQL
+select r->>'action' from resolve_verb_check('$ID4',
+  '{"word":"לָרוּץ","phonetic":"larutz","translation":"to run","lemma_key":"לרוץ|paal"}',
+  '{"surface":"pw4","tense":"past","person":1,"number":"sg","sentence":"sentence 4","video_id":"v4"}') r;
+SQL
+)
+check "a verb with no card yet: this row becomes the infinitive's card" "converted" "$out"
+check "…keeping its progress, sentence and the form met" "לָרוּץ|to run|4|learning|sentence 4|pw4|done" \
+  "$(echo "select word||'|'||translation||'|'||times_practiced||'|'||learn_status||'|'||example_sentence||'|'||(verb_forms->0->>'surface')||'|'||verb_check from word where id='$ID4'" | qs)"
+ID5=$(echo "select id from word where word='pw5'" | qs)
+out=$(as p@x.com <<SQL
+select (r->>'action')||'|'||(r->>'removed' is not null) from resolve_verb_check('$ID5',
+  '{"word":"לָרוּץ","lemma_key":"לרוץ|paal"}', '{"surface":"pw5","sentence":"sentence 5","video_id":"v5"}') r;
+SQL
+)
+check "the student already has that card: the form joins it and the untouched new row goes" "merged|true" "$out"
+check "…the card now holds both forms, its progress untouched" "2|4" "$(echo "select jsonb_array_length(verb_forms)||'|'||times_practiced from word where id='$ID4'" | qs)"
+check "…and nothing of the new row is left" "0" "$(echo "select count(*) from word where id='$ID5'" | qs)"
+ID6=$(echo "select id from word where word='pw6'" | qs)
+echo "update word set times_practiced = 2 where id = '$ID6'" | qs >/dev/null
+out=$(as p@x.com <<SQL
+select r->>'action' from resolve_verb_check('$ID6', '{"word":"לָרוּץ","lemma_key":"לרוץ|paal"}', '{"surface":"pw6"}') r;
+SQL
+)
+check "a new row that already has progress of its own is kept (never deleted)" "merged-kept|1|2" \
+  "$out|$(echo "select count(*)||'|'||max(times_practiced) from word where id='$ID6'" | qs)"
+check "resolving a word that is not being checked does nothing" "skipped" "$(echo "select r->>'action' from resolve_verb_check('$ID3', null, null) r" | as p@x.com)"
+QID=$(echo "select id from word where word='other-user'" | qs)
+check "another student's word can't be resolved (it is not found for them)" "missing" "$(echo "select r->>'action' from resolve_verb_check('$QID', null, null) r" | as p@x.com)"
+contains "anon can't claim" "permission denied" "$(echo "select * from claim_verb_checks()" | as anon)"
+contains "anon can't resolve" "permission denied" "$(echo "select resolve_verb_check('x', null, null)" | as anon)"
+ID7=$(echo "select id from word where word='pw7'" | qs)
+contains "a key with nikud is refused" "invalid word" "$(printf "select resolve_verb_check('%s', '{\"word\":\"x\",\"lemma_key\":\"לָרוּץ\"}', '{\"surface\":\"x\"}')" "$ID7" | as p@x.com)"
+
 echo "== 8. verbConjugations against these SQL functions (fake model)"
 TEST_DATABASE_URL="postgres://postgres:x@127.0.0.1:$PORT/postgres" DENO_NO_PACKAGE_JSON=1 \
   deno test --no-lock --node-modules-dir=none -A supabase/functions/verbConjugations/conjugate.test.ts > "$TMP/deno.out" 2>&1
@@ -262,7 +324,7 @@ check "no word row is lost" "$before" "$(echo "select count(*) from word" | qs)"
 check "verb cards stay as cards with their infinitive" "1" "$(echo "select count(*) from word where word='לְהַנִּיחַ' and created_by='a@x.com'" | qs)"
 check "the forms are archived" "4" "$(echo "select jsonb_array_length(verb_forms) from word_verb_forms_archive_2200 where lemma_key='להניח|hifil' and created_by='a@x.com'" | qs)"
 check "the conjugation tables are archived" "$lex" "$(echo "select count(*) from verb_lexicon_archive_2200" | qs)"
-check "columns, table and functions are gone" "0|0|0" "$(echo "select (select count(*) from information_schema.columns where table_name='word' and column_name in ('lemma_key','verb_forms'))||'|'||(select count(*) from pg_class where relname='verb_lexicon')||'|'||(select count(*) from pg_proc where proname like 'verb_lexicon_%' or proname='save_verb_occurrence')" | qs)"
+check "columns, table and functions are gone" "0|0|0" "$(echo "select (select count(*) from information_schema.columns where table_name='word' and column_name in ('lemma_key','verb_forms','verb_check','verb_check_at','verb_check_attempts'))||'|'||(select count(*) from pg_class where relname='verb_lexicon')||'|'||(select count(*) from pg_proc where proname like 'verb_lexicon_%' or proname in ('save_verb_occurrence','claim_verb_checks','resolve_verb_check','verb_forms_add','verb_occurrence_json'))" | qs)"
 contains "archives are closed to students" "permission denied" "$(echo "select * from word_verb_forms_archive_2200" | as a@x.com)"
 check "the app's plain saves still work after the rollback" "" "$(echo "insert into word (word) values ('אחרי')" | as a@x.com)"
 out=$(qs < supabase/rollback/2200_word_verb_forms_down.sql); check "rollback runs twice safely" "" "$out"

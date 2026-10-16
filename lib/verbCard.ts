@@ -170,6 +170,7 @@ export function knownAnalysisFromCards(words: Card[], surface: string): any {
 export function conjugationRequest(w: Card, language: string) {
   return {
     language,
+    lemma_key: w.lemma_key || "",
     lemma: w.word || "",
     lemma_phonetic: w.phonetic || "",
     lemma_meaning: w.translation || "",

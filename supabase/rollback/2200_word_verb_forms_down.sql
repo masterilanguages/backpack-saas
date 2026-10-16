@@ -45,12 +45,20 @@ end
 $$;
 
 drop function if exists public.save_verb_occurrence(jsonb, jsonb);
+drop function if exists public.claim_verb_checks(text[], int, int);
+drop function if exists public.resolve_verb_check(text, jsonb, jsonb);
+drop function if exists public.verb_forms_add(jsonb, jsonb);
+drop function if exists public.verb_occurrence_json(jsonb);
 drop function if exists public.verb_lexicon_claim(text, text, text, int, int, text, int);
 drop function if exists public.verb_lexicon_save(text, text, uuid, jsonb);
 drop function if exists public.verb_lexicon_fail(text, text, uuid, text, boolean);
 drop function if exists public.verb_surface_key(text);
 drop table if exists public.verb_lexicon;
 drop index if exists public.word_user_lemma_uq;
-alter table public.word drop column if exists verb_forms, drop column if exists lemma_key;
+drop index if exists public.word_verb_check_idx;
+-- Words still waiting for a check simply stay as they were saved.
+alter table public.word
+  drop column if exists verb_forms, drop column if exists lemma_key,
+  drop column if exists verb_check, drop column if exists verb_check_at, drop column if exists verb_check_attempts;
 
 commit;

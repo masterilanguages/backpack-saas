@@ -19,6 +19,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import CoreVocabTab from "@/components/grammar/CoreVocabTab";
 import VerbsTab from "@/components/backpack/VerbsTab";
+import { checkLater, markRow, useResumeVerbChecks } from "@/lib/saveWordDeps";
+import { hasSavedWord } from "@/lib/verbCard";
 import WordCard from "@/components/backpack/WordCard";
 import TranslatorWidget from "@/components/TranslatorWidget";
 import SessionFlashcardsSection from "@/components/backpack/SessionFlashcardsSection";
@@ -214,6 +216,8 @@ export default function Backpack() {
     staleTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+  // Words still waiting for their verb check (tab closed, slow analysis).
+  useResumeVerbChecks(wordRatings as any[], () => queryClient.invalidateQueries({ queryKey: ['wordRatings'] }));
 
   const createWordMutation = useMutation({
     mutationFn: (word: any) => base44.entities.Word.create(word),
@@ -698,7 +702,7 @@ Return JSON:
   const handleNewWordRate = async (rating: any) => {
     if (!activeNewWord) return;
 
-    const newWord = await createWordMutation.mutateAsync({
+    const newWord = await createWordMutation.mutateAsync(markRow({
       word: activeNewWord.hebrew || activeNewWord.word,
       translation: singularizeTranslation(activeNewWord.meaning),
       phonetic: activeNewWord.word,
@@ -707,7 +711,8 @@ Return JSON:
       times_practiced: rating,
       mastered: rating >= 5,
       image_url: newWordImage || null,
-    });
+    }));
+    checkLater(newWord, () => queryClient.invalidateQueries({ queryKey: ['wordRatings'] }));
 
     // NOTE: no inline image generation here. If the user didn't already make a
     // custom image (newWordImage), the global "auto-generate missing images"
@@ -832,13 +837,15 @@ Return JSON with:
   };
 
   const handleAddWordFromSentence = async (wordText: any, meaning: any, hebrew: any) => {
-    const exists = (wordRatings as any[]).find(w => (w.phonetic || w.word)?.toLowerCase() === wordText.toLowerCase());
+    const exists = (wordRatings as any[]).find(w => (w.phonetic || w.word)?.toLowerCase() === wordText.toLowerCase())
+      || (hebrew && hasSavedWord(wordRatings as any[], hebrew));
     if (exists) { toast.info('Already in backpack!'); return; }
-    await createWordMutation.mutateAsync({
+    const created = await createWordMutation.mutateAsync(markRow({
       word: hebrew || wordText, translation: singularizeTranslation(meaning), phonetic: wordText,
       category: 'wordbank', language: userProfile?.language || 'hebrew',
       times_practiced: 0, mastered: false,
-    });
+    }));
+    checkLater(created, () => queryClient.invalidateQueries({ queryKey: ['wordRatings'] }));
     toast.success(`"${wordText}" added! 🎒`);
   };
 
@@ -912,7 +919,7 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
     }
 
     const isVerb = /^l[aeiou]/i.test(phonetic);
-    const newWord = await createWordMutation.mutateAsync({
+    const newWord = await createWordMutation.mutateAsync(markRow({
       word: hebrewWord || phonetic,
       translation: singularizeTranslation(finalTranslation),
       phonetic,
@@ -921,7 +928,8 @@ Return JSON with: translation (English, 1-4 words), phonetic (clean Latin transl
       times_practiced: 0,
       mastered: false,
       is_verb: isVerb,
-    });
+    }));
+    checkLater(newWord, () => queryClient.invalidateQueries({ queryKey: ['wordRatings'] }));
     setAddWordForm({ phonetic: '', translation: '' });
     toast.success('Word added! Generating mnemonic... 🎨');
     // NOTE: no inline mnemonic/image generation here. The global

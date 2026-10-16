@@ -5,6 +5,7 @@ import {
   CONJUGATION_SLOTS, hasConjugations, lemmaKey, mergeOccurrence, normalizeBinyan, occurrenceFrom,
   occurrenceKey, parseConjugations, parseVerbAnalysis, plainSpelling, slotFor, stripNikud, MAX_OCCURRENCES,
   type VerbOccurrence,
+  keyOfAnalysis, sameVerbLetters,
 } from "./verbs.ts";
 
 // The acceptance example of "Verbos en Flashcards": שהנחת → לְהַנִּיחַ.
@@ -28,15 +29,69 @@ Deno.test("normalizeBinyan: spellings of the same binyan agree; unknown → ''",
   assertEquals(normalizeBinyan(undefined), "");
 });
 
-Deno.test("lemmaKey: nikud and vowel letters ignored, binyan kept apart, empty lemma → ''", () => {
-  assertEquals(lemmaKey("לְהַנִּיחַ", "Hif'il"), "להנח|hifil");
-  assertEquals(lemmaKey("לֶאֱהֹב", "paal"), lemmaKey("לאהוב", "paal"));
-  assertEquals(lemmaKey("לִכְתֹּב", "paal"), lemmaKey("לכתוב", "paal"));
-  assert(lemmaKey("ללמוד", "paal") !== lemmaKey("ללמד", "piel"));
+Deno.test("lemmaKey: nikud ignored, no letter dropped, binyan kept apart, empty lemma → ''", () => {
+  assertEquals(lemmaKey("לְהַנִּיחַ", "Hif'il"), "להניח|hifil");
   assertEquals(lemmaKey("להניח", "hifil"), lemmaKey("לְהַנִּיחַ", "Hif'il"));
   assert(lemmaKey("לספר", "piel") !== lemmaKey("לספר", "paal"));
   assertEquals(lemmaKey("comer"), "comer");
   assertEquals(lemmaKey("  "), "");
+});
+
+// Different verbs that a careless key could merge. Every pair must keep two
+// keys. The first group differs only in a vowel letter (ו/י) in the SAME
+// binyan: dropping ו/י (the rejected phase 2 key) merged them.
+const MUST_STAY_APART: [string, string, string, string][] = [
+  ["לָשִׁיר", "paal", "לָשׁוּר", "paal"],      // to sing / to behold
+  ["לָגוּר", "paal", "לָגִיר", "paal"],       // to dwell / (to whiten, rare)
+  ["לָרִיב", "paal", "לָרוּב", "paal"],       // to quarrel / (to multiply, rare)
+  ["לָדוּן", "paal", "לָדִין", "paal"],       // to discuss / (to judge, variant)
+  ["לָצוּם", "paal", "לָצִים", "paal"],       // to fast / —
+  ["לִלְמוֹד", "paal", "לְלַמֵּד", "piel"],    // to learn / to teach
+  ["לִסְפּוֹר", "paal", "לְסַפֵּר", "piel"],   // to count / to tell
+  ["לִגְדּוֹל", "paal", "לְגַדֵּל", "piel"],   // to grow / to raise
+  ["לִשְׁמוֹר", "paal", "לְשַׁמֵּר", "piel"],  // to keep / to preserve
+  ["לַחְשׁוֹב", "paal", "לְחַשֵּׁב", "piel"],  // to think / to calculate
+  ["לָקוּם", "paal", "לְקַיֵּים", "piel"],     // to get up / to keep (a promise)
+  ["לָשׁוּב", "paal", "לָשֶׁבֶת", "paal"],     // to return / to sit
+  ["לָנוּחַ", "paal", "לִנְחוֹת", "paal"],     // to rest / to land
+  ["לִהְיוֹת", "paal", "לִחְיוֹת", "paal"],    // to be / to live
+  ["לְהָבִין", "hifil", "לְהִתְבּוֹנֵן", "hitpael"], // to understand / to observe
+];
+
+Deno.test("no two different verbs share a key (incl. the pairs dropping ו/י would merge)", () => {
+  const keys = new Map<string, string>();
+  for (const [a, ba, b, bb] of MUST_STAY_APART) {
+    const ka = lemmaKey(a, ba), kb = lemmaKey(b, bb);
+    assert(ka !== kb, `${a} (${ba}) and ${b} (${bb}) share the key ${ka}`);
+    for (const [lemma, k] of [[a, ka], [b, kb]]) {
+      if (keys.has(k)) assertEquals(keys.get(k), lemma, `${lemma} collides with ${keys.get(k)} on ${k}`);
+      keys.set(k, lemma);
+    }
+  }
+  // The rejected rule (drop ו/י after the first letter) merges the first pairs.
+  const dropVowelLetters = (s: string) => { const p = stripNikud(s); return p[0] + p.slice(1).replace(/[וי]/g, ""); };
+  assertEquals(dropVowelLetters("לָשִׁיר"), dropVowelLetters("לָשׁוּר"));
+});
+
+Deno.test("full and defective spelling: one card through the model's lemma_plain, never by dropping letters", () => {
+  const a = parseVerbAnalysis({ is_verb: true, lemma: "לֶאֱהֹב", lemma_plain: "לאהוב", binyan: "paal" }, "hebrew", "אוהבת")!;
+  const b = parseVerbAnalysis({ is_verb: true, lemma: "לֶאֱהוֹב", lemma_plain: "לאהוב", binyan: "paal" }, "hebrew", "אהבתי")!;
+  assertEquals([keyOfAnalysis(a), keyOfAnalysis(b)], ["לאהוב|paal", "לאהוב|paal"]);
+  // Without lemma_plain: the pointed spellings differ, so two cards (never a wrong merge).
+  const c = parseVerbAnalysis({ is_verb: true, lemma: "לֶאֱהֹב", binyan: "paal" }, "hebrew", "אוהבת")!;
+  assertEquals(keyOfAnalysis(c), "לאהב|paal");
+});
+
+Deno.test("lemma_plain is ignored when it is not the same verb's letters (or not plain letters)", () => {
+  const p = (lemma_plain: unknown, lemma = "לָשִׁיר") => parseVerbAnalysis({ is_verb: true, lemma, lemma_plain, binyan: "paal" }, "hebrew", "שר")!.lemma_plain;
+  assertEquals(p("לשיר"), "לשיר");
+  assertEquals(p("לשור"), "לשור");           // same consonants: allowed (the model's call)…
+  assertEquals(p("לזמר"), "");               // …another verb: ignored
+  assertEquals(p("לָשִׁיר"), "");            // with nikud: ignored
+  assertEquals(p("לשיר!"), "");
+  assertEquals(p(42), "");
+  assert(sameVerbLetters("לאהוב", "לֶאֱהֹב"));
+  assert(!sameVerbLetters("לאהוב", "לכתוב"));
 });
 
 Deno.test("parseVerbAnalysis: the acceptance example", () => {

@@ -17,6 +17,18 @@
 -- saves at once never make two cards. created_by is always the caller's
 -- email (set_system_fields would accept one sent by the client).
 --
+-- Words saved without waiting for an analysis (a lesson's recommended words,
+-- typed words, an analysis that timed out) are saved at once as before with
+-- verb_check = 'pending', and analyzed later (lib/verbChecks): closing the
+-- tab loses nothing, the next visit picks them up.
+--   claim_verb_checks   hands the student's pending words to ONE caller
+--                       (for update skip locked: two tabs never pay twice),
+--                       at most p_max_attempts times per word.
+--   resolve_verb_check  turns a checked word into its infinitive's card, or
+--                       adds it as a form to the card the student already
+--                       has (a still-untouched new row is then removed; one
+--                       with progress is kept as it is), or marks it done.
+--
 -- verb_lexicon: one conjugation table per verb, shared by everyone and made
 -- once by the verbConjugations edge function. Written only by the server
 -- (service role) through claim/save/fail with a lease, as chapter_prep (2100):
@@ -34,7 +46,14 @@ begin;
 
 alter table public.word
   add column if not exists lemma_key  text,
-  add column if not exists verb_forms jsonb;
+  add column if not exists verb_forms jsonb,
+  add column if not exists verb_check text check (verb_check in ('pending', 'checking', 'done')),
+  add column if not exists verb_check_at timestamptz,
+  add column if not exists verb_check_attempts smallint;
+
+create index if not exists word_verb_check_idx
+  on public.word (created_by, verb_check)
+  where verb_check in ('pending', 'checking');
 
 create unique index if not exists word_user_lemma_uq
   on public.word (created_by, language, lemma_key)
@@ -46,6 +65,42 @@ create or replace function public.verb_surface_key(p text)
 returns text language sql immutable set search_path = public as $$
   select lower(regexp_replace(regexp_replace(coalesce(p, ''), '[֑-ׇ]', '', 'g'),
                               '[\s.,!?;:"''()\[\]{}״׳…–—-]', '', 'g'));
+$$;
+
+-- One form as stored in verb_forms: only known fields, each bounded; the
+-- time is the server's.
+create or replace function public.verb_occurrence_json(p_occurrence jsonb)
+returns jsonb language sql stable set search_path = public as $$
+  select jsonb_strip_nulls(jsonb_build_object(
+    'surface',     btrim(coalesce(p_occurrence->>'surface', '')),
+    'prefix',      nullif(left(p_occurrence->>'prefix', 6), ''),
+    'form',        nullif(left(p_occurrence->>'form', 60), ''),
+    'phonetic',    nullif(left(p_occurrence->>'phonetic', 60), ''),
+    'translation', nullif(left(p_occurrence->>'translation', 120), ''),
+    'tense',       case when p_occurrence->>'tense' in ('past', 'present', 'future', 'imperative', 'infinitive') then p_occurrence->>'tense' end,
+    'person',      case when p_occurrence->>'person' in ('1', '2', '3') then (p_occurrence->>'person')::int end,
+    'gender',      case when p_occurrence->>'gender' in ('m', 'f') then p_occurrence->>'gender' end,
+    'number',      case when p_occurrence->>'number' in ('sg', 'pl') then p_occurrence->>'number' end,
+    'sentence',    nullif(left(p_occurrence->>'sentence', 500), ''),
+    'video_id',    nullif(left(p_occurrence->>'video_id', 40), ''),
+    'video_title', nullif(left(p_occurrence->>'video_title', 200), ''),
+    'added_at',    now()
+  ));
+$$;
+
+-- verb_forms plus one form, unless the same word from the same video is
+-- already there (or the card holds 50 forms).
+create or replace function public.verb_forms_add(p_forms jsonb, p_occ jsonb)
+returns jsonb language sql stable set search_path = public as $$
+  select case
+    when exists (
+      select 1 from jsonb_array_elements(coalesce(p_forms, '[]'::jsonb)) e
+      where public.verb_surface_key(e->>'surface') = public.verb_surface_key(p_occ->>'surface')
+        and coalesce(e->>'video_id', '') = coalesce(p_occ->>'video_id', ''))
+      or jsonb_array_length(coalesce(p_forms, '[]'::jsonb)) >= 50
+    then p_forms
+    else coalesce(p_forms, '[]'::jsonb) || jsonb_build_array(p_occ)
+  end;
 $$;
 
 create or replace function public.save_verb_occurrence(p_word jsonb, p_occurrence jsonb)
@@ -74,22 +129,7 @@ begin
   end if;
   v_lang := coalesce(nullif(p_word->>'language', ''), 'hebrew')::public.app_language;
 
-  -- Only known fields, each bounded; the time is the server's.
-  v_occ := jsonb_strip_nulls(jsonb_build_object(
-    'surface',     v_surface,
-    'prefix',      nullif(left(p_occurrence->>'prefix', 6), ''),
-    'form',        nullif(left(p_occurrence->>'form', 60), ''),
-    'phonetic',    nullif(left(p_occurrence->>'phonetic', 60), ''),
-    'translation', nullif(left(p_occurrence->>'translation', 120), ''),
-    'tense',       case when p_occurrence->>'tense' in ('past', 'present', 'future', 'imperative', 'infinitive') then p_occurrence->>'tense' end,
-    'person',      case when p_occurrence->>'person' in ('1', '2', '3') then (p_occurrence->>'person')::int end,
-    'gender',      case when p_occurrence->>'gender' in ('m', 'f') then p_occurrence->>'gender' end,
-    'number',      case when p_occurrence->>'number' in ('sg', 'pl') then p_occurrence->>'number' end,
-    'sentence',    nullif(left(p_occurrence->>'sentence', 500), ''),
-    'video_id',    nullif(left(p_occurrence->>'video_id', 40), ''),
-    'video_title', nullif(left(p_occurrence->>'video_title', 200), ''),
-    'added_at',    now()
-  ));
+  v_occ := public.verb_occurrence_json(p_occurrence);
 
   insert into public.word as w (
     word, phonetic, translation, category, language, lemma_key, verb_forms, is_verb,
@@ -113,19 +153,117 @@ begin
   do update set
     -- The card keeps its progress, image, status, sentence and video; only a
     -- form not seen before (same word in the same video) is added.
-    verb_forms = case
-      when exists (
-        select 1 from jsonb_array_elements(coalesce(w.verb_forms, '[]'::jsonb)) e
-        where public.verb_surface_key(e->>'surface') = public.verb_surface_key(v_surface)
-          and coalesce(e->>'video_id', '') = coalesce(v_occ->>'video_id', ''))
-        or jsonb_array_length(coalesce(w.verb_forms, '[]'::jsonb)) >= 50
-      then w.verb_forms
-      else coalesce(w.verb_forms, '[]'::jsonb) || jsonb_build_array(v_occ)
-    end,
+    verb_forms = public.verb_forms_add(w.verb_forms, v_occ),
     is_verb = true
   returning to_jsonb(w.*), (w.xmax = 0) into v_row, v_created;
 
   return jsonb_build_object('word', v_row, 'created', v_created);
+end
+$$;
+
+-- The caller's pending words (all, or only p_ids), now 'checking' for them.
+-- A 'checking' word whose caller vanished (3 min) can be claimed again; a
+-- word claimed p_max_attempts times is given up ('done', left as it is).
+create or replace function public.claim_verb_checks(p_ids text[] default null, p_limit int default 20, p_max_attempts int default 2)
+returns setof public.word
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_email text := public.app_email();
+begin
+  if coalesce(v_email, '') = '' then
+    raise exception 'claim_verb_checks: not signed in' using errcode = '42501';
+  end if;
+  update public.word set verb_check = 'done'
+  where created_by = v_email and verb_check in ('pending', 'checking')
+    and coalesce(verb_check_attempts, 0) >= greatest(coalesce(p_max_attempts, 2), 1)
+    and (verb_check = 'pending' or verb_check_at < now() - interval '3 minutes');
+  return query
+  update public.word w set
+    verb_check = 'checking', verb_check_at = now(), verb_check_attempts = coalesce(w.verb_check_attempts, 0) + 1
+  where w.id in (
+    select x.id from public.word x
+    where x.created_by = v_email
+      and (p_ids is null or x.id = any (p_ids))
+      and (x.verb_check = 'pending' or (x.verb_check = 'checking' and x.verb_check_at < now() - interval '3 minutes'))
+    order by x.created_date
+    limit least(greatest(coalesce(p_limit, 20), 1), 50)
+    for update skip locked)
+  returning w.*;
+end
+$$;
+
+-- The result of checking one claimed word. p_word null = not a verb.
+create or replace function public.resolve_verb_check(p_word_id text, p_word jsonb, p_occurrence jsonb)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_email text := public.app_email();
+  v_row   public.word;
+  v_card  public.word;
+  v_key   text := btrim(coalesce(p_word->>'lemma_key', ''));
+  v_lemma text := btrim(coalesce(p_word->>'word', ''));
+  v_occ   jsonb;
+  v_out   jsonb;
+begin
+  if coalesce(v_email, '') = '' then
+    raise exception 'resolve_verb_check: not signed in' using errcode = '42501';
+  end if;
+  select * into v_row from public.word where id = p_word_id and created_by = v_email for update;
+  if not found then
+    return jsonb_build_object('action', 'missing');
+  end if;
+  if v_row.verb_check is distinct from 'checking' then
+    return jsonb_build_object('action', 'skipped', 'word', to_jsonb(v_row));
+  end if;
+
+  if p_word is null then
+    update public.word set verb_check = 'done' where id = p_word_id returning to_jsonb(word.*) into v_out;
+    return jsonb_build_object('action', 'not-verb', 'word', v_out);
+  end if;
+
+  if v_lemma = '' or v_key = '' or length(v_lemma) > 60 or length(v_key) > 80 or v_key ~ '[\u0591-\u05C7]' then
+    raise exception 'resolve_verb_check: invalid word' using errcode = '22023';
+  end if;
+  v_occ := public.verb_occurrence_json(p_occurrence);
+  if coalesce(v_occ->>'surface', '') = '' then
+    raise exception 'resolve_verb_check: invalid word' using errcode = '22023';
+  end if;
+
+  -- The student already has this infinitive's card: add the form there.
+  select * into v_card from public.word
+  where created_by = v_email and language = v_row.language and lemma_key = v_key and id <> p_word_id
+  for update;
+  if found then
+    update public.word set verb_forms = public.verb_forms_add(verb_forms, v_occ), is_verb = true
+    where id = v_card.id returning to_jsonb(word.*) into v_out;
+    if coalesce(v_row.times_practiced, 0) = 0 and v_row.image_url is null and v_row.mnemonic_explanation is null
+       and coalesce(v_row.learn_status, 'new') = 'new' and not coalesce(v_row.approved, false) then
+      delete from public.word where id = p_word_id;
+      return jsonb_build_object('action', 'merged', 'word', v_out, 'removed', p_word_id);
+    end if;
+    -- It already has progress of its own: kept as it is.
+    update public.word set verb_check = 'done' where id = p_word_id;
+    return jsonb_build_object('action', 'merged-kept', 'word', v_out);
+  end if;
+
+  -- Otherwise this row becomes the infinitive's card (progress kept).
+  update public.word set
+    word = v_lemma,
+    phonetic = coalesce(nullif(left(p_word->>'phonetic', 60), ''), phonetic),
+    translation = coalesce(nullif(left(p_word->>'translation', 120), ''), translation),
+    lemma_key = v_key,
+    verb_forms = jsonb_build_array(v_occ),
+    is_verb = true,
+    verb_check = 'done'
+  where id = p_word_id
+  returning to_jsonb(word.*) into v_out;
+  return jsonb_build_object('action', 'converted', 'word', v_out);
 end
 $$;
 
@@ -251,6 +389,14 @@ revoke all on function public.save_verb_occurrence(jsonb, jsonb) from public, an
 grant execute on function public.save_verb_occurrence(jsonb, jsonb) to authenticated;
 revoke all on function public.verb_surface_key(text) from public, anon;
 grant execute on function public.verb_surface_key(text) to authenticated, service_role;
+revoke all on function public.verb_occurrence_json(jsonb) from public, anon;
+grant execute on function public.verb_occurrence_json(jsonb) to authenticated, service_role;
+revoke all on function public.verb_forms_add(jsonb, jsonb) from public, anon;
+grant execute on function public.verb_forms_add(jsonb, jsonb) to authenticated, service_role;
+revoke all on function public.claim_verb_checks(text[], int, int) from public, anon;
+grant execute on function public.claim_verb_checks(text[], int, int) to authenticated;
+revoke all on function public.resolve_verb_check(text, jsonb, jsonb) from public, anon;
+grant execute on function public.resolve_verb_check(text, jsonb, jsonb) to authenticated;
 revoke all on function public.verb_lexicon_claim(text, text, text, int, int, text, int) from public, anon, authenticated;
 revoke all on function public.verb_lexicon_save(text, text, uuid, jsonb)     from public, anon, authenticated;
 revoke all on function public.verb_lexicon_fail(text, text, uuid, text, boolean) from public, anon, authenticated;

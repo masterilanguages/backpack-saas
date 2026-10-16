@@ -16,7 +16,7 @@
 // dependencies are in lib/saveWordDeps.
 
 import {
-  lemmaKey, occurrenceFrom, parseVerbAnalysis, plainSpelling, verbAnalysisPrompt, verbBatchPrompt,
+  keyOfAnalysis, occurrenceFrom, parseVerbAnalysis, plainSpelling, verbAnalysisPrompt, verbBatchPrompt,
   VERB_ANALYSIS_SCHEMA, VERB_BATCH_SCHEMA, type VerbAnalysis, type VerbOccurrence,
 } from "./verbs";
 
@@ -76,7 +76,8 @@ export type SaveWordOptions = {
 export type SaveWordOutcome =
   | "plain"            // not analyzed (flag off, other language, fixed list)
   | "not-verb"         // analyzed: not a verb → saved as today
-  | "analysis-failed"  // AI error / timeout → saved as today
+  | "analysis-failed"  // AI error / timeout → saved as today, checked later (verb_check)
+  | "pending"          // saved as today without waiting, checked later (lib/verbChecks)
   | "verb-created"     // new infinitive card
   | "verb-merged";     // added to the student's card of that infinitive
 
@@ -142,19 +143,28 @@ export async function saveWordToBackpack(input: SaveWordInput, deps: SaveWordDep
     try {
       analysis = await withTimeout(pending, opts.timeoutMs ?? 10_000);
     } catch (e) {
-      deps.log?.("[saveWord] verb analysis failed, saving the word as it is", e);
-      return plain("analysis-failed", aiCalls);
+      // Saved as today, marked for a later check (lib/verbChecks), so a slow
+      // or failed analysis never loses the word nor leaves it unanalyzed.
+      deps.log?.("[saveWord] verb analysis failed, saving the word as it is (checked later)", e);
+      return { word: await deps.createWord({ ...row, verb_check: "pending" }), outcome: "analysis-failed", aiCalls, analysis: null };
     }
   }
   if (!analysis) return plain("not-verb", aiCalls);
 
   // 2. A verb: one card per infinitive, this form added to it.
+  const { card, occurrence } = verbCardFor(row, analysis, surface, sentence, language);
+  const saved = await deps.saveVerbOccurrence(card, occurrence);
+  return { word: saved.word, outcome: saved.created ? "verb-created" : "verb-merged", aiCalls, analysis };
+}
+
+/** The infinitive's card fields and this form's occurrence, from a word row and its analysis. */
+export function verbCardFor(row: WordRow, analysis: VerbAnalysis, surface: string, sentence: string | null, language: string) {
   const card: VerbCardFields = {
     word: analysis.lemma,
     phonetic: analysis.lemma_phonetic || analysis.lemma,
     translation: analysis.lemma_meaning || String(row.translation || ""),
     language,
-    lemma_key: lemmaKey(analysis.lemma, analysis.binyan),
+    lemma_key: keyOfAnalysis(analysis),
     category: row.category ?? "wordbank",
     learn_status: row.learn_status ?? null,
     times_practiced: row.times_practiced ?? 0,
@@ -173,8 +183,26 @@ export async function saveWordToBackpack(input: SaveWordInput, deps: SaveWordDep
     video_id: row.source_video_id ?? null,
     video_title: row.source_video_title ?? null,
   });
-  const saved = await deps.saveVerbOccurrence(card, occurrence);
-  return { word: saved.word, outcome: saved.created ? "verb-created" : "verb-merged", aiCalls, analysis };
+  return { card, occurrence };
+}
+
+/** Whether verbs of this word's language are normalized (the feature flag). */
+export const verbsEnabledFor = (language: string | null | undefined, opts: SaveWordOptions) =>
+  opts.enabledLanguages.map((l) => l.toLowerCase()).includes(String(language || "hebrew").toLowerCase());
+
+/**
+ * For saves that don't wait for an analysis (typed words, lists, a lesson's
+ * recommended words): the row is saved at once, exactly as before, and marked
+ * for lib/verbChecks to analyze in the background. Unchanged when the
+ * feature is off for its language.
+ */
+export function markForVerbCheck<T extends Record<string, any>>(row: T, opts: SaveWordOptions): T {
+  return verbsEnabledFor(row.language, opts) && row.word ? { ...row, verb_check: "pending" } : row;
+}
+
+/** The session's answer for a word in a sentence, if one was asked (lib/verbChecks). */
+export function cachedAnalysis(language: string, surface: string, sentence: string): Promise<VerbAnalysis | null> | undefined {
+  return cache.get(cacheKey(String(language || "hebrew").toLowerCase(), surface, sentence));
 }
 
 // ------------------------------------------------------------ several words

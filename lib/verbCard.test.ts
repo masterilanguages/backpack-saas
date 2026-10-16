@@ -10,7 +10,7 @@ import {
 const F1 = { surface: "שהנחת", tense: "past", person: 2, gender: "m", number: "sg", sentence: "ולפני שהנחת את הספר", video_id: "v1", video_title: "Song 1", added_at: "2026-10-16T10:00:00Z", phonetic: "shehenachta", translation: "that you put", prefix: "ש", form: "הנחת" } as any;
 const F2 = { surface: "הנחתי", tense: "past", person: 1, number: "sg", sentence: "הנחתי לך", video_id: "v2", video_title: "Song 2", added_at: "2026-10-16T12:00:00Z" } as any;
 const F3 = { surface: "תניח", tense: "future", person: 2, gender: "m", number: "sg", sentence: "תניח לי", video_id: "v1", video_title: "Song 1", added_at: "2026-10-16T11:00:00Z" } as any;
-const VERB = { word: "לְהַנִּיחַ", phonetic: "lehaniach", translation: "to put", lemma_key: "להנח|hifil", source_video_id: "v1", source_video_title: "Song 1", example_sentence: F1.sentence, verb_forms: [F1, F2, F3] };
+const VERB = { word: "לְהַנִּיחַ", phonetic: "lehaniach", translation: "to put", lemma_key: "להניח|hifil", source_video_id: "v1", source_video_title: "Song 1", example_sentence: F1.sentence, verb_forms: [F1, F2, F3] };
 const NOUN = { word: "נשמה", phonetic: "neshama", translation: "soul", source_video_id: "v1", source_video_title: "Song 1", example_sentence: "יש נשמה", verb_forms: null };
 
 Deno.test("a word without verb_forms is not a verb card and keeps its single video", () => {
@@ -75,5 +75,5 @@ Deno.test("knownAnalysisFromCards: a form already met is reused without a call; 
 });
 
 Deno.test("conjugationRequest: the card's infinitive and binyan", () => {
-  assertEquals(conjugationRequest(VERB, "hebrew"), { language: "hebrew", lemma: "לְהַנִּיחַ", lemma_phonetic: "lehaniach", lemma_meaning: "to put", binyan: "hifil" });
+  assertEquals(conjugationRequest(VERB, "hebrew"), { language: "hebrew", lemma_key: "להניח|hifil", lemma: "לְהַנִּיחַ", lemma_phonetic: "lehaniach", lemma_meaning: "to put", binyan: "hifil" });
 });

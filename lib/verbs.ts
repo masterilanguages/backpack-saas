@@ -35,19 +35,33 @@ export function normalizeBinyan(b: unknown): string {
 }
 
 /**
- * The key of one verb: its infinitive without nikud, plus the binyan, so two
- * verbs spelled alike without nikud stay apart. The vowel letters ו and י
- * after the first letter don't count, so the full and the defective spelling
- * (לאהוב / לֶאֱהֹב → לאהב) are the same verb; the binyan still tells ללמוד
- * (paal) from ללמד (piel). "" when there is no lemma.
+ * The key of one verb: its infinitive's spelling without nikud, plus the
+ * binyan, so verbs spelled alike without nikud (לספר: paal / piel) stay apart.
+ * Letters are never dropped: removing the vowel letters ו/י would also merge
+ * different verbs (לשיר "to sing" / לשור "to behold", both paal). To make the
+ * full and the defective spelling (לאהוב / לֶאֱהֹב) one verb, callers pass
+ * the model's standard full spelling (lemma_plain, see keyOfAnalysis).
+ * "" when there is no lemma.
  */
 export function lemmaKey(lemma: string, binyan?: unknown): string {
-  const plain = plainSpelling(lemma);
-  if (!plain) return "";
-  const base = plain.charAt(0) + plain.slice(1).replace(/[וי]/g, "");
+  const base = plainSpelling(lemma);
+  if (!base) return "";
   const b = normalizeBinyan(binyan);
   return b ? `${base}|${b}` : base;
 }
+
+/** The consonant skeleton (no nikud, no vowel letters): only to sanity-check lemma_plain. */
+const skeleton = (s: string) => {
+  const p = plainSpelling(s);
+  return p.charAt(0) + p.slice(1).replace(/[וי]/g, "");
+};
+
+/** Same letters apart from nikud and the vowel letters ו/י (לאהוב / לֶאֱהֹב). */
+export const sameVerbLetters = (a: string, b: string) => !!skeleton(a) && skeleton(a) === skeleton(b);
+
+/** The key of an analyzed verb: from its standard full spelling when the model gave one. */
+export const keyOfAnalysis = (a: { lemma: string; lemma_plain?: string; binyan?: string }) =>
+  lemmaKey(a.lemma_plain || a.lemma, a.binyan);
 
 export type Tense = "past" | "present" | "future" | "imperative" | "infinitive";
 export type Gender = "m" | "f";
@@ -56,6 +70,7 @@ export type GrammarNumber = "sg" | "pl";
 /** What the model says about one word in its sentence, validated. */
 export type VerbAnalysis = {
   lemma: string;            // infinitive in native script (with nikud for Hebrew)
+  lemma_plain: string;      // the same in standard full spelling, no nikud (לאהוב), or ""
   lemma_phonetic: string;
   lemma_meaning: string;    // "to put"
   binyan: string;           // normalized ("hifil") or ""
@@ -71,6 +86,17 @@ export type VerbAnalysis = {
 };
 
 const TENSES: Tense[] = ["past", "present", "future", "imperative", "infinitive"];
+
+/**
+ * The model's full spelling of the infinitive, kept only when it is plain
+ * letters and the same word as `lemma` (same letters apart from ו/י), so a
+ * wrong one can never move the word to another verb's card.
+ */
+function validPlain(v: unknown, lemma: string): string {
+  const p = typeof v === "string" ? v.trim() : "";
+  if (!p || p.length > 40 || /[\u0591-\u05C7]/.test(p) || /[^\u05D0-\u05EAa-zA-Z'\- ]/.test(p)) return "";
+  return skeleton(p) === skeleton(lemma) ? p : "";
+}
 const str = (v: unknown, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
 /**
@@ -96,6 +122,7 @@ export function parseVerbAnalysis(raw: any, language: string, surface: string): 
   }
   return {
     lemma,
+    lemma_plain: validPlain(raw.lemma_plain, lemma),
     lemma_phonetic: str(raw.lemma_phonetic, 60),
     lemma_meaning: str(raw.lemma_meaning, 80),
     binyan: normalizeBinyan(raw.binyan),
@@ -238,6 +265,7 @@ export const VERB_ANALYSIS_SCHEMA = {
   properties: {
     is_verb: { type: "boolean" },
     lemma: { type: "string" },
+    lemma_plain: { type: "string" },
     lemma_phonetic: { type: "string" },
     lemma_meaning: { type: "string" },
     binyan: { type: "string" },
@@ -261,7 +289,7 @@ export const VERB_ANALYSIS_SCHEMA = {
 const analysisRules = (label: string, the: string) =>
   `- A present-tense participle used as a noun or adjective (e.g. מורה "teacher"), nouns, adjectives, adverbs and particles are NOT verbs: give { "is_verb": false } and nothing else.
 - If it is a verb (any tense, the imperative, or an infinitive), give:
-  is_verb: true; lemma: its infinitive in ${label} script${/hebrew/i.test(label) ? " with full nikud (e.g. לְהַנִּיחַ)" : ""}; lemma_phonetic; lemma_meaning: the English infinitive ("to put");${/hebrew/i.test(label) ? " binyan (paal, nifal, piel, pual, hifil, hufal, hitpael); root (e.g. נ-ו-ח);" : ""}
+  is_verb: true; lemma: its infinitive in ${label} script${/hebrew/i.test(label) ? " with full nikud (e.g. לְהַנִּיחַ); lemma_plain: the same infinitive without nikud in standard full spelling (כתיב מלא, e.g. לאהוב, להניח)" : ""}; lemma_phonetic; lemma_meaning: the English infinitive ("to put");${/hebrew/i.test(label) ? " binyan (paal, nifal, piel, pual, hifil, hufal, hitpael); root (e.g. נ-ו-ח);" : ""}
   tense (past, present, future, imperative, infinitive); person (1, 2, 3; omit for present and infinitive); gender (m or f; omit when the form doesn't show it); number (sg or pl);
   prefix: particles attached in front that are not part of the verb (e.g. ש, ו, כש) or ""; form: the verb without them;
   phonetic: transliteration of ${the} as said there; translation: English meaning of ${the} in its sentence ("that you put").`;

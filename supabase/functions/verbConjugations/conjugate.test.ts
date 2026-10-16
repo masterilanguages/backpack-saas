@@ -208,6 +208,20 @@ const scenarios: Record<string, (h: Harness) => Promise<void>> = {
     assert(LEASE_SECONDS >= 400);
   },
 
+  "request: the card's own key (full spelling) is used when it is the same verb's letters": async (h) => {
+    const { deps, calls } = fakes(h);
+    const seen: string[] = [];
+    const owner = { admin: false, email: "a@x.com", ownsVerb: async (_l: string, k: string) => { seen.push(k); return true; } };
+    const love = { language: "hebrew", lemma: "לֶאֱהֹב", binyan: "paal", lemma_meaning: "to love" };
+    assertEquals((await handleConjugationRequest(deps, owner, { ...love, lemma_key: "לאהוב|paal" })).status, 200);
+    assertEquals((await handleConjugationRequest(deps, owner, { ...love, lemma: "לֶאֱהוֹב", lemma_key: "לאהוב|paal" })).body.cached, true);
+    // Another verb's key, or another binyan: ignored, the lemma's own key is used.
+    await handleConjugationRequest(deps, owner, { ...love, lemma_key: "לכתוב|paal" });
+    await handleConjugationRequest(deps, owner, { ...love, lemma_key: "לאהוב|piel" });
+    assertEquals(seen, ["לאהוב|paal", "לאהוב|paal", lemmaKey("לֶאֱהֹב", "paal"), lemmaKey("לֶאֱהֹב", "paal")]);
+    assertEquals(calls.llm.length, 2);
+  },
+
   "request: bad input is refused before anything else": async (h) => {
     const { deps, calls } = fakes(h);
     const anyone = { admin: true, email: "adm@x.com", ownsVerb: async () => true };
