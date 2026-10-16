@@ -6,15 +6,15 @@
 // collapsible conjugation table with the form(s) used highlighted.
 // Renders nothing for cards that are not verb cards (no verb_forms).
 //
-// The conjugation table is fetched only when opened, from the shared
-// verb_lexicon (verbConjugations edge function: made once per verb for
-// everyone) and kept for the session.
+// The conjugation table (made once per verb for everyone, right after the
+// verb is saved) is read from verb_lexicon as soon as the card shows, so
+// opening Conjugations and switching tenses is instant and never calls the AI.
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { forgetConjugationRequest, loadConjugationTable } from "@/lib/saveWordDeps";
 import {
-  conjugationRequest, grammarChips, highlightParts, otherOccurrences, pickOccurrence,
+  grammarChips, highlightParts, otherOccurrences, pickOccurrence,
   seenSlots, SLOT_LABELS, TENSES_SHOWN, usedSlot, verbForms,
 } from "@/lib/verbCard";
 import { CONJUGATION_SLOTS, type VerbOccurrence } from "@/lib/verbs";
@@ -25,9 +25,9 @@ const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
 const TENSE_TAB: Record<string, string> = { past: "Past", present: "Present", future: "Future", imperative: "Imperative" };
 
-export type LoadConjugations = (body: ReturnType<typeof conjugationRequest>) => Promise<any>;
+export type LoadConjugations = (word: any, language: string) => Promise<{ status: "ready" | "pending" | "failed"; entry?: any }>;
 
-const defaultLoad: LoadConjugations = (body) => (base44 as any).functions.invoke("verbConjugations", body);
+const defaultLoad: LoadConjugations = loadConjugationTable;
 
 export default function VerbDetails({
   word,
@@ -65,7 +65,8 @@ export default function VerbDetails({
     <div className={`w-full text-left ${className}`}>
       <div className={`rounded-2xl border border-indigo-100 bg-indigo-50 ${compact ? "p-2" : "p-3"}`}>
         <p className="truncate text-[10px] font-bold uppercase tracking-wider text-indigo-400">
-          📺 From the video{occ.video_title ? ` · ${occ.video_title}` : ""}
+          {/* The title may be Hebrew: isolated, so it keeps its own direction. */}
+          📺 From the video{occ.video_title ? <> · <bdi>{occ.video_title}</bdi></> : ""}
         </p>
         <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5" dir={rtl ? "rtl" : "ltr"}>
           <span className={`${compact ? "text-base" : "text-xl"} font-extrabold leading-tight text-indigo-950`}>{occ.surface}</span>
@@ -95,10 +96,12 @@ export default function VerbDetails({
               <button
                 key={`${o.surface}|${o.video_id || ""}`}
                 onClick={(e) => { stop(e); setPicked(o); }}
+                // A Hebrew form reads right to left: the form first (rightmost), then its video.
+                dir={isRTLText(o.surface) ? "rtl" : "ltr"}
                 className="max-w-full truncate rounded-full bg-white px-2 py-0.5 text-xs text-slate-700 ring-1 ring-indigo-100 hover:ring-indigo-300"
               >
-                <span dir="auto" className="font-semibold">{o.surface}</span>
-                {o.video_title && <span className="text-slate-400"> · {o.video_title}</span>}
+                <bdi className="font-semibold">{o.surface}</bdi>
+                {o.video_title && <span className="text-slate-400"> · <bdi>{o.video_title}</bdi></span>}
               </button>
             ))}
           </div>
@@ -115,13 +118,14 @@ function ConjugationPanel({ word, occ, language, load, compact = false }: { word
   const canLoad = /hebrew/i.test(language) && !!word?.lemma_key;
   const q = useQuery({
     queryKey: ["verbConjugations", language, word?.lemma_key],
-    queryFn: () => load(conjugationRequest(word, language)),
-    enabled: open && canLoad,
+    // Read as soon as the card shows (not when Conjugations is opened).
+    queryFn: () => load(word, language),
+    enabled: canLoad,
     staleTime: Infinity,
     gcTime: Infinity,
     retry: false,
-    // Someone else is making this verb's table: look again shortly.
-    refetchInterval: (query) => (query.state.data?.status === "pending" && query.state.dataUpdateCount < 10 ? 3000 : false),
+    // Still being made: look at verb_lexicon again shortly (a read, no AI call).
+    refetchInterval: (query) => (query.state.data?.status === "pending" && query.state.dataUpdateCount < 60 ? 3000 : false),
   });
   if (!canLoad) return null;
   const table = q.data?.status === "ready" ? q.data.entry?.conjugations : null;
@@ -132,8 +136,8 @@ function ConjugationPanel({ word, occ, language, load, compact = false }: { word
   const tab = picked && tenses.includes(picked as any) ? picked : used?.tense || tenses[0] || "past";
   const setTab = setPicked;
   const cells = (table?.[tab] || {}) as Record<string, { he: string; phonetic?: string }>;
-  const waiting = q.isFetching || q.data?.status === "pending";
-  const failed = q.isError || q.data?.status === "failed" || q.data?.status === "limited";
+  const waiting = q.isLoading || q.data?.status === "pending";
+  const failed = q.isError || q.data?.status === "failed";
 
   return (
     <div className="mt-2" onPointerDownCapture={stop}>
@@ -181,10 +185,8 @@ function ConjugationPanel({ word, occ, language, load, compact = false }: { word
               <p className="py-4 text-center text-xs text-slate-400">Preparing the conjugations…</p>
             ) : failed ? (
               <div className="py-3 text-center text-xs text-slate-500">
-                {q.data?.status === "limited" ? "Too many new verbs today — try again tomorrow." : "Couldn't load the conjugations."}
-                {q.data?.status !== "limited" && (
-                  <button onClick={(e) => { stop(e); q.refetch(); }} className="ml-2 font-semibold text-indigo-600 underline">Retry</button>
-                )}
+                Couldn't load the conjugations.
+                <button onClick={(e) => { stop(e); forgetConjugationRequest(word, language); q.refetch(); }} className="ml-2 font-semibold text-indigo-600 underline">Retry</button>
               </div>
             ) : null}
           </div>

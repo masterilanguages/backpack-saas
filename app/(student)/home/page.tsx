@@ -3219,6 +3219,9 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                             <>
                                               {wordPopup.phonetic && <span className="block text-[11px] text-indigo-500">{wordPopup.phonetic}</span>}
                                               <span className="block text-xs text-slate-500">{wordPopup.translation || "—"}</span>
+                                              {wordPopup.saving && (
+                                                <span className="mt-1 block text-[11px] font-semibold text-indigo-500">Saving…</span>
+                                              )}
                                               {wordPopup.savedAs && (
                                                 <span className="mt-1 block text-[11px] font-semibold text-emerald-600">
                                                   ✓ Saved as <span dir="auto">{wordPopup.savedAs.word}</span>{wordPopup.savedAs.translation ? ` · ${wordPopup.savedAs.translation}` : ""}
@@ -4953,7 +4956,9 @@ function DiscoveryPanel({
             disabled={wordPopup.saving || wordPopup.added}
             className="flex-shrink-0 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
           >
-            {wordPopup.added ? "Added" : wordPopup.saving ? "…" : "+ Add"}
+            {wordPopup.added ? "Added" : wordPopup.saving ? (
+              <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Saving…</span>
+            ) : "+ Add"}
           </button>
           <button onClick={onClosePopup} aria-label="Close" className="flex-shrink-0 p-1 text-slate-400"><X className="h-4 w-4" /></button>
         </div>

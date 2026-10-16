@@ -14,7 +14,7 @@ import { analyzeWordsTogether, cachedAnalysis, verbCardFor, type SaveWordDeps, t
 import { parseVerbAnalysis, type VerbOccurrence } from "./verbs";
 import type { VerbCardFields } from "./saveWord";
 
-export type VerbCheckDeps = Pick<SaveWordDeps, "analyze" | "label" | "translitRules" | "log"> & {
+export type VerbCheckDeps = Pick<SaveWordDeps, "analyze" | "label" | "translitRules" | "log" | "onVerbCard"> & {
   /** claim_verb_checks: the caller's pending words (all, or these ids), now theirs to check. */
   claim(ids?: string[] | null): Promise<any[]>;
   /** resolve_verb_check: card + form for a verb, nulls for any other word. */
@@ -68,6 +68,10 @@ export async function processVerbChecks(
         res = await deps.resolve(row.id, card, occurrence);
       }
       out.checked++;
+      // A verb card now exists: its conjugation table starts being prepared.
+      if (analysis && res.word && res.action !== "skipped" && res.action !== "missing") {
+        try { deps.onVerbCard?.(res.word); } catch { /* never blocks the check */ }
+      }
       out.actions[res.action] = (out.actions[res.action] || 0) + 1;
     } catch (e) {
       deps.log?.("[verbChecks] could not resolve a word", { id: row.id, error: e });

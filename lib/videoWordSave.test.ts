@@ -283,3 +283,13 @@ test("recommended · verbs on: the sentence is the one where the word is a word 
   await saveRecommendedWords(c, on.deps, ON);
   assertEquals(on.calls.created[0].example_sentence, "יש לי בת");
 });
+
+test("recommended · each verb card made by the check starts its table once; nouns don't", async () => {
+  const f = fakes();
+  const db = checker(f);
+  const started: string[] = [];
+  db.check.onVerbCard = (card: any) => { started.push(card.lemma_key); };
+  const out = await saveRecommendedWords(ctx(), f.deps, ON);
+  await processVerbChecks(db.check, ON, out.pendingIds);
+  assertEquals(started.sort(), ["לאהוב|paal", "להניח|hifil"]);
+});

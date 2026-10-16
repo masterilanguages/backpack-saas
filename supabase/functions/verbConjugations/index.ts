@@ -7,6 +7,9 @@
 //          (another request is making it; ask again) · 502 { status: "failed" }
 //          · 429 { status: "limited" } (too many new verbs today)
 //          · 400 bad request · 403 the verb is not on the caller's cards.
+// { …, prepare: true }: answers at once (200 already made / 202 preparing) and
+// makes the table in the background (EdgeRuntime.waitUntil), so it does not
+// depend on the student's page staying open.
 import { handleCors, json } from "../_shared/cors.ts";
 import { requireUser, serviceClient } from "../_shared/auth.ts";
 import { askJson } from "../_shared/llm.ts";
@@ -33,6 +36,7 @@ Deno.serve(async (req) => {
     now: () => Date.now(),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     log: (m) => console.log(m),
+    background: (work) => { (globalThis as any).EdgeRuntime?.waitUntil?.(work); },
   };
   const caller = {
     admin,

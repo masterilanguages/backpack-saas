@@ -6,6 +6,8 @@ import { QUALITY_MODEL, translitRules } from "@/lib/chapterPrompts";
 import { languageLabel } from "@/lib/language";
 import { markForVerbCheck, type SaveWordDeps, type SaveWordOptions } from "@/lib/saveWord";
 import { processVerbChecks, type VerbCheckDeps, type VerbCheckResult } from "@/lib/verbChecks";
+import { conjugationRequest } from "@/lib/verbCard";
+import { hasConjugations } from "@/lib/verbs";
 import { useEffect, useRef } from "react";
 
 /**
@@ -108,4 +110,63 @@ export function checkLater(created: any | any[], onChanged?: () => void) {
   const ids = (Array.isArray(created) ? created : [created])
     .filter((r) => r?.id && r.verb_check === "pending").map((r) => String(r.id));
   if (ids.length) runVerbChecks(ids, (r) => { if (r && r.checked) onChanged?.(); });
+}
+
+// ------------------------------------------------------- conjugation tables
+
+/** Verbs whose table this tab asked for, and when. */
+const preparing = new Map<string, number>();
+const tableKey = (language: string, lemmaKey: string) => `${language}|${lemmaKey}`;
+
+/**
+ * Starts preparing a verb card's conjugation table (all four tenses, one AI
+ * call, stored in verb_lexicon for everyone) right after the card is saved.
+ * Never awaited: saving is not slowed down. The edge function answers at once
+ * and keeps working on the server, so closing the page doesn't stop it; an
+ * existing table costs nothing. Once per verb per tab.
+ */
+export function prepareConjugations(card: any) {
+  const language = String(card?.language || "hebrew").toLowerCase();
+  if (!card?.lemma_key || !card?.word || !VERB_FORMS_LANGUAGES.includes(language)) return;
+  const k = tableKey(language, card.lemma_key);
+  if (preparing.has(k)) return;
+  preparing.set(k, Date.now());
+  (base44 as any).functions.invoke("verbConjugations", { ...conjugationRequest(card, language), prepare: true })
+    .catch((e: any) => { preparing.delete(k); console.warn("[verbConjugations] prepare request failed", e); });
+}
+
+saveWordDeps.onVerbCard = prepareConjugations;
+verbCheckDeps.onVerbCard = prepareConjugations;
+
+/** A table still "pending" this long after its last change was abandoned (longer than the 400 s lease). */
+const ABANDONED_MS = 7 * 60 * 1000;
+
+/**
+ * A verb card's conjugation table, read straight from verb_lexicon (no AI, no
+ * edge function). Being made → "pending" (the caller looks again shortly; no
+ * second request). Missing, failed, or abandoned → asks the server to prepare
+ * it once (recovery: e.g. the page closed before the first request left); the
+ * server's claim prevents a duplicate call and caps the attempts.
+ */
+export async function loadConjugationTable(card: any, language: string): Promise<{ status: "ready" | "pending" | "failed"; entry?: any }> {
+  const lang = String(language || "hebrew").toLowerCase();
+  const { data, error } = await (supabase as any).from("verb_lexicon")
+    .select("language, lemma_key, lemma, lemma_phonetic, lemma_meaning, binyan, root, conjugations, status, updated_at")
+    .eq("language", lang).eq("lemma_key", card.lemma_key).maybeSingle();
+  if (error) throw error;
+  if (data && hasConjugations(data.conjugations)) return { status: "ready", entry: data };
+  const k = tableKey(lang, card.lemma_key);
+  const abandoned = data?.status === "pending" && Date.now() - Date.parse(data.updated_at || "") > ABANDONED_MS;
+  if (data?.status === "pending" && !abandoned) return { status: "pending" };
+  if (data?.status === "failed" && preparing.has(k)) return { status: "failed" };
+  // Asked a while ago and still no row: the server refused (e.g. too many new
+  // verbs today) — say so instead of "Preparing…" forever.
+  if (!data && preparing.has(k) && Date.now() - (preparing.get(k) || 0) > 20_000) return { status: "failed" };
+  prepareConjugations({ ...card, language: lang });
+  return { status: "pending" };
+}
+
+/** "Retry" after a failed table: the next load asks the server again. */
+export function forgetConjugationRequest(card: any, language: string) {
+  preparing.delete(tableKey(String(language || "hebrew").toLowerCase(), card?.lemma_key || ""));
 }

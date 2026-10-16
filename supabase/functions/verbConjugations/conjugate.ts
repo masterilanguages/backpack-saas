@@ -62,6 +62,12 @@ export type ConjugateDeps = {
   pollMs?: number;
   maxAttempts?: number;
   dailyNewLimit?: number;
+  /**
+   * Keeps work running after the reply (EdgeRuntime.waitUntil): a "prepare"
+   * request answers at once and the table is made on the server, whether or
+   * not the student's page stays open.
+   */
+  background?(work: Promise<unknown>): void;
 };
 
 const clip = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -198,7 +204,27 @@ export async function handleConjugationRequest(deps: ConjugateDeps, caller: Call
   if (!caller.admin && !(await caller.ownsVerb(req.language, key))) {
     return { status: 403, body: { error: "This verb is not in your Backpack" } };
   }
-  const out = await getConjugations(deps, req, caller.admin ? null : caller.email || null);
+  const requestedBy = caller.admin ? null : caller.email || null;
+
+  // { prepare: true }: sent right after a verb card is saved. Answers at once;
+  // the table (all four tenses, one call) is made in the background and
+  // stored for everyone. Already made, or being made by someone else: nothing
+  // more is done (no second call).
+  if (body?.prepare === true) {
+    const existing = await deps.store.get(req.language, key);
+    if (existing && hasConjugations(existing.conjugations)) return { status: 200, body: { status: "ready", cached: true } };
+    const work = getConjugations({ ...deps, waitMs: 0 }, req, requestedBy)
+      .then((out) => deps.log(`[verbConjugations ${req.language}:${key}] prepared: ${out.status}`))
+      .catch((e) => deps.log(`[verbConjugations ${req.language}:${key}] prepare failed: ${e}`));
+    if (deps.background) {
+      deps.background(work);
+      return { status: 202, body: { status: "preparing" } };
+    }
+    await work;
+    return { status: 202, body: { status: "preparing" } };
+  }
+
+  const out = await getConjugations(deps, req, requestedBy);
   const status = { ready: 200, pending: 202, limited: 429, failed: 502 }[out.status];
   return { status, body: out };
 }

@@ -219,6 +219,45 @@ const scenarios: Record<string, (h: Harness) => Promise<void>> = {
     assertEquals(calls.llm.length, 2);
   },
 
+  "prepare: answers at once, makes the whole table in the background (one call), stored for everyone": async (h) => {
+    let release!: (v: any) => void;
+    const { deps, calls } = fakes(h, () => new Promise((r) => { release = r; }));
+    const bg: Promise<unknown>[] = [];
+    deps.background = (w) => { bg.push(w); };
+    const owner = { admin: false, email: "a@x.com", ownsVerb: async () => true };
+    const t0 = Date.now();
+    const out = await handleConjugationRequest(deps, owner, { ...VERB, prepare: true });
+    assertEquals([out.status, out.body.status, bg.length], [202, "preparing", 1]);
+    assert(Date.now() - t0 < 500, "prepare answers without waiting for the model");
+    while (!release) await new Promise((r) => setTimeout(r, 5));
+    release(fullTable());
+    await bg[0];
+    const row = await h.store.get("hebrew", KEY);
+    assertEquals([row?.status, Object.keys(row?.conjugations || {}).sort(), calls.llm.length], ["ready", ["future", "imperative", "past", "present"], 1]);
+    // Already made: a second prepare (or another student) costs nothing.
+    const again = await handleConjugationRequest(deps, { ...owner, email: "b@x.com" }, { ...VERB, prepare: true });
+    assertEquals([again.status, again.body.status, bg.length, calls.llm.length], [200, "ready", 1, 1]);
+  },
+
+  "prepare twice at once (two tabs, two saves): still one call": async (h) => {
+    const { deps, calls } = fakes(h, () => new Promise((r) => setTimeout(() => r(fullTable()), 60)));
+    const bg: Promise<unknown>[] = [];
+    deps.background = (w) => { bg.push(w); };
+    const owner = { admin: false, email: "a@x.com", ownsVerb: async () => true };
+    await Promise.all([handleConjugationRequest(deps, owner, { ...VERB, prepare: true }), handleConjugationRequest(deps, owner, { ...VERB, prepare: true })]);
+    await Promise.all(bg);
+    assertEquals(calls.llm.length, 1);
+    assertEquals((await h.store.get("hebrew", KEY))?.status, "ready");
+  },
+
+  "prepare keeps the rules: not on the caller's cards → 403, no work started": async (h) => {
+    const { deps, calls } = fakes(h);
+    const bg: Promise<unknown>[] = [];
+    deps.background = (w) => { bg.push(w); };
+    const out = await handleConjugationRequest(deps, { admin: false, email: "b@x.com", ownsVerb: async () => false }, { ...VERB, prepare: true });
+    assertEquals([out.status, bg.length, calls.llm.length], [403, 0, 0]);
+  },
+
   "request: bad input is refused before anything else": async (h) => {
     const { deps, calls } = fakes(h);
     const anyone = { admin: true, email: "adm@x.com", ownsVerb: async () => true };

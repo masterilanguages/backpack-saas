@@ -64,6 +64,11 @@ export type SaveWordDeps = {
   /** lib/chapterPrompts translitRules. */
   translitRules?(label: string): string;
   log?(message: string, error?: unknown): void;
+  /**
+   * Called once a verb card is saved: starts preparing its conjugation table
+   * in the background (never awaited, so saving is not slowed down).
+   */
+  onVerbCard?(card: any): void;
 };
 
 export type SaveWordOptions = {
@@ -154,6 +159,7 @@ export async function saveWordToBackpack(input: SaveWordInput, deps: SaveWordDep
   // 2. A verb: one card per infinitive, this form added to it.
   const { card, occurrence } = verbCardFor(row, analysis, surface, sentence, language);
   const saved = await deps.saveVerbOccurrence(card, occurrence);
+  try { deps.onVerbCard?.(saved.word); } catch { /* never blocks the save */ }
   return { word: saved.word, outcome: saved.created ? "verb-created" : "verb-merged", aiCalls, analysis };
 }
 

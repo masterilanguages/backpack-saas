@@ -183,3 +183,25 @@ test("without a contextual translation in the analysis, the caller's one is kept
   await saveWordToBackpack({ row: popupRow("שהנחת", { translation: "that you put (popup)", phonetic: "shehenachta" }) }, deps, ON);
   assertEquals([calls.verbs[0].occ.translation, calls.verbs[0].occ.phonetic], ["that you put (popup)", "shehenachta"]);
 });
+
+test("a saved verb card starts its conjugation table (not awaited); nouns and failures don't", async () => {
+  const { deps } = fakes({ "שהנחת": VERB });
+  const started: any[] = [];
+  deps.onVerbCard = (card) => { started.push(card); };
+  await saveWordToBackpack({ row: popupRow("שהנחת") }, deps, ON);
+  assertEquals(started.map((c) => c.lemma_key), ["להניח|hifil"]);
+  await saveWordToBackpack({ row: popupRow("נשמה") }, deps, ON);
+  await saveWordToBackpack({ row: popupRow("שהנחת") }, deps, OFF);
+  assertEquals(started.length, 1);
+});
+
+test("the table request can never break or slow the save", async () => {
+  const { deps } = fakes({ "שהנחת": VERB });
+  let slow: Promise<void> | null = null;
+  deps.onVerbCard = () => { slow = new Promise((r) => setTimeout(r, 400)); throw new Error("prepare failed"); };
+  const t0 = Date.now();
+  const out = await saveWordToBackpack({ row: popupRow("שהנחת") }, deps, ON);
+  assertEquals(out.outcome, "verb-created");
+  assert(Date.now() - t0 < 200, "the save did not wait for the table");
+  await slow;
+});
