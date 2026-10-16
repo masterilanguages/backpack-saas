@@ -36,11 +36,15 @@ export function normalizeBinyan(b: unknown): string {
 
 /**
  * The key of one verb: its infinitive without nikud, plus the binyan, so two
- * verbs spelled alike without nikud stay apart. "" when there is no lemma.
+ * verbs spelled alike without nikud stay apart. The vowel letters ו and י
+ * after the first letter don't count, so the full and the defective spelling
+ * (לאהוב / לֶאֱהֹב → לאהב) are the same verb; the binyan still tells ללמוד
+ * (paal) from ללמד (piel). "" when there is no lemma.
  */
 export function lemmaKey(lemma: string, binyan?: unknown): string {
-  const base = plainSpelling(lemma);
-  if (!base) return "";
+  const plain = plainSpelling(lemma);
+  if (!plain) return "";
+  const base = plain.charAt(0) + plain.slice(1).replace(/[וי]/g, "");
   const b = normalizeBinyan(binyan);
   return b ? `${base}|${b}` : base;
 }
@@ -254,15 +258,41 @@ export const VERB_ANALYSIS_SCHEMA = {
  * One question about one word in its sentence. `translitRules` is passed in
  * (lib/chapterPrompts translitRules) so this file stays import-free.
  */
-export const verbAnalysisPrompt = (label: string, word: string, sentence: string, translitRules = "") =>
-  `In this ${label} sentence: "${sentence}"
-look at the word "${word}". Is it a verb form?
-- A present-tense participle used as a noun or adjective (e.g. מורה "teacher"), nouns, adjectives, adverbs and particles are NOT verbs: return { "is_verb": false } and nothing else.
-- If it is a verb (any tense, the imperative, or an infinitive), return:
+const analysisRules = (label: string, the: string) =>
+  `- A present-tense participle used as a noun or adjective (e.g. מורה "teacher"), nouns, adjectives, adverbs and particles are NOT verbs: give { "is_verb": false } and nothing else.
+- If it is a verb (any tense, the imperative, or an infinitive), give:
   is_verb: true; lemma: its infinitive in ${label} script${/hebrew/i.test(label) ? " with full nikud (e.g. לְהַנִּיחַ)" : ""}; lemma_phonetic; lemma_meaning: the English infinitive ("to put");${/hebrew/i.test(label) ? " binyan (paal, nifal, piel, pual, hifil, hufal, hitpael); root (e.g. נ-ו-ח);" : ""}
   tense (past, present, future, imperative, infinitive); person (1, 2, 3; omit for present and infinitive); gender (m or f; omit when the form doesn't show it); number (sg or pl);
   prefix: particles attached in front that are not part of the verb (e.g. ש, ו, כש) or ""; form: the verb without them;
-  phonetic: transliteration of "${word}" as said here; translation: English meaning of "${word}" in this sentence ("that you put").${translitRules}`;
+  phonetic: transliteration of ${the} as said there; translation: English meaning of ${the} in its sentence ("that you put").`;
+
+export const verbAnalysisPrompt = (label: string, word: string, sentence: string, translitRules = "") =>
+  `In this ${label} sentence: "${sentence}"
+look at the word "${word}". Is it a verb form?
+${analysisRules(label, `"${word}"`)}${translitRules}`;
+
+export const VERB_BATCH_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { i: { type: "integer" }, ...VERB_ANALYSIS_SCHEMA.properties },
+        required: ["i", "is_verb"],
+      },
+    },
+  },
+  required: ["items"],
+};
+
+/** Several words at once (a lesson's recommended words): one call instead of one per word. */
+export const verbBatchPrompt = (label: string, items: { word: string; sentence: string }[], translitRules = "") =>
+  `For each numbered ${label} word below, look at it in its sentence and say whether it is a verb form.
+${analysisRules(label, "the word")}
+Return { "items": [ { "i": the word's number, ...the fields above } ] }, one item per word.
+
+${items.map((x, i) => `${i}. "${x.word}" in: "${x.sentence}"`).join("\n")}${translitRules}`;
 
 export const CONJUGATION_SCHEMA = {
   type: "object",

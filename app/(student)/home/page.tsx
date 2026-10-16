@@ -30,6 +30,10 @@ import {
 import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
 import WordCard from "@/components/backpack/WordCard";
+import VerbDetails from "@/components/backpack/VerbDetails";
+import { deckSentence, deckVideoTitle, hasSavedWord, isVerbCard, pickOccurrence, wordVideoIds } from "@/lib/verbCard";
+import { savePopupWord as saveVideoPopupWord, saveRecommendedWords } from "@/lib/videoWordSave";
+import { saveWordDeps, saveWordOptions, verbFormsEnabled } from "@/lib/saveWordDeps";
 import AddWordsSheet from "@/components/home/AddWordsSheet";
 import PhotoWordCapture from "@/components/home/PhotoWordCapture";
 import { stripCaptionNoise } from "@/lib/transcription";
@@ -971,16 +975,19 @@ Return JSON with:
     const byVideo = new Map<string, { key: string; videoId: string; title: string; words: any[]; latest: string }>();
     const other: any[] = [];
     for (const w of visible) {
-      const vid = w.source_video_id;
-      if (!vid) { other.push(w); continue; }
-      let g = byVideo.get(vid);
-      if (!g) {
-        g = { key: `yt:${vid}`, videoId: vid, title: w.source_video_title || "Video", words: [], latest: "" };
-        byVideo.set(vid, g);
+      // A verb card is in the deck of every video it was met in.
+      const vids = Array.from(wordVideoIds(w));
+      if (!vids.length) { other.push(w); continue; }
+      for (const vid of vids) {
+        let g = byVideo.get(vid);
+        if (!g) {
+          g = { key: `yt:${vid}`, videoId: vid, title: deckVideoTitle(w, vid) || "Video", words: [], latest: "" };
+          byVideo.set(vid, g);
+        }
+        g.words.push(w);
+        const at = String(pickOccurrence(w, vid)?.added_at || w.created_date || "");
+        if (at > g.latest) g.latest = at;
       }
-      g.words.push(w);
-      const at = String(w.created_date || "");
-      if (at > g.latest) g.latest = at;
     }
     const videos = Array.from(byVideo.values()).sort((a, b) => b.latest.localeCompare(a.latest));
     return { all: visible, videos, other };
@@ -1006,16 +1013,17 @@ Return JSON with:
       const list = c ? episodesFor(c, byId.get(g.videoId)) : [];
       eps.set(g.videoId, list);
       const index = sentenceEpisodeIndex(c?.sentences || [], list);
-      for (const w of g.words) wordEp.set(w.id, wordEpisode(w, index));
+      // Per card and video: a verb's episode in each video is its sentence there.
+      for (const w of g.words) wordEp.set(`${w.id}|${g.videoId}`, wordEpisode({ example_sentence: deckSentence(w, g.videoId) }, index));
     }
     return { eps, wordEp };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backpackDecks, backpackChapters, shellVideos]);
   const deckOfWord = (w: any, key: string) => {
     const [vid, part] = key.slice(3).split("#");
-    if (w.source_video_id !== vid) return false;
+    if (!wordVideoIds(w).has(vid)) return false;
     if (!part) return true;
-    const ep = backpackEpisodes.wordEp.get(w.id) ?? null;
+    const ep = backpackEpisodes.wordEp.get(`${w.id}|${vid}`) ?? null;
     return part === "none" ? ep == null : ep === Number(part.slice(1));
   };
 
@@ -1037,7 +1045,7 @@ Return JSON with:
         (deckKey === null || deckKey === "all"
           ? true
           : deckKey === "other"
-          ? !w.source_video_id
+          ? wordVideoIds(w).size === 0
           : deckOfWord(w, deckKey))
     );
     const byLevel = (a: any, b: any) =>
@@ -2189,34 +2197,16 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
     setWordPopup(null);
     if (passKind === "discovery") {
       // The lesson adds its recommended words to Backpack as New (skip ones
-      // the student already has).
-      const have = new Set((words as any[]).map((w: any) => normHe(w.word || "")).filter(Boolean));
-      let added = 0;
-      for (const r of recommendedWords) {
-        const key = normHe(r.hebrew || "");
-        if (!key || have.has(key)) continue;
-        have.add(key);
-        const sentence = discSegments.find((sg: any) => normHe(sg.hebrew || sg.text || "").includes(key));
-        try {
-          await base44.entities.Word.create({
-            word: r.hebrew,
-            phonetic: r.phonetic || r.hebrew,
-            translation: r.meaning || "",
-            category: "wordbank",
-            language: vidLang,
-            times_practiced: 0,
-            mastered: false,
-            example_sentence: sentence ? sentence.hebrew || sentence.text : null,
-            source_video_id: shellVideo?.video_id || null,
-            source_video_title: shellVideo?.title || null,
-            learn_status: "new",
-          });
-          added++;
-        } catch (e) {
-          console.error("[chapter] could not add recommended word", r, e);
-        }
-      }
-      if (added) queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
+      // the student already has) — lib/videoWordSave. With verbs on (one AI
+      // call for the whole lesson) it runs in the background, so the next
+      // episode doesn't wait for it.
+      const savingWords = saveRecommendedWords(
+        { recommended: recommendedWords, words: words as any[], segments: discSegments, language: vidLang, video: shellVideo, norm: normHe },
+        saveWordDeps, saveWordOptions,
+      )
+        .then(({ added }) => { if (added) queryClient.invalidateQueries({ queryKey: ["wordRatings"] }); })
+        .catch((e) => console.error("[chapter] could not add recommended words", e));
+      if (!verbFormsEnabled(vidLang)) await savingWords;
       // An episode: straight on to the next episode's sentences in this same
       // player (finishing this one is what opens it), first sentence waiting
       // for Play. The last episode shows its "what next" card.
@@ -2256,9 +2246,7 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
     if (!clean) return;
     // Only pauses: tapping a word to read it must not start the video.
     shellPlayerRef.current?.pauseVideo?.();
-    const already = (words as any[]).some(
-      (w) => w.word === clean || (w.phonetic || "").toLowerCase() === clean.toLowerCase()
-    );
+    const already = hasSavedWord(words as any[], clean);
     const known =
       (discovery ? findGloss(discWordGlosses(sentence), token) : null) ||
       (discovery ? (() => { const r = recommendedFor(token); return r ? { phonetic: r.phonetic, meaning: r.meaning } : null; })() : null);
@@ -2292,27 +2280,18 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
     if (!wordPopup || wordPopup.saving || wordPopup.added) return;
     setWordPopup((p: any) => ({ ...p, saving: true }));
     try {
-      const row = await base44.entities.Word.create({
-        word: wordPopup.clean,
-        translation: wordPopup.translation || "",
-        phonetic: wordPopup.phonetic || wordPopup.clean,
-        category: "wordbank",
-        language: vidLang,
-        times_practiced: 0,
-        mastered: false,
-        // The sentence the word came from travels with the card, so the
-        // flashcard can play it back.
-        example_sentence: wordPopup.sentence,
-        // Which video it came from -> its own deck in the Backpack menu.
-        source_video_id: shellVideo?.video_id || null,
-        source_video_title: shellVideo?.title || null,
-        // Enters Backpack as New: the student decides Learn / Skip later.
-        learn_status: "new",
-      });
+      // Same row as always (lib/videoWordSave); with verbs on, a conjugated
+      // verb goes to its infinitive's card instead.
+      const res = await saveVideoPopupWord(
+        { clean: wordPopup.clean, translation: wordPopup.translation, phonetic: wordPopup.phonetic, sentence: wordPopup.sentence },
+        { language: vidLang, video: shellVideo, words: words as any[] },
+        saveWordDeps, saveWordOptions,
+      );
+      const savedAs = res.analysis && res.word?.word ? { word: res.word.word, translation: res.word.translation || "" } : null;
       queryClient.invalidateQueries({ queryKey: ["wordRatings"] });
-      setWordPopup((p: any) => (p ? { ...p, saving: false, added: true } : p));
+      setWordPopup((p: any) => (p ? { ...p, saving: false, added: true, savedAs } : p));
       setMood("happy");
-      toast.success("Added to backpack! 🎒");
+      toast.success(savedAs ? `Added as ${savedAs.word} 🎒` : "Added to backpack! 🎒");
       // Its mnemonic image is generated once the student chooses Learn.
     } catch (e: any) {
       setWordPopup((p: any) => (p ? { ...p, saving: false } : p));
@@ -2525,7 +2504,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                   <BackpackVideoEpisodes
                     deck={backpackDecks.videos.find((g) => g.videoId === deckVideo)}
                     eps={backpackEpisodes.eps.get(deckVideo) || []}
-                    episodeOf={(w: any) => backpackEpisodes.wordEp.get(w.id) ?? null}
+                    episodeOf={(w: any) => backpackEpisodes.wordEp.get(`${w.id}|${deckVideo}`) ?? null}
                     onBack={() => setDeckVideo(null)}
                     onOpen={openDeck}
                   />
@@ -2590,6 +2569,8 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                       // Remount per card: each flashcard starts with its
                       // translation hidden — pressing the card reveals it.
                       key={flashDeck[safeCardIdx]?.id}
+                      // A verb card shows the form and sentence of this deck's video.
+                      deckVideoId={deckKey?.startsWith("yt:") ? deckKey.slice(3).split("#")[0] : null}
                       word={flashDeck[safeCardIdx]}
                       language={flashDeck[safeCardIdx]?.language || language}
                       showAllEnglish={showAllEnglish}
@@ -3227,6 +3208,11 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                             <>
                                               {wordPopup.phonetic && <span className="block text-[11px] text-indigo-500">{wordPopup.phonetic}</span>}
                                               <span className="block text-xs text-slate-500">{wordPopup.translation || "—"}</span>
+                                              {wordPopup.savedAs && (
+                                                <span className="mt-1 block text-[11px] font-semibold text-emerald-600">
+                                                  ✓ Saved as <span dir="auto">{wordPopup.savedAs.word}</span>{wordPopup.savedAs.translation ? ` · ${wordPopup.savedAs.translation}` : ""}
+                                                </span>
+                                              )}
                                             </>
                                           )}
                                         </span>
@@ -4945,6 +4931,11 @@ function DiscoveryPanel({
             <p className="truncate text-xs text-slate-700">
               {wordPopup.loading ? "translating…" : `= ${wordPopup.translation || popupRec?.meaning || "—"}`}
             </p>
+            {wordPopup.savedAs && (
+              <p className="truncate text-[11px] font-semibold text-emerald-600">
+                ✓ Saved as <span dir="auto">{wordPopup.savedAs.word}</span>{wordPopup.savedAs.translation ? ` · ${wordPopup.savedAs.translation}` : ""}
+              </p>
+            )}
           </div>
           <button
             onClick={onAddWord}
@@ -5247,7 +5238,7 @@ function WordTriage({
         <span className="text-xs font-semibold text-slate-400">{i + 1} / {queue.length}</span>
       </div>
 
-      <div className="relative mt-4 flex flex-1 items-start justify-center">
+      <div className="relative mt-4 flex min-h-0 flex-1 items-start justify-center">
         <motion.div
           key={w.id}
           drag="x"
@@ -5260,15 +5251,17 @@ function WordTriage({
           initial={{ opacity: 0, y: 12, scale: 0.97 }}
           animate={leaving ? { x: leaving * 420, rotate: leaving * 12, opacity: 0 } : { opacity: 1, y: 0, scale: 1, x: 0, rotate: 0 }}
           transition={{ duration: 0.25 }}
-          className="w-full cursor-grab touch-pan-y select-none rounded-3xl bg-white p-6 text-center shadow-xl shadow-indigo-200/60 active:cursor-grabbing"
+          className="max-h-full w-full cursor-grab touch-pan-y select-none overflow-y-auto overscroll-contain rounded-3xl bg-white p-6 text-center shadow-xl shadow-indigo-200/60 active:cursor-grabbing"
         >
-          {w.source_video_title && (
-            <p className="mb-3 truncate text-[11px] font-semibold text-slate-400">📺 {w.source_video_title}</p>
+          {deckVideoTitle(w) && (
+            <p className="mb-3 truncate text-[11px] font-semibold text-slate-400">📺 {deckVideoTitle(w)}</p>
           )}
           <p dir={rtl ? "rtl" : "ltr"} className="text-4xl font-extrabold leading-tight text-indigo-950">{w.word}</p>
           {w.phonetic && w.phonetic !== w.word && <p className="mt-1 text-lg italic text-indigo-500">{w.phonetic}</p>}
           <p className="mt-2 text-xl font-semibold text-slate-800">{w.translation || "—"}</p>
-          {w.example_sentence && (
+          {isVerbCard(w) ? (
+            <VerbDetails key={w.id} word={w} language={w.language || "hebrew"} className="mt-4" />
+          ) : w.example_sentence && (
             <p dir={isRTLText(w.example_sentence) ? "rtl" : "ltr"} className="mt-4 rounded-2xl bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-600">
               {w.example_sentence}
             </p>

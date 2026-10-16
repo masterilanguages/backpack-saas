@@ -133,7 +133,7 @@ test("שהנחת → one card לְהַנִּיחַ keeping the original word, se
   assertEquals(calls.created.length, 0);
   const { card, occ } = calls.verbs[0];
   assertEquals(card, {
-    word: "לְהַנִּיחַ", phonetic: "lehaniach", translation: "to put", language: "hebrew", lemma_key: "להניח|hifil",
+    word: "לְהַנִּיחַ", phonetic: "lehaniach", translation: "to put", language: "hebrew", lemma_key: "להנח|hifil",
     category: "wordbank", learn_status: "new", times_practiced: 0, mastered: false, image_url: null, mnemonic_explanation: null,
   });
   assertEquals(occ, {
@@ -174,7 +174,7 @@ test("the same verb from a second song joins the first card", async () => {
   const second = await saveWordToBackpack({ row: popupRow("הנחתי", { source_video_id: "vid-2", source_video_title: "Song 2", example_sentence: "הנחתי לך" }) }, deps, ON);
   assertEquals([first.outcome, second.outcome], ["verb-created", "verb-merged"]);
   assertEquals(cards.size, 1);
-  const forms = cards.get("להניח|hifil").verb_forms;
+  const forms = cards.get("להנח|hifil").verb_forms;
   assertEquals(forms.map((f: any) => [f.surface, f.video_id, f.sentence]), [["שהנחת", "vid-1", SENTENCE], ["הנחתי", "vid-2", "הנחתי לך"]]);
 });
 

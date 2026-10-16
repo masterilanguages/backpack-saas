@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { isRTLLanguage, isRTLText, languageLabel, needsTransliteration } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
 import { generateLessonAudio } from "@/lib/audio/lessonAudio";
+import VerbDetails from "./VerbDetails";
+import { isVerbCard, pickOccurrence } from "@/lib/verbCard";
 
 function SentenceWords({ words, onAddToBackpack, showHebrew = true, showTransliteration = true, lang = 'hebrew' }) {
   // Native-script line direction follows the actual generated text (RTL for Hebrew/Arabic, LTR for Latin).
@@ -238,6 +240,8 @@ export default function WordCard({
   large = false,
   // Backpack only: the 3 usage examples are being generated for this card.
   generatingExamples = false,
+  // Backpack: the deck's video. A verb card shows its form and sentence from it.
+  deckVideoId = /** @type {string | null} */ (null),
 }) {
   const [revealed, setRevealed] = useState(false);
   const [regeneratingImage, setRegeneratingImage] = useState(false);
@@ -347,7 +351,10 @@ export default function WordCard({
   // ---------------------------------------------------------------------------
   if (large) {
     const explanation = mnemonicExplanations[word.id] || word.mnemonic_explanation;
-    const hasSentence = word.example_sentence && word.example_sentence.includes(' ') && !/^Session \d+$/i.test(word.example_sentence);
+    // A verb card (one per infinitive): the form and sentence from this deck's video.
+    const verbOcc = isVerbCard(word) ? pickOccurrence(word, deckVideoId) : null;
+    const cardSentence = verbOcc?.sentence || word.example_sentence;
+    const hasSentence = cardSentence && cardSentence.includes(' ') && !/^Session \d+$/i.test(cardSentence);
     const roundBtn = {
       width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: '#f1f5f9', color: '#334155', fontSize: 15, border: 0, cursor: 'pointer', transition: 'transform .15s',
@@ -546,15 +553,22 @@ export default function WordCard({
           )}
         </div>
 
+        {/* Verb card: the form met in the video, its grammar, conjugations */}
+        {verbOcc && (
+          <div style={{ width: '100%', marginTop: 10, flexShrink: 0 }}>
+            <VerbDetails word={word} videoId={deckVideoId} language={lang} showSentence={false} hideMeaning={!showingEnglish} />
+          </div>
+        )}
+
         {/* 3 usage examples under the word (phonetic on top) */}
         <div style={{ width: '100%', marginTop: 8, flexShrink: 0 }}>
           <UsageExamples
             examples={Array.isArray(word.usage_examples) ? word.usage_examples : null}
-            videoSentence={hasSentence ? word.example_sentence : null}
+            videoSentence={hasSentence ? cardSentence : null}
             loading={generatingExamples}
             lang={lang}
             showEnglish
-            target={word.word}
+            target={verbOcc?.surface || word.word}
             onAddToBackpack={(w, meaning, hebrew) => handleAddWordFromSentence(w, meaning, hebrew)}
           />
         </div>

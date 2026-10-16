@@ -28,8 +28,11 @@ Deno.test("normalizeBinyan: spellings of the same binyan agree; unknown → ''",
   assertEquals(normalizeBinyan(undefined), "");
 });
 
-Deno.test("lemmaKey: nikud ignored, binyan kept apart, empty lemma → ''", () => {
-  assertEquals(lemmaKey("לְהַנִּיחַ", "Hif'il"), "להניח|hifil");
+Deno.test("lemmaKey: nikud and vowel letters ignored, binyan kept apart, empty lemma → ''", () => {
+  assertEquals(lemmaKey("לְהַנִּיחַ", "Hif'il"), "להנח|hifil");
+  assertEquals(lemmaKey("לֶאֱהֹב", "paal"), lemmaKey("לאהוב", "paal"));
+  assertEquals(lemmaKey("לִכְתֹּב", "paal"), lemmaKey("לכתוב", "paal"));
+  assert(lemmaKey("ללמוד", "paal") !== lemmaKey("ללמד", "piel"));
   assertEquals(lemmaKey("להניח", "hifil"), lemmaKey("לְהַנִּיחַ", "Hif'il"));
   assert(lemmaKey("לספר", "piel") !== lemmaKey("לספר", "paal"));
   assertEquals(lemmaKey("comer"), "comer");

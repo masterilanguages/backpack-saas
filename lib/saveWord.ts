@@ -16,8 +16,8 @@
 // dependencies are in lib/saveWordDeps.
 
 import {
-  lemmaKey, occurrenceFrom, parseVerbAnalysis, plainSpelling, verbAnalysisPrompt,
-  VERB_ANALYSIS_SCHEMA, type VerbAnalysis, type VerbOccurrence,
+  lemmaKey, occurrenceFrom, parseVerbAnalysis, plainSpelling, verbAnalysisPrompt, verbBatchPrompt,
+  VERB_ANALYSIS_SCHEMA, VERB_BATCH_SCHEMA, type VerbAnalysis, type VerbOccurrence,
 } from "./verbs";
 
 /** A word row as the callers build it today (base44 Word.create data). */
@@ -175,4 +175,54 @@ export async function saveWordToBackpack(input: SaveWordInput, deps: SaveWordDep
   });
   const saved = await deps.saveVerbOccurrence(card, occurrence);
   return { word: saved.word, outcome: saved.created ? "verb-created" : "verb-merged", aiCalls, analysis };
+}
+
+// ------------------------------------------------------------ several words
+
+export type BatchItem = { surface: string; sentence: string; language: string };
+
+/**
+ * One AI call for several words (a lesson's recommended words). Answers are
+ * kept in the session cache, so a later save of the same word in the same
+ * sentence costs nothing. `results[i]` is the model's raw answer for
+ * items[i] (null when it gave none); `failed` when the call itself failed.
+ * Words of languages that are not enabled, or already remembered, are not
+ * sent; no call at all when nothing is left.
+ */
+export async function analyzeWordsTogether(items: BatchItem[], deps: SaveWordDeps, opts: SaveWordOptions & { batchTimeoutMs?: number }):
+  Promise<{ aiCalls: number; failed: boolean; results: (any | null | undefined)[] }> {
+  const enabled = opts.enabledLanguages.map((l) => l.toLowerCase());
+  const results: (any | null | undefined)[] = items.map(() => undefined);
+  const ask: number[] = [];
+  items.forEach((it, i) => {
+    const lang = String(it.language || "hebrew").toLowerCase();
+    if (!it.surface || !enabled.includes(lang)) return;
+    if (cache.has(cacheKey(lang, it.surface, it.sentence))) return;
+    ask.push(i);
+  });
+  if (!ask.length) return { aiCalls: 0, failed: false, results };
+  const lang = String(items[ask[0]].language || "hebrew").toLowerCase();
+  const label = deps.label ? deps.label(lang) : lang;
+  const prompt = verbBatchPrompt(label, ask.map((i) => ({ word: items[i].surface, sentence: items[i].sentence || items[i].surface })),
+    deps.translitRules ? deps.translitRules(label) : "");
+  try {
+    const raw = await withTimeout(deps.analyze(prompt, VERB_BATCH_SCHEMA), opts.batchTimeoutMs ?? 30_000);
+    const byI = new Map<number, any>();
+    for (const r of Array.isArray(raw?.items) ? raw.items : []) {
+      if (Number.isInteger(r?.i) && r.i >= 0 && r.i < ask.length && !byI.has(r.i)) byI.set(r.i, r);
+    }
+    ask.forEach((itemIndex, n) => {
+      const it = items[itemIndex];
+      const answer = byI.get(n) ?? null;
+      results[itemIndex] = answer;
+      if (answer) {
+        const itLang = String(it.language || "hebrew").toLowerCase();
+        remember(cacheKey(itLang, it.surface, it.sentence), Promise.resolve(parseVerbAnalysis(answer, itLang, it.surface)));
+      }
+    });
+    return { aiCalls: 1, failed: false, results };
+  } catch (e) {
+    deps.log?.("[saveWord] batch verb analysis failed, saving the words as they are", e);
+    return { aiCalls: 1, failed: true, results };
+  }
 }

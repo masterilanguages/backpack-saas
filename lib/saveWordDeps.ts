@@ -15,6 +15,10 @@ export const VERB_FORMS_LANGUAGES: string[] = (process.env.NEXT_PUBLIC_VERB_FORM
 
 export const saveWordOptions: SaveWordOptions = { enabledLanguages: VERB_FORMS_LANGUAGES, timeoutMs: 10_000 };
 
+/** Whether verbs of this language are saved by infinitive. */
+export const verbFormsEnabled = (language?: string | null) =>
+  VERB_FORMS_LANGUAGES.includes(String(language || "hebrew").toLowerCase());
+
 export const saveWordDeps: SaveWordDeps = {
   createWord: (row) => (base44 as any).entities.Word.create(row),
   async saveVerbOccurrence(card, occurrence) {
