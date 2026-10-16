@@ -94,6 +94,15 @@ export const SLOT_LABELS: Record<string, Record<string, string>> = {
 };
 export const TENSES_SHOWN = Object.keys(CONJUGATION_SLOTS) as (keyof typeof CONJUGATION_SLOTS)[];
 
+const BINYAN_LABEL: Record<string, string> = {
+  paal: "Pa'al", nifal: "Nif'al", piel: "Pi'el", pual: "Pu'al", hifil: "Hif'il", hufal: "Huf'al", hitpael: "Hitpa'el",
+};
+/** "Verb · Hif'il" for a verb card's tag (just "Verb" when the binyan is unknown). */
+export function verbTag(w: Card | null | undefined): string {
+  const b = String(w?.lemma_key || "").split("|")[1] || "";
+  return BINYAN_LABEL[b] ? `Verb · ${BINYAN_LABEL[b]}` : "Verb";
+}
+
 /** Every cell the student met on this card, as "tense:slot" (checked against the table when given). */
 export function seenSlots(w: Card, table?: Record<string, Record<string, { he: string }>> | null): Set<string> {
   const out = new Set<string>();

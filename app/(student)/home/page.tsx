@@ -31,7 +31,7 @@ import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
 import WordCard from "@/components/backpack/WordCard";
 import VerbDetails from "@/components/backpack/VerbDetails";
-import { deckSentence, deckVideoTitle, hasSavedWord, isVerbCard, pickOccurrence, wordVideoIds } from "@/lib/verbCard";
+import { deckSentence, deckVideoTitle, hasSavedWord, isVerbCard, pickOccurrence, verbTag, wordVideoIds } from "@/lib/verbCard";
 import { savePopupWord as saveVideoPopupWord, saveRecommendedWords } from "@/lib/videoWordSave";
 import { checkLater, markRow, runVerbChecks, saveWordDeps, saveWordOptions, useResumeVerbChecks } from "@/lib/saveWordDeps";
 import AddWordsSheet from "@/components/home/AddWordsSheet";
@@ -5249,14 +5249,15 @@ function WordTriage({
 
   const rtl = isRTLText(w.word || "");
   return (
-    <div className="flex min-h-0 flex-1 flex-col pt-2">
+    <div className="flex min-h-0 flex-1 flex-col pt-2 [font-family:var(--font-body),var(--font-hebrew)]">
       <div className="flex flex-shrink-0 items-center gap-2 px-1">
-        <button onClick={onClose} className="rounded-full border border-indigo-100 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 shadow-sm">← Back</button>
-        <span className="flex-1 text-sm font-semibold text-slate-700">New words</span>
+        <button onClick={onClose} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-900 shadow-[0_0_0_1px_#ECECF3]">← Back</button>
+        <span className="flex-1 text-[17px] font-extrabold tracking-[-0.01em] text-slate-900 [font-family:var(--font-display),var(--font-hebrew)]">New words</span>
         <span className="text-xs font-semibold text-slate-400">{i + 1} / {queue.length}</span>
       </div>
 
-      <div className="relative mt-4 flex min-h-0 flex-1 items-start justify-center">
+      {/* Centered: no empty gap between a short card and Skip/Learn. */}
+      <div className="relative mt-3 flex min-h-0 flex-1 items-center justify-center">
         <motion.div
           key={w.id}
           drag="x"
@@ -5269,18 +5270,22 @@ function WordTriage({
           initial={{ opacity: 0, y: 12, scale: 0.97 }}
           animate={leaving ? { x: leaving * 420, rotate: leaving * 12, opacity: 0 } : { opacity: 1, y: 0, scale: 1, x: 0, rotate: 0 }}
           transition={{ duration: 0.25 }}
-          className="max-h-full w-full cursor-grab touch-pan-y select-none overflow-y-auto overscroll-contain rounded-3xl bg-white p-6 text-center shadow-xl shadow-indigo-200/60 active:cursor-grabbing"
+          className="max-h-full w-full cursor-grab touch-pan-y select-none overflow-y-auto overscroll-contain rounded-[22px] bg-white px-5 pb-5 pt-4 text-center shadow-[0_0_0_1px_#ECECF3] active:cursor-grabbing"
         >
-          {deckVideoTitle(w) && (
-            <p className="mb-3 truncate text-[11px] font-semibold text-slate-400">📺 {deckVideoTitle(w)}</p>
+          {/* A verb names the video of its form below, under "In the video". */}
+          {deckVideoTitle(w) && !isVerbCard(w) && (
+            <p className="mb-3 truncate text-[12px] text-slate-400">📺 <bdi>{deckVideoTitle(w)}</bdi></p>
           )}
-          <p dir={rtl ? "rtl" : "ltr"} className="text-4xl font-extrabold leading-tight text-indigo-950">{w.word}</p>
-          {w.phonetic && w.phonetic !== w.word && <p className="mt-1 text-lg italic text-indigo-500">{w.phonetic}</p>}
-          <p className="mt-2 text-xl font-semibold text-slate-800">{w.translation || "—"}</p>
+          <p dir={rtl ? "rtl" : "ltr"} className="text-[44px] font-extrabold leading-none text-slate-900 [font-family:var(--font-hebrew),var(--font-body)]">{w.word}</p>
+          {w.phonetic && w.phonetic !== w.word && <p className="mt-2 text-[15px] text-slate-500">{w.phonetic}</p>}
+          <p className="mt-1 text-[20px] font-extrabold tracking-[-0.01em] text-slate-900 [font-family:var(--font-display),var(--font-hebrew)]">{w.translation || "—"}</p>
           {isVerbCard(w) ? (
-            <VerbDetails key={w.id} word={w} language={w.language || "hebrew"} className="mt-4" />
+            <>
+              <span className="mt-2 inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-500">{verbTag(w)}</span>
+              <VerbDetails key={w.id} word={w} language={w.language || "hebrew"} className="mt-5" />
+            </>
           ) : w.example_sentence && (
-            <p dir={isRTLText(w.example_sentence) ? "rtl" : "ltr"} className="mt-4 rounded-2xl bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-600">
+            <p dir={isRTLText(w.example_sentence) ? "rtl" : "ltr"} className="mt-4 text-[16px] leading-relaxed text-slate-600">
               {w.example_sentence}
             </p>
           )}
@@ -5293,7 +5298,7 @@ function WordTriage({
                   <button
                     key={n}
                     onClick={() => setPriority(priority === n ? null : n)}
-                    className={`h-9 w-9 rounded-full text-sm font-bold ${priority === n ? "bg-indigo-500 text-white" : "bg-slate-100 text-slate-500"}`}
+                    className={`h-9 w-9 rounded-full text-sm font-bold ${priority === n ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500"}`}
                   >
                     {n}
                   </button>
@@ -5302,7 +5307,7 @@ function WordTriage({
               <p className="mt-1 text-[10px] text-slate-400">How important it is to you — not how well you know it</p>
             </div>
           ) : (
-            <button onClick={() => setShowPriority(true)} className="mt-4 text-xs font-semibold text-indigo-500 underline decoration-dotted">
+            <button onClick={() => setShowPriority(true)} className="mt-4 text-[12px] font-semibold text-slate-400 underline decoration-dotted underline-offset-2">
               Set priority (optional)
             </button>
           )}
@@ -5311,11 +5316,11 @@ function WordTriage({
 
       <p className="mb-2 mt-3 flex-shrink-0 text-center text-[11px] text-slate-400">Swipe right to learn · left to skip</p>
       <div className="flex flex-shrink-0 gap-3 pb-3">
-        <button onClick={() => decide(false)} className="flex-1 rounded-2xl border border-slate-200 bg-white py-3.5 text-base font-bold text-slate-500 shadow-sm">
-          ↓ Skip
+        <button onClick={() => decide(false)} className="flex-1 rounded-full bg-white py-3.5 text-[15px] font-bold text-slate-700 shadow-[0_0_0_1px_#ECECF3]">
+          Skip
         </button>
-        <button onClick={() => decide(true)} className="flex-1 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 py-3.5 text-base font-bold text-white shadow-md shadow-emerald-200">
-          ✓ Learn
+        <button onClick={() => decide(true)} className="flex-1 rounded-full bg-slate-900 py-3.5 text-[15px] font-bold text-white">
+          Learn
         </button>
       </div>
     </div>

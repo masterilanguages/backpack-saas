@@ -5,7 +5,7 @@ import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.t
 import {
   conjugationRequest, deckSentence, deckVideoTitle, grammarChips, hasSavedWord, highlightParts, isVerbCard,
   knownAnalysisFromCards, otherOccurrences, pickOccurrence, seenSlots, verbForms, wordVideoIds,
-  findVideoSentence, usedSlot,
+  findVideoSentence, usedSlot, verbTag,
 } from "./verbCard.ts";
 import { LEHANIACH } from "./testTables.ts";
 
@@ -112,4 +112,11 @@ Deno.test("knownAnalysisFromCards: a form already met is reused without a call; 
 
 Deno.test("conjugationRequest: the card's infinitive and binyan", () => {
   assertEquals(conjugationRequest(VERB, "hebrew"), { language: "hebrew", lemma_key: "להניח|hifil", lemma: "לְהַנִּיחַ", lemma_phonetic: "lehaniach", lemma_meaning: "to put", binyan: "hifil" });
+});
+
+Deno.test("the verb tag names the binyan from lemma_key", () => {
+  assertEquals(verbTag(VERB), "Verb · Hif'il");
+  assertEquals(verbTag({ lemma_key: "לשמור|paal" }), "Verb · Pa'al");
+  assertEquals(verbTag({ lemma_key: "x" }), "Verb");
+  assertEquals(verbTag(NOUN), "Verb");
 });
