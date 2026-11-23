@@ -1,0 +1,98 @@
+# Install, typecheck, lint, test, and build on every pull request and every
+# push to main. Typecheck and lint are report-only: the app already has
+# hundreds of existing findings, and the production build ignores them.
+# Test and build must pass.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Install, test, and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck (report only)
+        continue-on-error: true
+        run: |
+          set +e
+          npx tsc --noEmit --pretty false --incremental false > tsc-report.txt 2>&1
+          code=$?
+          count=$(grep -cE 'error TS[0-9]+' tsc-report.txt || true)
+          {
+            echo "### Typecheck (report only — does not block)"
+            echo ""
+            echo "${count} TypeScript errors. The production build still ignores these, on purpose, until they are cleaned up."
+            echo ""
+            echo '```'
+            tail -n 20 tsc-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "TypeScript errors: ${count}"
+          exit "$code"
+
+      - name: Lint (report only)
+        continue-on-error: true
+        run: |
+          set +e
+          npx eslint . -f json -o eslint-report.json
+          code=$?
+          node --input-type=module <<'EOF'
+          import fs from "node:fs";
+          const reports = JSON.parse(fs.readFileSync("eslint-report.json", "utf8"));
+          let errors = 0;
+          let warnings = 0;
+          let files = 0;
+          for (const report of reports) {
+            if (report.errorCount || report.warningCount) files += 1;
+            errors += report.errorCount;
+            warnings += report.warningCount;
+          }
+          const line = `ESLint: ${errors} errors, ${warnings} warnings in ${files} files. Report only — this does not block.`;
+          console.log(line);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Lint (report only — does not block)\n\n${line}\n`);
+          EOF
+          exit "$code"
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        # Placeholders are only for this CI build. Vercel uses the project's
+        # real environment variables when it deploys. Nothing here is a secret.
+        env:
+          # Fake values so `next build` can import modules that construct a
+          # Supabase client at load time. CI does not talk to the real database.
+          # Vercel builds use the project's real environment variables.
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+          NEXT_PUBLIC_ROOT_DOMAIN: backpacksystems.com
+        run: npm run build
