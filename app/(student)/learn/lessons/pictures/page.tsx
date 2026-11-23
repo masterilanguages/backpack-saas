@@ -10,8 +10,11 @@ import { ArrowLeft } from "lucide-react";
 import { Link, createPageUrl } from "@/lib/router-compat";
 import PictureCard from "@/components/practice/PictureCard";
 import GameHeader from "@/components/dashboard/GameHeader";
+import { mnemonicImagePrompt } from "@/lib/imageStyle";
+import { mnemonicImageErrorMessage } from "@/lib/mnemonicImageError";
+import { toast } from "sonner";
 
-const pictureCards = [
+const STARTER_CARDS = [
 
   {
     image: "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/691b9324b0c0f25014c5938d/a8bc7068f_image.png",
@@ -72,6 +75,8 @@ const pictureCards = [
 ];
 
 export default function Pictures() {
+  const [pictureCards, setPictureCards] = useState(STARTER_CARDS);
+  const [regenerating, setRegenerating] = useState(false);
   const [pictureCardIndex, setPictureCardIndex] = useState(0);
   const [selectedLevel, setSelectedLevel] = useState("all");
   const queryClient = useQueryClient();
@@ -202,6 +207,25 @@ export default function Pictures() {
     setPictureCardIndex((prev) => (prev - 1 + filteredCards.length) % filteredCards.length);
   };
 
+  const regenerateCurrent = async () => {
+    const card = filteredCards[pictureCardIndex] || filteredCards[0];
+    if (!card) return;
+    setRegenerating(true);
+    try {
+      const result = await base44.integrations.Core.GenerateImage({
+        prompt: mnemonicImagePrompt(`${card.mnemonic} The scene teaches "${card.transliteration}" (${card.meaning}).`),
+        cache: false,
+      });
+      setPictureCards((prev) => prev.map((c) => c.hebrewWord === card.hebrewWord ? { ...c, image: result.url } : c));
+      const existing = ratings.find((r: any) => r.word_id === card.hebrewWord);
+      if (existing) await base44.entities.PictureWord.update(existing.id, { image_url: result.url });
+      toast.success("Mnemonic image created");
+    } catch (e) {
+      toast.error(mnemonicImageErrorMessage(e));
+    }
+    setRegenerating(false);
+  };
+
   useEffect(() => {
     setPictureCardIndex(0);
   }, [selectedLevel]);
@@ -260,6 +284,8 @@ export default function Pictures() {
             onDelete={() => deleteCardMutation.mutate(currentCard.hebrewWord)}
             onUpdateWord={(updatedCard: any) => updateWordMutation.mutate({ wordId: currentCard.hebrewWord, updatedCard })}
             canEdit={true}
+            onRegenerate={regenerateCurrent}
+            regenerating={regenerating}
           />
         )}
       </div>

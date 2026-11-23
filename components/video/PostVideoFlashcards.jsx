@@ -8,7 +8,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2, Pause, RefreshCw, Check } from "lucide-react";
 import { languageLabel, isRTLText } from "@/lib/language";
-import { MNEMONIC_EXPLANATION_RULE, ensureShortMnemonicExplanation } from "@/lib/mnemonicExplanation";
+import { buildMnemonicConcept } from "@/lib/mnemonicConcept";
+import { mnemonicSaveFields } from "@/lib/mnemonicLemma";
+import { mnemonicImagePrompt } from "@/lib/imageStyle";
+import { mnemonicImageErrorMessage } from "@/lib/mnemonicImageError";
+import { ensureShortMnemonicExplanation } from "@/lib/mnemonicExplanation";
 
 const RATINGS = [
   { value: 1, label: "1", color: "#ef4444" },
@@ -77,47 +81,26 @@ export default function PostVideoFlashcards({ words, onClose, onJournal, videoTi
     const key = getKey(word);
     setMnemonicData(prev => ({ ...prev, [key]: { ...(prev[key] || {}), loading: true } }));
     try {
-      const isVerb = word.is_verb === true;
-      // The "l" infinitive prefix stripping only applies to Hebrew verbs (e.g. "lalechet").
-      const stripHebrewPrefix = isHebrew && isVerb && /^l/i.test(word.phonetic);
-      const soundPhonetic = stripHebrewPrefix ? word.phonetic.slice(1) : word.phonetic;
-      const concept = await base44.integrations.Core.InvokeLLM({
-        prompt: `Create a mnemonic to remember the word "${soundPhonetic}" meaning "${word.translation}".
-Find an English word/phrase that SOUNDS like "${soundPhonetic}"${stripHebrewPrefix ? ` (the "l" at the start of "${word.phonetic}" is just the Hebrew infinitive prefix — completely ignore it, base the sound only on "${soundPhonetic}")` : ''} and connect it visually to the meaning "${word.translation}".
-
-CRITICAL: Do NOT name any character, creature, animal, or person in the image with the sound-anchor word, the target word, or any variant. They are just generic characters/objects performing the action.
-
-Return JSON with:
-- sound_anchor: English word/phrase that sounds like "${soundPhonetic}"
-- explanation: ${MNEMONIC_EXPLANATION_RULE}, using the sound_anchor, that hints at the meaning WITHOUT using the exact English translation "${word.translation}" or "${word.phonetic}". Use synonyms or indirect references.
-- image_prompt: vivid cartoon scene description (no text in image, single clear subject, bright colors, no naming any creatures or characters)`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            sound_anchor: { type: "string" },
-            explanation: { type: "string" },
-            image_prompt: { type: "string" }
-          }
-        }
-      });
-
+      const concept = await buildMnemonicConcept(
+        word,
+        word.language || lang,
+        (args) => base44.integrations.Core.InvokeLLM(args),
+      );
       const imageResult = await base44.integrations.Core.GenerateImage({
-        prompt: `${concept.image_prompt}. 3D Pixar-style render, high definition, glossy and vibrant, expressive cartoon character with big eyes, cinematic lighting, ultra-detailed textures, colorful and fun. Plain white background. ABSOLUTELY NO TEXT, NO LETTERS, NO WORDS anywhere in the image.`
+        prompt: concept.fullImagePrompt,
+        cache: false,
       });
-
       const explanation = await ensureShortMnemonicExplanation(concept.explanation);
       setMnemonicData(prev => ({
         ...prev,
         [key]: { image_url: imageResult.url, explanation, loading: false }
       }));
-
-      // Persist to DB if word has an id
       if (word.id) {
-        base44.entities.Word.update(word.id, { image_url: imageResult.url, mnemonic_explanation: explanation }).catch(e => { console.error('save mnemonic failed', e); toast.error('Could not save mnemonic — it may be lost on reload'); });
+        base44.entities.Word.update(word.id, mnemonicSaveFields(concept, explanation, imageResult.url)).catch(e => { console.error('save mnemonic failed', e); toast.error('Could not save mnemonic — it may be lost on reload'); });
       }
     } catch (e) {
       setMnemonicData(prev => ({ ...prev, [key]: { ...(prev[key] || {}), loading: false } }));
-      toast.error("Failed to generate mnemonic");
+      toast.error(mnemonicImageErrorMessage(e));
     }
   };
 
@@ -389,13 +372,13 @@ Return JSON only:
                             setCustomMnemonicInput(null);
                             try {
                               const imageResult = await base44.integrations.Core.GenerateImage({
-                                prompt: `${text}. 3D Pixar-style render, high definition, glossy and vibrant, expressive cartoon character with big eyes, cinematic lighting, ultra-detailed textures, colorful and fun. Plain white background. ABSOLUTELY NO TEXT, NO LETTERS, NO WORDS anywhere in the image.`
+                                prompt: mnemonicImagePrompt(text)
                               });
                               setMnemonicData(prev => ({ ...prev, [currentKey]: { ...prev[currentKey], image_url: imageResult.url, loading: false } }));
                               if (currentWord.id) base44.entities.Word.update(currentWord.id, { image_url: imageResult.url }).catch(e => { console.error('save mnemonic failed', e); toast.error('Could not save mnemonic — it may be lost on reload'); });
                             } catch (e) {
                               setMnemonicData(prev => ({ ...prev, [currentKey]: { ...prev[currentKey], loading: false } }));
-                              toast.error("Failed to generate image");
+                              toast.error(mnemonicImageErrorMessage(e));
                             }
                           }
                         }}
@@ -422,13 +405,13 @@ Return JSON only:
                         setCustomMnemonicInput(null);
                         try {
                           const imageResult = await base44.integrations.Core.GenerateImage({
-                            prompt: `${customMnemonicText.trim()}. 3D Pixar-style render, high definition, glossy and vibrant, expressive cartoon character with big eyes, cinematic lighting, ultra-detailed textures, colorful and fun. Plain white background. ABSOLUTELY NO TEXT, NO LETTERS, NO WORDS anywhere in the image.`
+                            prompt: mnemonicImagePrompt(customMnemonicText.trim())
                           });
                           setMnemonicData(prev => ({ ...prev, [currentKey]: { ...prev[currentKey], image_url: imageResult.url, loading: false } }));
                           if (currentWord.id) base44.entities.Word.update(currentWord.id, { image_url: imageResult.url }).catch(e => { console.error('save mnemonic failed', e); toast.error('Could not save mnemonic — it may be lost on reload'); });
                         } catch (e) {
                           setMnemonicData(prev => ({ ...prev, [currentKey]: { ...prev[currentKey], loading: false } }));
-                          toast.error("Failed to generate image");
+                          toast.error(mnemonicImageErrorMessage(e));
                         }
                       }}
                       disabled={!customMnemonicText.trim()}

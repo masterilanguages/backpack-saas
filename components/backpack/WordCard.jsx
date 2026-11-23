@@ -7,6 +7,8 @@ import EditableWord from "@/components/learning/EditableWord";
 import { toast } from "sonner";
 import { isRTLLanguage, isRTLText, languageLabel, needsTransliteration } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
+import { mnemonicImageErrorMessage } from "@/lib/mnemonicImageError";
+import { embedLemma, mnemonicBaseLabel, readEmbeddedLemma, stripLemmaMarker } from "@/lib/mnemonicLemma";
 import { generateLessonAudio } from "@/lib/audio/lessonAudio";
 import VerbDetails from "./VerbDetails";
 import { highlightParts, isVerbCard, pickOccurrence } from "@/lib/verbCard";
@@ -263,6 +265,7 @@ export default function WordCard({
   // Target language for this card (drives native-script direction + transliteration/script toggles).
   // Prefer an explicit language prop (e.g. passed from a session view), then the word's own language, then Hebrew.
   const lang = language || word.language || 'hebrew';
+  const baseLabel = mnemonicBaseLabel(word);
   // Render the native word RTL only for RTL languages / actual RTL text — Latin renders LTR.
   const nativeWordRTL = isRTLLanguage(lang) || isRTLText(word.word);
 
@@ -292,11 +295,13 @@ export default function WordCard({
     try {
       const { base44 } = await import("@/api/base44Client");
       const result = await base44.integrations.Core.GenerateImage({
-        prompt: mnemonicImagePrompt(description)
+        prompt: mnemonicImagePrompt(description),
+        cache: false,
       });
       updateWordMutation.mutate({ id: word.id, data: { image_url: result.url } });
     } catch (e) {
       console.error("Failed to regenerate image", e);
+      toast.error(mnemonicImageErrorMessage(e));
     }
     setRegeneratingImage(false);
   };
@@ -309,10 +314,17 @@ export default function WordCard({
     try {
       const { base44 } = await import("@/api/base44Client");
       const result = await base44.integrations.Core.GenerateImage({
-        prompt: mnemonicImagePrompt(description)
+        prompt: mnemonicImagePrompt(description),
+        cache: false,
       });
       // For approved or shared cards, create a personal copy instead of editing the
       // original (a non-owner edit would otherwise silently no-op).
+      const basis = readEmbeddedLemma(word.mnemonic_explanation) || (word.mnemonic_lemma ? {
+        lemma: word.mnemonic_lemma,
+        lemmaPhonetic: word.mnemonic_lemma_phonetic || word.mnemonic_lemma,
+        lemmaMeaning: word.mnemonic_lemma_meaning || "",
+      } : null);
+      const storedExplanation = basis ? embedLemma(description, basis) : description;
       if (word.approved || word._shared) {
         await base44.entities.Word.create({
           word: word.word,
@@ -323,11 +335,12 @@ export default function WordCard({
           times_practiced: word.times_practiced || 0,
           mastered: word.mastered || false,
           image_url: result.url,
-          mnemonic_explanation: description,
+          mnemonic_explanation: storedExplanation,
+          ...(basis ? { mnemonic_lemma: basis.lemma, mnemonic_lemma_phonetic: basis.lemmaPhonetic, mnemonic_lemma_meaning: basis.lemmaMeaning } : {}),
         });
         toast.success("Saved to your personal cards");
       } else {
-        await updateWordMutation.mutateAsync({ id: word.id, data: { image_url: result.url, mnemonic_explanation: description } });
+        await updateWordMutation.mutateAsync({ id: word.id, data: { image_url: result.url, mnemonic_explanation: storedExplanation } });
         toast.success("Mnemonic saved!");
       }
       // Refresh the caption immediately so it doesn't stay stale.
@@ -338,7 +351,7 @@ export default function WordCard({
       setImgFailed(false);
     } catch (e) {
       console.error("Failed to generate custom mnemonic", e);
-      toast.error("Failed to generate mnemonic");
+      toast.error(mnemonicImageErrorMessage(e));
     }
     setRegeneratingImage(false);
   };
@@ -355,7 +368,7 @@ export default function WordCard({
   // would never be generated.
   // ---------------------------------------------------------------------------
   if (large) {
-    const explanation = mnemonicExplanations[word.id] || word.mnemonic_explanation;
+    const explanation = stripLemmaMarker(mnemonicExplanations[word.id] || word.mnemonic_explanation);
     // A verb card (one per infinitive): the form and sentence from this deck's video.
     const verbOcc = isVerbCard(word) ? pickOccurrence(word, deckVideoId) : null;
     const cardSentence = verbOcc?.sentence || word.example_sentence;
@@ -540,6 +553,11 @@ export default function WordCard({
                 onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { phonetic: v } })}
                 onClick={(e) => e.stopPropagation()}
               />
+            </div>
+          )}
+          {baseLabel && (
+            <div style={{ fontSize: 11, color: '#0f766e', marginTop: 3 }} title="The picture and the sound match use this base form. The word above stays as you saved it.">
+              base · {baseLabel}
             </div>
           )}
           {showingEnglish ? (
@@ -812,6 +830,11 @@ export default function WordCard({
             />
           </p>
         )}
+        {baseLabel && (
+          <p className="text-center text-[10px] text-teal-300" title="The picture and the sound match use this base form. The word above stays as you saved it.">
+            base · {baseLabel}
+          </p>
+        )}
 
         {showingEnglish && (
           <p className={`text-white font-semibold text-center ${large ? "text-xl" : "text-base"}`}>
@@ -827,7 +850,7 @@ export default function WordCard({
       </div>
 
       {/* Mnemonic explanation below image */}
-      {(mnemonicExplanations[word.id] || word.mnemonic_explanation) && (
+      {stripLemmaMarker(mnemonicExplanations[word.id] || word.mnemonic_explanation) && (
         <div className="px-3 py-1.5 bg-teal-500/10 border-t border-teal-500/20" style={{ containerType: 'inline-size' }}>
           {/* Always ONE line: the text is kept short (≤42 chars), and anything
               longer (e.g. locked approved cards) shrinks its font to fit
@@ -837,10 +860,10 @@ export default function WordCard({
             style={{
               whiteSpace: 'nowrap',
               overflow: 'hidden',
-              fontSize: `min(${large ? 14 : 10}px, calc(100cqw / ${(((mnemonicExplanations[word.id] || word.mnemonic_explanation || '').length + 3) * 0.56).toFixed(2)}))`,
+              fontSize: `min(${large ? 14 : 10}px, calc(100cqw / ${((stripLemmaMarker(mnemonicExplanations[word.id] || word.mnemonic_explanation).length + 3) * 0.56).toFixed(2)}))`,
             }}
           >
-            💡 {mnemonicExplanations[word.id] || word.mnemonic_explanation}
+            💡 {stripLemmaMarker(mnemonicExplanations[word.id] || word.mnemonic_explanation)}
           </p>
         </div>
       )}
