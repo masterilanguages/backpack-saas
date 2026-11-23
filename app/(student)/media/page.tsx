@@ -28,6 +28,7 @@ import ContinuousTranscript from "@/components/video/ContinuousTranscript";
 import AddVideoDialog from "@/components/media/AddVideoDialog";
 import PostVideoFlashcards from "@/components/video/PostVideoFlashcards";
 import { languageLabel, isRTLText } from "@/lib/language";
+import { QUALITY_MODEL, translitRules } from "@/lib/chapterPrompts";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 import { fetchLetrasLyrics } from "@/lib/lyrics";
 import { requestChapterPrep } from "@/lib/prepareChapter";
@@ -476,7 +477,7 @@ export default function MediaLibrary() {
       const lang = language || userProfile?.language || 'hebrew';
       const langCap = lang.charAt(0).toUpperCase() + lang.slice(1);
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Extract 8-12 important vocabulary words from this ${langCap} learning transcript. Only meaningful content words (nouns, verbs, adjectives). Transcript: "${fullText.slice(0, 3000)}". Return JSON with a "words" array, each item: { phonetic: Latin transliteration, translation: English meaning (1-4 words), hebrew: native script }.`,
+        prompt: `Extract 8-12 important vocabulary words from this ${langCap} learning transcript. Only meaningful content words (nouns, verbs, adjectives). Transcript: "${fullText.slice(0, 3000)}". Return JSON with a "words" array, each item: { phonetic: Latin transliteration, translation: English meaning (1-4 words), hebrew: native script }.${translitRules(langCap)}`,
         response_json_schema: {
           type: 'object',
           properties: {
@@ -856,8 +857,7 @@ export default function MediaLibrary() {
         await Promise.all(batches.slice(i, i + 3).map(async (batch) => {
           try {
             const ask = (extra: any) => base44.integrations.Core.InvokeLLM({ ...extra,
-              prompt: `For each ${languageLabel(lang)} line below give ${isHebrew ? "its Latin-letter transliteration and " : ""}a natural English translation, in the same order.${isHebrew ? `
-Transliterate exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as sung): "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, every spoken vowel; work out each word's grammatical form from context (person, gender, tense) and use its real pronunciation, never a letter-by-letter guess; simple everyday style with no hyphens or apostrophes, one Latin word per Hebrew word with a one-letter prefix (ו ה ב כ ל מ ש) joined to it (נכנסת לחיי = nichnast lechayai, בים של צבעים = beyam shel tzvaim).` : ""}
+              prompt: `For each ${languageLabel(lang)} line below give ${isHebrew ? "its Latin-letter transliteration and " : ""}a natural English translation, in the same order.${translitRules(languageLabel(lang))}
 ${batch.map((x: any, k: number) => `${k}: ${x.text}`).join("\n")}
 Return JSON: { "items": [ { "i": number, ${isHebrew ? '"transliteration": string, ' : ""}"english": string } ] }`,
               response_json_schema: {
@@ -867,7 +867,7 @@ Return JSON: { "items": [ { "i": number, ${isHebrew ? '"transliteration": string
               max_tokens: 4000,
             });
             // Stronger model for what students read; the default one if it errors.
-            const r: any = await ask({ model: "claude-opus-5-5" }).catch(() => ask({}));
+            const r: any = await ask({ model: QUALITY_MODEL }).catch(() => ask({}));
             for (const it of r?.items || []) {
               const x = batch[Math.round(Number(it?.i))];
               if (!x) continue;
@@ -993,7 +993,7 @@ Keep natural sentence breaks. Return a JSON object with a "transcript" array.`,
           const langCap = lang.charAt(0).toUpperCase() + lang.slice(1);
           try {
             const vocabResult = await base44.integrations.Core.InvokeLLM({
-              prompt: `Extract the 10-15 most important vocabulary words from this ${langCap} learning transcript. Transcript: "${fullText.slice(0, 3000)}". Only meaningful content words (nouns, verbs, adjectives). For each word: the word in ${langCap}, its phonetic (Latin spelling if needed, else same word), and English translation.`,
+              prompt: `Extract the 10-15 most important vocabulary words from this ${langCap} learning transcript. Transcript: "${fullText.slice(0, 3000)}". Only meaningful content words (nouns, verbs, adjectives). For each word: the word in ${langCap}, its phonetic (Latin spelling if needed, else same word), and English translation.${translitRules(langCap)}`,
               response_json_schema: { type: "object", properties: { words: { type: "array", items: { type: "object", properties: { word: { type: "string" }, phonetic: { type: "string" }, translation: { type: "string" } } } } } }
             });
             for (const w of (vocabResult.words || [])) {
@@ -1246,9 +1246,9 @@ For each segment:
 ${batch.map((s, idx) => `[${idx + 1}] "${s.text}"`).join('\n')}
 
 For each segment:
-- transliteration: phonetic transliteration of the sentence in Latin letters${srcLang === 'hebrew' ? ', following modern Israeli pronunciation, punctuation matching the original' : ''}
+- transliteration: phonetic transliteration of the sentence in Latin letters${srcLang === 'hebrew' ? ', punctuation matching the original' : ''}
 - english: English translation of the sentence
-- hebrew: the original ${srcLangCap} sentence in its native script${nikudHint}`;
+- hebrew: the original ${srcLangCap} sentence in its native script${nikudHint}${translitRules(srcLangCap)}`;
     }
   };
 
@@ -1667,7 +1667,7 @@ For each segment:
 
       const fullText = transcriptSegments.map((s: any) => s.transliteration || s.text).join(' ');
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Extract the 10-15 most important vocabulary words from this ${langCap} learning transcript for a beginner. Transcript: "${fullText.slice(0, 3000)}". Only meaningful content words (nouns, verbs, adjectives). For each: the word in ${langCap}, phonetic (Latin spelling if needed, else the word itself), and English translation.`,
+        prompt: `Extract the 10-15 most important vocabulary words from this ${langCap} learning transcript for a beginner. Transcript: "${fullText.slice(0, 3000)}". Only meaningful content words (nouns, verbs, adjectives). For each: the word in ${langCap}, phonetic (Latin spelling if needed, else the word itself), and English translation.${translitRules(langCap)}`,
         response_json_schema: { type: "object", properties: { words: { type: "array", items: { type: "object", properties: { word: { type: "string" }, phonetic: { type: "string" }, translation: { type: "string" } } } } } }
       });
 

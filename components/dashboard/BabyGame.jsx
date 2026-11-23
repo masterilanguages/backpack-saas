@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Droplets, Cookie, Moon, Bath, Gamepad2, Heart, Tv, Volume2, Sparkles, Check, X, Backpack, Star, Loader2, Plus, CheckCircle, Wand2 } from "lucide-react";
+import { Droplets, Cookie, Moon, Bath, Gamepad2, Heart, Tv, Sparkles, Check, X, Backpack, Star, Loader2, Plus, CheckCircle, Wand2 } from "lucide-react";
+import SpeakButton from "@/components/speech/SpeakButton";
+import { playSpeech } from "@/lib/speech/player";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,23 +22,23 @@ const wordBank = [
   { hebrew: "מים", transliteration: "Mayim", meaning: "Water", category: "drinks", icon: "💧" },
   { hebrew: "חלב", transliteration: "Chalav", meaning: "Milk", category: "drinks", icon: "🥛" },
   { hebrew: "מיץ", transliteration: "Mitz", meaning: "Juice", category: "drinks", icon: "🧃" },
-  { hebrew: "תה", transliteration: "Teh", meaning: "Tea", category: "drinks", icon: "🍵" },
-  { hebrew: "קפה", transliteration: "Kafeh", meaning: "Coffee", category: "drinks", icon: "☕" },
+  { hebrew: "תה", transliteration: "Te", meaning: "Tea", category: "drinks", icon: "🍵" },
+  { hebrew: "קפה", transliteration: "Kafe", meaning: "Coffee", category: "drinks", icon: "☕" },
   { hebrew: "בקבוק", transliteration: "Bakbuk", meaning: "Bottle", category: "drinks", icon: "🍼" },
   { hebrew: "כוס", transliteration: "Kos", meaning: "Cup", category: "drinks", icon: "🥤" },
   { hebrew: "קר", transliteration: "Kar", meaning: "Cold", category: "drinks", icon: "🧊" },
   { hebrew: "חם", transliteration: "Cham", meaning: "Hot", category: "drinks", icon: "🔥" },
-  { hebrew: "צמא", transliteration: "Tzameh", meaning: "Thirsty", category: "drinks", icon: "😫" },
+  { hebrew: "צמא", transliteration: "Tzame", meaning: "Thirsty", category: "drinks", icon: "😫" },
 
   // Food (20)
   { hebrew: "אוכל", transliteration: "Ochel", meaning: "Food", category: "food", icon: "🍽️" },
   { hebrew: "לחם", transliteration: "Lechem", meaning: "Bread", category: "food", icon: "🍞" },
-  { hebrew: "ביצה", transliteration: "Beitzah", meaning: "Egg", category: "food", icon: "🥚" },
-  { hebrew: "גבינה", transliteration: "Gvinah", meaning: "Cheese", category: "food", icon: "🧀" },
+  { hebrew: "ביצה", transliteration: "Beitza", meaning: "Egg", category: "food", icon: "🥚" },
+  { hebrew: "גבינה", transliteration: "Gvina", meaning: "Cheese", category: "food", icon: "🧀" },
   { hebrew: "תפוח", transliteration: "Tapuach", meaning: "Apple", category: "food", icon: "🍎" },
-  { hebrew: "בננה", transliteration: "Bananah", meaning: "Banana", category: "food", icon: "🍌" },
-  { hebrew: "עוגה", transliteration: "Ugah", meaning: "Cake", category: "food", icon: "🍰" },
-  { hebrew: "עוגייה", transliteration: "Ugiyah", meaning: "Cookie", category: "food", icon: "🍪" },
+  { hebrew: "בננה", transliteration: "Banana", meaning: "Banana", category: "food", icon: "🍌" },
+  { hebrew: "עוגה", transliteration: "Uga", meaning: "Cake", category: "food", icon: "🍰" },
+  { hebrew: "עוגייה", transliteration: "Ugiya", meaning: "Cookie", category: "food", icon: "🍪" },
   { hebrew: "רעב", transliteration: "Ra'ev", meaning: "Hungry", category: "food", icon: "😋" },
   { hebrew: "טעים", transliteration: "Ta'im", meaning: "Delicious", category: "food", icon: "😋" },
   { hebrew: "ירקות", transliteration: "Yerakot", meaning: "Vegetables", category: "food", icon: "🥗" },
@@ -53,14 +55,14 @@ const wordBank = [
   // Sleep (20)
   { hebrew: "לישון", transliteration: "Lishon", meaning: "To sleep", category: "sleep", icon: "😴" },
   { hebrew: "עייף", transliteration: "Ayef", meaning: "Tired", category: "sleep", icon: "🥱" },
-  { hebrew: "מיטה", transliteration: "Mitah", meaning: "Bed", category: "sleep", icon: "🛏️" },
+  { hebrew: "מיטה", transliteration: "Mita", meaning: "Bed", category: "sleep", icon: "🛏️" },
   { hebrew: "כרית", transliteration: "Karit", meaning: "Pillow", category: "sleep", icon: "🛋️" },
-  { hebrew: "שמיכה", transliteration: "Smichah", meaning: "Blanket", category: "sleep", icon: "🛏️" },
+  { hebrew: "שמיכה", transliteration: "Smicha", meaning: "Blanket", category: "sleep", icon: "🛏️" },
   { hebrew: "חלום", transliteration: "Chalom", meaning: "Dream", category: "sleep", icon: "💭" },
   { hebrew: "לילה", transliteration: "Layla", meaning: "Night", category: "sleep", icon: "🌙" },
   { hebrew: "בוקר", transliteration: "Boker", meaning: "Morning", category: "sleep", icon: "🌅" },
   { hebrew: "לקום", transliteration: "Lakum", meaning: "To wake up", category: "sleep", icon: "⏰" },
-  { hebrew: "פיג'מה", transliteration: "Pijamah", meaning: "Pajamas", category: "sleep", icon: "👕" },
+  { hebrew: "פיג'מה", transliteration: "Pijama", meaning: "Pajamas", category: "sleep", icon: "👕" },
   { hebrew: "שקט", transliteration: "Sheket", meaning: "Quiet", category: "sleep", icon: "🤫" },
   { hebrew: "ער", transliteration: "Er", meaning: "Awake", category: "sleep", icon: "👁️" },
   { hebrew: "לנוח", transliteration: "Lanuach", meaning: "To rest", category: "sleep", icon: "💤" },
@@ -80,7 +82,7 @@ const wordBank = [
   { hebrew: "סבון", transliteration: "Sabon", meaning: "Soap", category: "bathroom", icon: "🧼" },
   { hebrew: "מגבת", transliteration: "Magevet", meaning: "Towel", category: "bathroom", icon: "🛁" },
   { hebrew: "מברשת שיניים", transliteration: "Mivreshet Shinayim", meaning: "Toothbrush", category: "bathroom", icon: "🪥" },
-  { hebrew: "אמבטיה", transliteration: "Ambatyah", meaning: "Bath", category: "bathroom", icon: "🛁" },
+  { hebrew: "אמבטיה", transliteration: "Ambatya", meaning: "Bath", category: "bathroom", icon: "🛁" },
   { hebrew: "נקי", transliteration: "Naki", meaning: "Clean", category: "bathroom", icon: "✨" },
   { hebrew: "מלוכלך", transliteration: "Meluchlach", meaning: "Dirty", category: "bathroom", icon: "🤢" },
   { hebrew: "לשטוף", transliteration: "Lishtof", meaning: "To wash", category: "bathroom", icon: "🚿" },
@@ -99,7 +101,7 @@ const wordBank = [
   { hebrew: "צעצוע", transliteration: "Tza'atzu'a", meaning: "Toy", category: "play", icon: "🧸" },
   { hebrew: "כדור", transliteration: "Kadur", meaning: "Ball", category: "play", icon: "⚽" },
   { hebrew: "בובה", transliteration: "Bubah", meaning: "Doll", category: "play", icon: "🎎" },
-  { hebrew: "משחק", transliteration: "Misachak", meaning: "Game", category: "play", icon: "🎲" },
+  { hebrew: "משחק", transliteration: "Mischak", meaning: "Game", category: "play", icon: "🎲" },
   { hebrew: "ציור", transliteration: "Tziyur", meaning: "Drawing", category: "play", icon: "🎨" },
   { hebrew: "ספר", transliteration: "Sefer", meaning: "Book", category: "play", icon: "📚" },
   { hebrew: "שיר", transliteration: "Shir", meaning: "Song", category: "play", icon: "🎵" },
@@ -107,13 +109,13 @@ const wordBank = [
   { hebrew: "חבר", transliteration: "Chaver", meaning: "Friend", category: "play", icon: "👫" },
   { hebrew: "לרוץ", transliteration: "Larutz", meaning: "To run", category: "play", icon: "🏃" },
   { hebrew: "לקפוץ", transliteration: "Likpotz", meaning: "To jump", category: "play", icon: "🦘" },
-  { hebrew: "לצחוק", transliteration: "Litschok", meaning: "To laugh", category: "play", icon: "😂" },
+  { hebrew: "לצחוק", transliteration: "Litzchok", meaning: "To laugh", category: "play", icon: "😂" },
   { hebrew: "כיף", transliteration: "Kef", meaning: "Fun", category: "play", icon: "🎉" },
   { hebrew: "חוץ", transliteration: "Chutz", meaning: "Outside", category: "play", icon: "🌳" },
   { hebrew: "פנים", transliteration: "Pnim", meaning: "Inside", category: "play", icon: "🏠" },
   { hebrew: "גן", transliteration: "Gan", meaning: "Garden", category: "play", icon: "🌻" },
   { hebrew: "נדנדה", transliteration: "Nadneda", meaning: "Swing", category: "play", icon: "🎢" },
-  { hebrew: "מגלשה", transliteration: "Maglasha", meaning: "Slide", category: "play", icon: "🛝" },
+  { hebrew: "מגלשה", transliteration: "Maglesha", meaning: "Slide", category: "play", icon: "🛝" },
   { hebrew: "חול", transliteration: "Chol", meaning: "Sand", category: "play", icon: "🏖️" },
 ];
 
@@ -266,9 +268,7 @@ const [imageApproved, setImageApproved] = useState(false);
   }, [gamePhase, wordRatings]);
 
   const playAudio = (text) => {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'he-IL';
-    speechSynthesis.speak(utterance);
+    playSpeech({ text, language: "hebrew" });
   };
 
   const handleChoiceClick = async (choice) => {
@@ -689,7 +689,10 @@ const [imageApproved, setImageApproved] = useState(false);
         {currentWord && !generatedSentences && !loadingSentences && (
           <div className="text-center mb-6">
             <div className="bg-white/10 rounded-2xl p-6 mb-4">
-              <p className="text-4xl font-bold text-cyan-400 mb-2" dir="rtl">{currentWord.hebrew}</p>
+              <p className="text-4xl font-bold text-cyan-400 mb-2 flex items-center justify-center gap-2" dir="rtl">
+                <span>{currentWord.hebrew}</span>
+                <SpeakButton text={currentWord.hebrew} language="hebrew" className="text-cyan-200" />
+              </p>
               <p className="text-xl text-white/80">{currentWord.transliteration}</p>
               <button
                 onClick={() => setShowTranslation(!showTranslation)}
@@ -1299,7 +1302,10 @@ const [imageApproved, setImageApproved] = useState(false);
         {/* Baby asking */}
         <div className="text-center mb-4">
           <span className="text-4xl">👶</span>
-          <p className="text-xl font-bold text-yellow-400 mt-2">{currentWord.transliteration}</p>
+          <p className="mt-2 flex items-center justify-center gap-2 text-xl font-bold text-yellow-400">
+            <span>{currentWord.transliteration}</span>
+            <SpeakButton text={currentWord.hebrew} language="hebrew" className="text-yellow-300" />
+          </p>
           <p className="text-white/50 text-sm">Choose the correct picture!</p>
         </div>
 

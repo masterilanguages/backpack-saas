@@ -24,6 +24,7 @@ import { splitScriptLine } from "../../../lib/songLyrics.ts";
 import { incompleteCount } from "../../../lib/chapterPublish.ts";
 import { audioKey, segmentKey, translateKey } from "../../../lib/chapterPrepKeys.ts";
 import { QUALITY_MODEL, glossPrompt, GLOSS_SCHEMA, reviewGlossPrompt, REVIEW_GLOSS_SCHEMA, cleanGlosses, promptLanguageLabel } from "../../../lib/chapterPrompts.ts";
+import { polishSpeechFields, resolveHebrewTranslit } from "../../../lib/speech/hebrewRomanization.ts";
 import { LeaseLostError, type PrepRow, type PrepStore } from "./store.ts";
 
 // The WHOLE source is prepared: it is split into ~30 s episodes for learning
@@ -136,9 +137,12 @@ export function applyBatches(sentences: any[], batches: Record<string, any>, rev
         x.text = x.hebrew = f;
         fixed++;
       }
-      x.transliteration = x.transliteration || it.transliteration || "";
+      const src = String(x.hebrew || x.text || "");
+      const raw = String(x.transliteration || it.transliteration || "");
+      const polished = /[\u0590-\u05FF]/.test(src) ? resolveHebrewTranslit(src, raw) : raw;
+      x.transliteration = polished || raw;
       x.english = x.english || it.english || "";
-      x.words = cleanGlosses(it.words);
+      x.words = polishSpeechFields(cleanGlosses(it.words));
     }
   }
   return { sentences: out, fixed };

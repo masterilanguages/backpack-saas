@@ -18,6 +18,7 @@ import {
 } from "../../../lib/verbs.ts";
 import { classifyLlmError, isAccountLlmError } from "../../../lib/llmErrors.ts";
 import { DailyLimitError, type LexiconRow, type LexiconStore } from "./store.ts";
+import { normalizeHebrewRomanization, romanizeHebrew } from "../../../lib/speech/hebrewRomanization.ts";
 
 /** Longer than an edge function may run (400 s on paid plans). */
 export const LEASE_SECONDS = 400;
@@ -157,6 +158,16 @@ export async function getConjugations(deps: ConjugateDeps, req: ConjugateRequest
   }
 
   const { table, problems } = validateConjugations(raw, req.binyan);
+  if (table) {
+    for (const tense of Object.values(table)) {
+      for (const cell of Object.values(tense || {})) {
+        if (!cell?.he) continue;
+        const rom = romanizeHebrew(cell.he);
+        const norm = normalizeHebrewRomanization(cell.phonetic || "");
+        cell.phonetic = rom || norm || cell.phonetic || "";
+      }
+    }
+  }
   if (!table) {
     deps.log(`${tag} table rejected, not stored: ${problems.slice(0, 5).join("; ")}`);
     await giveBack("incomplete table", false);
@@ -164,7 +175,9 @@ export async function getConjugations(deps: ConjugateDeps, req: ConjugateRequest
   }
 
   const patch = {
-    lemma: req.lemma, lemma_phonetic: req.lemma_phonetic, lemma_meaning: req.lemma_meaning,
+    lemma: req.lemma,
+    lemma_phonetic: romanizeHebrew(req.lemma) || normalizeHebrewRomanization(req.lemma_phonetic || "") || req.lemma_phonetic,
+    lemma_meaning: req.lemma_meaning,
     binyan: req.binyan, root: req.root, conjugations: table, model: deps.model, prompt_version: VERB_PROMPT_VERSION,
   };
   if (!(await store.save(lang, key, token, patch))) {

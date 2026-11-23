@@ -10,6 +10,9 @@ const base44 = base44Client;
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, nativeScriptInstruction, usesNikud } from "@/lib/language";
+import { translitRules } from "@/lib/chapterPrompts";
+import { invokeQuality } from "@/lib/invokeQuality";
+import SpeakButton from "@/components/speech/SpeakButton";
 
 export default function QuickAddWordWidget() {
   const queryClient = useQueryClient();
@@ -52,10 +55,10 @@ export default function QuickAddWordWidget() {
       // (RTL text for Hebrew) vs typed in English, and translate accordingly.
       const isNative = usesNikud(lang) ? /[֐-׿]/.test(word) : isRTLText(word);
 
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: isNative
+      const result = await invokeQuality({
+        prompt: (isNative
           ? `Translate this ${label} word to English and provide transliteration: "${word}"`
-          : `Translate this English word to ${label}. Provide ${nativeScriptInstruction(lang)} and a transliteration: "${word}"`,
+          : `Translate this English word to ${label}. Provide ${nativeScriptInstruction(lang)} and a transliteration: "${word}"`) + translitRules(label),
         response_json_schema: {
           type: "object",
           properties: {
@@ -143,8 +146,9 @@ export default function QuickAddWordWidget() {
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-white/5 rounded-xl p-3 mb-3"
               >
-                <p className="text-cyan-400 text-xl font-bold text-center" dir={isRTLText(translation.hebrew) ? "rtl" : "ltr"}>
-                  {translation.hebrew}
+                <p className="text-cyan-400 text-xl font-bold text-center flex items-center justify-center gap-2" dir={isRTLText(translation.hebrew) ? "rtl" : "ltr"}>
+                  <span>{translation.hebrew}</span>
+                  <SpeakButton text={translation.hebrew} language={lang} className="text-cyan-300" />
                 </p>
                 <p className="text-white/60 text-sm text-center">
                   {translation.transliteration}

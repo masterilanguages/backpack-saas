@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Volume2, MessageCircle, Sparkles, BookMarked } from "lucide-react";
+import { MessageCircle, Sparkles, BookMarked } from "lucide-react";
 import JournalWord from "@/components/journal/JournalWord";
 import JournalCorrections from "@/components/journal/JournalCorrections";
-import {
-  generateLessonAudio,
-  type LessonAudioPlayer,
-} from "@/lib/audio/lessonAudio";
+import SpeakButton from "@/components/speech/SpeakButton";
+import NikudToggle from "@/components/speech/NikudToggle";
+import PointedHebrew from "@/components/speech/PointedHebrew";
+import { stripNikud } from "@/lib/speech/nikud";
 import { isRTLLanguage, needsTransliteration } from "@/lib/language";
 import type { GeneratedLesson, LessonVocab } from "@/lib/journal/generateLesson";
 
@@ -75,7 +75,7 @@ function ClickableSentence({
             sentenceContext={text}
             journalEntryId={journalEntryId}
             libraryLessonId={libraryLessonId}
-            vocabHint={vocabByWord.get(tok.toLowerCase())}
+            vocabHint={vocabByWord.get(stripNikud(tok).toLowerCase()) || vocabByWord.get(tok.toLowerCase())}
           />
         );
       })}
@@ -91,7 +91,6 @@ export default function JournalLessonView({
 }: JournalLessonViewProps) {
   const rtl = isRTLLanguage(language);
   const showTranslit = needsTransliteration(language);
-  const playerRef = useRef<LessonAudioPlayer | null>(null);
 
   // Display toggles. Transliteration only matters for non-Latin scripts.
   const [showEnglish, setShowEnglish] = useState(true);
@@ -107,20 +106,6 @@ export default function JournalLessonView({
     return m;
   }, [lesson.vocab]);
 
-  const audioSupported = useMemo(
-    () =>
-      generateLessonAudio({ text: lesson.generatedTargetText, language })
-        .supported,
-    [lesson.generatedTargetText, language]
-  );
-
-  const speak = (text: string) => {
-    playerRef.current?.stop();
-    const player = generateLessonAudio({ text, language });
-    playerRef.current = player;
-    player.play();
-  };
-
   return (
     <div className="space-y-6">
       {/* Lesson header + play all */}
@@ -128,14 +113,12 @@ export default function JournalLessonView({
         <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-teal-400">
           <Sparkles className="h-4 w-4" /> Your Lesson
         </h2>
-        {audioSupported && (
-          <button
-            onClick={() => speak(lesson.generatedTargetText)}
-            className="flex items-center gap-2 rounded-full bg-teal-500/15 px-4 py-1.5 text-xs font-semibold text-teal-300 transition-colors hover:bg-teal-500/25"
-          >
-            <Volume2 className="h-3.5 w-3.5" /> Play all
-          </button>
-        )}
+        <SpeakButton
+          text={lesson.generatedTargetText}
+          language={language}
+          label="Play all"
+          className="bg-teal-500/15 text-teal-300 hover:bg-teal-500/25"
+        />
       </div>
 
       {/* Display toggles */}
@@ -151,6 +134,7 @@ export default function JournalLessonView({
             Transliteration
           </Toggle>
         )}
+        <NikudToggle visible={showTranslit && showTransliteration} className="border border-slate-700 text-teal-200" />
         <button
           onClick={() => {
             setShowEnglish(false);
@@ -176,16 +160,12 @@ export default function JournalLessonView({
             transition={{ delay: i * 0.04 }}
             className="group relative rounded-2xl border border-slate-800 bg-slate-900 p-4 pr-12"
           >
-            {audioSupported && (
-              <button
-                onClick={() => speak(s.target)}
-                className="absolute right-3 top-3 rounded-full p-2 text-slate-500 transition-colors hover:bg-teal-500/15 hover:text-teal-300"
-                aria-label="Play sentence"
-                title="Play sentence"
-              >
-                <Volume2 className="h-4 w-4" />
-              </button>
-            )}
+            <SpeakButton
+              text={s.target}
+              language={language}
+              title="Play sentence"
+              className="absolute right-3 top-3 text-slate-500 hover:bg-teal-500/15 hover:text-teal-300"
+            />
 
             {/* Display order per language:
                 Hebrew  -> transliteration, English, native script
@@ -204,13 +184,17 @@ export default function JournalLessonView({
                   dir={rtl ? "rtl" : "ltr"}
                   className="mt-1.5 text-xl leading-relaxed text-white"
                 >
-                  <ClickableSentence
-                    text={s.target}
-                    language={language}
-                    vocabByWord={vocabByWord}
-                    journalEntryId={journalEntryId}
-                    libraryLessonId={libraryLessonId}
-                  />
+                  <PointedHebrew text={s.target} transliteration={s.transliteration} active={showTransliteration}>
+                    {(shown) => (
+                      <ClickableSentence
+                        text={shown}
+                        language={language}
+                        vocabByWord={vocabByWord}
+                        journalEntryId={journalEntryId}
+                        libraryLessonId={libraryLessonId}
+                      />
+                    )}
+                  </PointedHebrew>
                 </p>
               </>
             ) : (

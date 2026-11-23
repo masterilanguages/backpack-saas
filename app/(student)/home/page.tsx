@@ -53,7 +53,10 @@ const countArabic = (t: string) => (t.match(ARABIC_RE) || []).join("").length;
 const countHebrew = (t: string) => (t.match(/[֐-׿]/g) || []).join("").length;
 const scrubSegmentText = (t: any) =>
   stripCaptionNoise(String(t ?? "")).replace(ARABIC_RE, " ").replace(/\s+/g, " ").trim();
-import { generateLessonAudio } from "@/lib/audio/lessonAudio";
+import { transliterate } from "@/lib/speech";
+import SpeakButton from "@/components/speech/SpeakButton";
+import NikudToggle from "@/components/speech/NikudToggle";
+import { usePointedHebrew } from "@/lib/speech/useNikud";
 
 // Strip punctuation from a tapped transcript token, keeping native letters.
 const cleanToken = (t: string) => t.replace(/[.,!?;:"'()\[\]{}«»„“”…׀׃־]+/g, "").trim();
@@ -2111,7 +2114,7 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
         prompt: `Translate this ${languageLabel(vidLang)} sentence into natural English and give its Latin-letter transliteration: "${main}". Return JSON with: english, phonetic.${translitRules(languageLabel(vidLang))}`,
         response_json_schema: { type: "object", properties: { english: { type: "string" }, phonetic: { type: "string" } } },
       });
-      setDiscTranslations((prev) => ({ ...prev, [i]: { english: r?.english || "", phonetic: r?.phonetic || "" } }));
+      setDiscTranslations((prev) => ({ ...prev, [i]: { english: r?.english || "", phonetic: transliterate(main, { language: vidLang, guess: r?.phonetic || "" }) } }));
     } catch {}
     setDiscTranslating(false);
   };
@@ -2262,7 +2265,7 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
       (discovery ? findGloss(discWordGlosses(sentence), token) : null) ||
       (discovery ? (() => { const r = recommendedFor(token); return r ? { phonetic: r.phonetic, meaning: r.meaning } : null; })() : null);
     if (known?.meaning) {
-      setWordPopup({ key, clean, sentence, translation: known.meaning, phonetic: known.phonetic || "", loading: false, editing: false, saving: false, added: already });
+      setWordPopup({ key, clean, sentence, translation: known.meaning, phonetic: transliterate(clean, { language: vidLang, guess: known.phonetic || "" }), loading: false, editing: false, saving: false, added: already });
       return;
     }
     setWordPopup({ key, clean, sentence, translation: "", phonetic: "", loading: true, editing: false, saving: false, added: already });
@@ -2275,16 +2278,11 @@ Return JSON: { "starts": [{ "line": number, "fragment": number }] }`,
         },
       });
       setWordPopup((p: any) =>
-        p?.key === key ? { ...p, translation: result?.translation || "", phonetic: result?.phonetic || "", loading: false } : p
+        p?.key === key ? { ...p, translation: result?.translation || "", phonetic: transliterate(clean, { language: vidLang, guess: result?.phonetic || "" }), loading: false } : p
       );
     } catch {
       setWordPopup((p: any) => (p?.key === key ? { ...p, loading: false } : p));
     }
-  };
-
-  const speakPopupWord = () => {
-    if (!wordPopup?.clean) return;
-    generateLessonAudio({ text: wordPopup.clean, language: vidLang }).play();
   };
 
   const savePopupWord = async () => {
@@ -3234,9 +3232,7 @@ Return JSON: { "videos": [ { "title": exact video title, "youtube_id": the exact
                                         </span>
                                       )}
                                       <span className="mt-2 flex items-center justify-between">
-                                        <button onClick={speakPopupWord} aria-label="Listen" className="rounded-lg p-1 text-base hover:bg-slate-50">
-                                          🔊
-                                        </button>
+                                        <SpeakButton text={wordPopup.clean} language={vidLang} className="text-slate-600" />
                                         <button
                                           onClick={() => setWordPopup((p: any) => ({ ...p, editing: !p.editing }))}
                                           aria-label="Edit"
@@ -4821,6 +4817,13 @@ function DiscoveryPanel({
   // A newly opened word is brought into view inside the sentence area (the controls below don't move).
   const popupRef = useRef<HTMLDivElement>(null);
   const openKey = wordPopup && String(wordPopup.key || "").startsWith(`d${idx}_`) ? String(wordPopup.key) : null;
+  const segNow = segments[Math.min(idx, Math.max(segments.length - 1, 0))];
+  const splitNow = splitScriptLine(segNow?.hebrew || segNow?.text || "");
+  const mainNow = splitNow.native || "";
+  const phoneticNow =
+    (segNow?.transliteration && !isRTLText(segNow.transliteration) ? segNow.transliteration : "") ||
+    splitNow.latin || translation?.phonetic || "";
+  const pointedNow = usePointedHebrew(mainNow, phoneticNow, !!hebrewLine && isRTLText(mainNow));
   useEffect(() => {
     if (openKey) popupRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [openKey]);
@@ -4839,7 +4842,9 @@ function DiscoveryPanel({
   const split = splitScriptLine(seg.hebrew || seg.text || "");
   const main = split.native || seg.transliteration || "";
   const rtl = isRTLText(main);
+  const displayMain = hebrewLine && pointedNow.text ? pointedNow.text : main;
   const tokens = main.split(/\s+/).filter(Boolean);
+  const shownHebrew = displayMain.split(/\s+/).filter(Boolean);
   const english = seg.english || translation?.english || "";
   const phonetic =
     (seg.transliteration && !isRTLText(seg.transliteration) && seg.transliteration !== main ? seg.transliteration : "") ||
@@ -4876,7 +4881,7 @@ function DiscoveryPanel({
         {/* Row 1: abc/א + the sentence. The button lines up with the first
             line (28 px button, 21 px line: the text starts 4 px lower). */}
         <div className="flex items-start justify-center gap-2">
-          <div className="flex w-7 flex-shrink-0 justify-center">
+          <div className="flex w-auto flex-shrink-0 flex-col items-center gap-1">
             {/* Only when the sentence carries both texts, so the swap is instant. */}
             {canSwapScript && (
               <button
@@ -4887,6 +4892,7 @@ function DiscoveryPanel({
                 {hebrewLine ? <span className="text-sm [font-family:var(--font-hebrew)]">א</span> : "abc"}
               </button>
             )}
+            <NikudToggle visible={showLatin} className="bg-white/80 text-slate-700 shadow-sm" />
           </div>
           <div className="min-w-0 flex-1 pt-1">
             {showLatin && !latinTokens ? (
@@ -4900,7 +4906,7 @@ function DiscoveryPanel({
                 {tokens.map((tok: string, wi: number) => {
                   // The Hebrew word is what's looked up and saved, whichever script shows.
                   const key = `${popupKeyPrefix}${wi}`;
-                  const shown = showLatin && latinTokens ? latinTokens[wi] : tok;
+                  const shown = showLatin && latinTokens ? latinTokens[wi] : (shownHebrew[wi] || tok);
                   const open = wordPopup?.key === key;
                   const rec = tappable ? recommendedFor(tok) : null;
                   const last = wi === tokens.length - 1;

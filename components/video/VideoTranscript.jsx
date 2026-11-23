@@ -14,6 +14,7 @@ import UniversalEditableWord from "../learning/UniversalEditableWord";
 import EditableSentence from "../learning/EditableSentence";
 import VideoTranscriptWord from "./VideoTranscriptWord";
 import { languageLabel, isRTLLanguage, usesNikud } from "@/lib/language";
+import { translitRules } from "@/lib/chapterPrompts";
 import { transcribeMediaSource, youtubeSource } from "@/lib/transcription";
 
 // Normalize the various language codes this Video entity stores ("he"/"iw" for
@@ -340,7 +341,7 @@ export default function VideoTranscript({ videoId, videoUrl, iframeId, onPauseVi
 
     try {
       const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Process these ${blocksWithEnd.length} ${langLabel} segments. For each: ${nikudHint}transliteration, English translation.
+        prompt: `Process these ${blocksWithEnd.length} ${langLabel} segments. For each: ${nikudHint}transliteration, English translation.${translitRules(langLabel)}
 
 ${blocksWithEnd.map((b, i) => `${i + 1}|${b.hebrew}`).join('\n')}
 

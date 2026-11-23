@@ -12,6 +12,8 @@
 // those fields come back empty and the UI omits the extra line.
 
 import { languageLabel, needsTransliteration } from "@/lib/language";
+import { translitRules } from "@/lib/chapterPrompts";
+import { transliterate } from "@/lib/speech";
 
 export interface LessonSentence {
   /** Natural target-language sentence (native script). */
@@ -115,7 +117,7 @@ export async function generateLesson(
   const wantsTransliteration = needsTransliteration(targetLanguage);
 
   const transliterationRule = wantsTransliteration
-    ? `For every sentence and vocab item, ALSO provide a Latin-letter transliteration in the "transliteration" field (e.g. "Ani chozer le-Miami ha-yom.").`
+    ? `For every sentence and vocab item, ALSO provide a Latin-letter transliteration in the "transliteration" field (e.g. "ani chozer le miami hayom").${translitRules(langName)}`
     : `${langName} uses the Latin alphabet, so leave every "transliteration" field as an empty string "".`;
 
   const prompt = `You are a warm, encouraging language tutor helping a learner turn their personal journal entry into a ${langName} mini-lesson they can actually use in real life.
@@ -150,14 +152,20 @@ Keep it emotionally personal and simple. Return ONLY the JSON.`;
     (s: any) => ({
       target: String(s?.target || "").trim(),
       english: String(s?.english || "").trim(),
-      transliteration: String(s?.transliteration || "").trim(),
+      transliteration: transliterate(String(s?.target || ""), {
+        language: targetLanguage,
+        guess: String(s?.transliteration || "").trim(),
+      }),
     })
   );
 
   const vocab: LessonVocab[] = (result?.vocab || []).map((v: any) => ({
     word: String(v?.word || "").trim(),
     translation: String(v?.translation || "").trim(),
-    transliteration: String(v?.transliteration || "").trim(),
+    transliteration: transliterate(String(v?.word || ""), {
+      language: targetLanguage,
+      guess: String(v?.transliteration || "").trim(),
+    }),
     partOfSpeech: v?.partOfSpeech ? String(v.partOfSpeech).trim() : undefined,
     example: v?.example ? String(v.example).trim() : undefined,
   }));

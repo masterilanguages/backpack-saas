@@ -23,6 +23,7 @@ import {
 } from "@/lib/verbCard";
 import { CONJUGATION_SLOTS, type VerbOccurrence } from "@/lib/verbs";
 import { isRTLText } from "@/lib/language";
+import SpeakButton from "@/components/speech/SpeakButton";
 
 /** Taps and drags inside must not move, flip or swipe the card around it. */
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -80,7 +81,10 @@ export default function VerbDetails({
         <span className={`min-w-0 truncate ${compact ? "text-[13px]" : "text-[15px]"} font-semibold text-slate-900`}>
           {!hideMeaning && occ.translation ? occ.translation : ""}
         </span>
-        <bdi className={`flex-shrink-0 ${compact ? "text-[19px]" : "text-[26px]"} font-extrabold leading-none text-slate-900 ${HE}`}>{occ.surface}</bdi>
+        <span className="flex flex-shrink-0 items-center gap-1">
+          <bdi className={`${compact ? "text-[19px]" : "text-[26px]"} font-extrabold leading-none text-slate-900 ${HE}`}>{occ.surface}</bdi>
+          <SpeakButton text={occ.surface} language={language} className="text-slate-500" />
+        </span>
       </div>
       <div className="mt-1 flex items-baseline justify-between gap-3">
         <span className={`min-w-0 ${compact ? "text-[11px]" : "text-[13px]"} text-slate-500`}>{chips.join(" · ")}</span>
@@ -215,7 +219,10 @@ function Sheet({ open, onClose, word, hideMeaning, children }: {
                 <div className="mx-auto h-1 w-9 rounded-full bg-slate-200" />
                 <div className="mt-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className={`text-[30px] font-extrabold leading-none text-slate-900 ${HE}`}><bdi>{word?.word}</bdi></div>
+                    <div className={`flex items-center gap-2 text-[30px] font-extrabold leading-none text-slate-900 ${HE}`}>
+                      <bdi>{word?.word}</bdi>
+                      <SpeakButton text={word?.word || ""} language="hebrew" className="text-slate-500" />
+                    </div>
                     {sub && <div className="mt-1.5 text-[13px] text-slate-500">{sub}</div>}
                   </div>
                   <button
@@ -287,7 +294,10 @@ function Table({ word, occ, table }: { word: any; occ: VerbOccurrence; table: an
                 {isSeen && <span className="mt-0.5 inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-500">You've seen it</span>}
               </span>
               <span className="min-w-0 flex-1 text-right">
-                <span dir="rtl" className={`block text-[20px] font-bold leading-tight text-slate-900 ${HE}`}>{c?.he || "—"}</span>
+                <span dir="rtl" className={`flex items-center justify-end gap-1 text-[20px] font-bold leading-tight text-slate-900 ${HE}`}>
+                  <span>{c?.he || "—"}</span>
+                  {c?.he && <SpeakButton text={c.he} language="hebrew" className="text-slate-400" />}
+                </span>
                 {c?.phonetic && <span className="block truncate text-[12px] text-slate-400">{c.phonetic}</span>}
               </span>
             </div>

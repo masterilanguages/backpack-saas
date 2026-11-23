@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase } from './supabaseClient';
+import { polishSpeechFields } from '@/lib/speech';
 
 /**
  * Base44 -> Supabase compatibility shim.
@@ -334,7 +335,12 @@ const Core = {
       body: args,
     });
     if (error) throw error;
-    if (args && args.response_json_schema) return data;
+    // Hebrew romanization fields (transliteration, phonetic, …) are pulled
+    // onto the platform standard. Payloads with no Hebrew script are unchanged.
+    const polish = (value) => {
+      try { return polishSpeechFields(value); } catch { return value; }
+    };
+    if (args && args.response_json_schema) return polish(data);
     if (data && typeof data === 'object' && 'response' in data) return data.response;
     return data;
   },

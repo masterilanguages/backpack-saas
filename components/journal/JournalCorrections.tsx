@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wand2, Loader2, Volume2, GraduationCap, ArrowUpRight } from "lucide-react";
+import { Wand2, Loader2, GraduationCap, ArrowUpRight } from "lucide-react";
 import { base44 as base44Client } from "@/api/base44Client";
 import { toast } from "sonner";
 import {
@@ -10,7 +10,7 @@ import {
   needsTransliteration,
   isRTLLanguage,
 } from "@/lib/language";
-import { generateLessonAudio } from "@/lib/audio/lessonAudio";
+import SpeakButton from "@/components/speech/SpeakButton";
 import type { GeneratedLesson } from "@/lib/journal/generateLesson";
 
 // base44 shim entities are built dynamically; cast to any for ergonomic access.
@@ -53,8 +53,6 @@ export default function JournalCorrections({
   const showTranslit = needsTransliteration(language);
   const rtl = isRTLLanguage(language);
   const targetText = lesson.generatedTargetText;
-
-  const speak = (text: string) => generateLessonAudio({ text, language }).play();
 
   const fetchResult = async (mode: Mode) => {
     setLoading(true);
@@ -211,14 +209,7 @@ export default function JournalCorrections({
                         dir={rtl ? "rtl" : "ltr"}
                         className="mt-1 flex items-start gap-2 text-lg leading-relaxed text-white"
                       >
-                        <button
-                          onClick={() => speak(current.text)}
-                          className="mt-1 shrink-0 rounded-full p-1 text-slate-400 transition-colors hover:bg-teal-500/15 hover:text-teal-300"
-                          aria-label="Play"
-                          title="Play"
-                        >
-                          <Volume2 className="h-4 w-4" />
-                        </button>
+                        <SpeakButton text={current.text} language={language} title="Play" className="mt-1 text-slate-400 hover:bg-teal-500/15 hover:text-teal-300" />
                         <span>{current.text}</span>
                       </p>
                       {current.english && (

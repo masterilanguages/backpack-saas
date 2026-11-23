@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
+import SpeakButton from "@/components/speech/SpeakButton";
 
 const VERBS = [
   {
@@ -118,13 +119,13 @@ const VERBS = [
     rootRoman: "R-A-H",
     ruleNote: "Lamed-heh verb — the final ה drops in conjugations. Very common verb, worth memorizing.",
     prefixRules: [
-      { prefix: "Er-", pronoun: "I → Er'eh" },
+      { prefix: "Er-", pronoun: "I → er'e" },
       { prefix: "Tir-", pronoun: "You / She → Tir'eh" },
       { prefix: "Yir-", pronoun: "He / They → Yir'eh" },
       { prefix: "Nir-", pronoun: "We → Nir'eh" },
     ],
     rows: [
-      { subject: "I", transliteration: "Er'eh", hebrew: "אֶרְאֶה" },
+      { subject: "I", transliteration: "er'e", hebrew: "אֶרְאֶה" },
       { subject: "You (m)", transliteration: "Tir'eh", hebrew: "תִּרְאֶה" },
       { subject: "You (f)", transliteration: "Tir'i", hebrew: "תִּרְאִי" },
       { subject: "He", transliteration: "Yir'eh", hebrew: "יִרְאֶה" },
@@ -168,13 +169,13 @@ const VERBS = [
     rootRoman: "'A-Sh-H",
     ruleNote: "Lamed-heh verb with ayin-guttural (ע). The ה drops in future. Extremely common — must know!",
     prefixRules: [
-      { prefix: "E'e-", pronoun: "I → E'eseh" },
+      { prefix: "E'e-", pronoun: "I → e'ese" },
       { prefix: "Ta'a-", pronoun: "You / She → Ta'aseh" },
       { prefix: "Ya'a-", pronoun: "He / They → Ya'aseh" },
       { prefix: "Na'a-", pronoun: "We → Na'aseh" },
     ],
     rows: [
-      { subject: "I", transliteration: "E'e-seh", hebrew: "אֶעֱשֶׂה" },
+      { subject: "I", transliteration: "e'ese", hebrew: "אֶעֱשֶׂה" },
       { subject: "You (m)", transliteration: "Ta'a-seh", hebrew: "תַּעֲשֶׂה" },
       { subject: "You (f)", transliteration: "Ta'a-s-i", hebrew: "תַּעֲשִׂי" },
       { subject: "He", transliteration: "Ya'a-seh", hebrew: "יַעֲשֶׂה" },
@@ -333,8 +334,9 @@ function VerbCard({ verb }) {
                   <span className="text-base font-semibold flex-1 text-center" style={{ color: '#3d4a2e' }}>
                     <EditableCell value={row.transliteration} onChange={v => updateRow(idx, "transliteration", v)} />
                   </span>
-                  <span className="text-xl font-bold text-right flex-shrink-0" style={{ color: '#5a6b3a', direction: 'rtl', minWidth: 80 }}>
+                  <span className="text-xl font-bold text-right flex-shrink-0 flex items-center justify-end gap-1" style={{ color: '#5a6b3a', direction: 'rtl', minWidth: 80 }}>
                     <EditableCell value={row.hebrew} onChange={v => updateRow(idx, "hebrew", v)} />
+                    <SpeakButton text={row.hebrew} language="hebrew" className="text-stone-500" />
                   </span>
                 </div>
               ))}

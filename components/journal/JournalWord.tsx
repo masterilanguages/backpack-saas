@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Check, X, Volume2 } from "lucide-react";
+import { Loader2, Check, X } from "lucide-react";
 import { base44 as base44Client } from "@/api/base44Client";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, needsTransliteration } from "@/lib/language";
-import { generateLessonAudio } from "@/lib/audio/lessonAudio";
+import { translitRules } from "@/lib/chapterPrompts";
+import { invokeQuality } from "@/lib/invokeQuality";
+import SpeakButton from "@/components/speech/SpeakButton";
 import type { LessonVocab } from "@/lib/journal/generateLesson";
 import { checkLater, markRow } from "@/lib/saveWordDeps";
 
@@ -60,11 +62,6 @@ export default function JournalWord({
   const rtl = isRTLText(word);
   const showTranslit = needsTransliteration(language);
 
-  const audio = useMemo(
-    () => generateLessonAudio({ text: word, language }),
-    [word, language]
-  );
-
   const lookup = async () => {
     // Prefer instant data from the lesson's own vocab list.
     if (vocabHint) {
@@ -80,12 +77,12 @@ export default function JournalWord({
     setLoading(true);
     try {
       const langName = languageLabel(language);
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeQuality({
         prompt: `In this ${langName} sentence: "${sentenceContext}"
 the word "${word}" appears. Give its English meaning IN CONTEXT.
 Return: "translation" (English meaning), "transliteration" (${
           showTranslit ? "Latin-letter pronunciation" : 'empty string ""'
-        }), "partOfSpeech", and a short "example" sentence in ${langName} using the word.`,
+        }), "partOfSpeech", and a short "example" sentence in ${langName} using the word.${translitRules(langName)}`,
         response_json_schema: {
           type: "object",
           properties: {
@@ -211,16 +208,7 @@ Return: "translation" (English meaning), "transliteration" (${
                     >
                       {word}
                     </span>
-                    {audio.supported && (
-                      <button
-                        onClick={() => audio.play()}
-                        className="rounded-full p-1 text-slate-400 transition-colors hover:bg-teal-500/15 hover:text-teal-300"
-                        aria-label="Hear pronunciation"
-                        title="Hear pronunciation"
-                      >
-                        <Volume2 className="h-4 w-4" />
-                      </button>
-                    )}
+                    <SpeakButton text={word} language={language} className="text-teal-300 hover:bg-teal-500/15" title="Hear pronunciation" />
                   </div>
                   <button
                     onClick={() => setOpen(false)}
