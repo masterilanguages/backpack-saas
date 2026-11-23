@@ -244,6 +244,13 @@ export async function middleware(request: NextRequest) {
   cleanHeaders.delete("x-user-id");
   cleanHeaders.delete("x-user-role");
 
+  // Liveness probe for the outage monitor. Public on every host, including
+  // school subdomains, and it must not call Supabase: the check has to answer
+  // when the database is the thing that is down. The body has no student data.
+  if (pathname === "/api/health") {
+    return NextResponse.next({ request: { headers: cleanHeaders } });
+  }
+
   // ── 1. Host -> slug
   const slug = parseSlug(request.headers.get("host"));
 

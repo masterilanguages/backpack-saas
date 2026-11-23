@@ -1,0 +1,54 @@
+# Every 30 minutes: is the live site up, and can Claude still answer?
+# A failed run emails one person — whoever last enabled this workflow —
+# if that person has GitHub Actions failure emails turned on.
+# See README.md. This does not deploy anything and does not write student data.
+
+name: Production health
+
+on:
+  schedule:
+    # GitHub may start this a few minutes late. Avoids the top of the hour,
+    # which is when scheduled workflows are most likely to be delayed.
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+    inputs:
+      production_url:
+        description: "Site to check. Leave blank for the real site. To test the failure email only, use https://example.invalid"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Site and Claude
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check the live site and Claude
+        env:
+          # A URL typed into "Run workflow" wins. Otherwise the repository
+          # variable PRODUCTION_URL, otherwise https://www.backpacksystems.com.
+          PRODUCTION_URL: ${{ github.event.inputs.production_url || vars.PRODUCTION_URL }}
+          # Optional. Only used when the deployed site itself can run the AI ping.
+          HEALTH_CHECK_TOKEN: ${{ secrets.HEALTH_CHECK_TOKEN }}
+          # A key from the same Anthropic account the app uses. Credits are per account.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: >-
+          deno run
+          --no-lock
+          --node-modules-dir=none
+          --unstable-sloppy-imports
+          --allow-env
+          --allow-net
+          --allow-read
+          --allow-write
+          scripts/production-health-check.ts
