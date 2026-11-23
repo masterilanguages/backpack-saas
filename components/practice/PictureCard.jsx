@@ -18,9 +18,13 @@ export default function PictureCard({
   currentRating,
   onDelete,
   onUpdateWord,
-  canEdit = true
+  canEdit = true,
+  onRegenerate,
+  regenerating = false,
 }) {
   const [showAnswer, setShowAnswer] = useState(true);
+  const [failedSrc, setFailedSrc] = useState("");
+  const imgFailed = !!card?.image && failedSrc === card.image;
 
   const handleNext = () => {
     setShowAnswer(false);
@@ -39,11 +43,18 @@ export default function PictureCard({
       className="bg-white/90 backdrop-blur-sm rounded-2xl border border-violet-100 shadow-xl overflow-hidden max-w-lg mx-auto"
     >
       <div className="relative">
-        <img
-          src={card.image}
-          alt="Mnemonic illustration"
-          className="w-full h-64 object-cover"
-        />
+        {card.image && !imgFailed ? (
+          <img
+            src={card.image}
+            alt="Mnemonic illustration"
+            className="w-full h-64 object-cover"
+            onError={() => setFailedSrc(card.image)}
+          />
+        ) : (
+          <div className="w-full h-64 bg-violet-50 flex flex-col items-center justify-center gap-2 text-violet-700">
+            {regenerating ? <span className="text-sm">Generating image…</span> : <span className="text-sm">No mnemonic image yet</span>}
+          </div>
+        )}
         <div className="absolute top-3 right-3 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
           {currentIndex + 1}
         </div>
@@ -52,7 +63,9 @@ export default function PictureCard({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                // TODO: Trigger mnemonic image regeneration
+                if (regenerating || !onRegenerate) return;
+                setFailedSrc("");
+                onRegenerate();
               }}
               className="w-8 h-8 rounded-lg bg-black/40 hover:bg-black/60 flex items-center justify-center backdrop-blur-md transition-all"
             >

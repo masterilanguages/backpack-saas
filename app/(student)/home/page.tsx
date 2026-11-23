@@ -21,12 +21,14 @@ import { BackpackLogo } from "@/components/AuthShell";
 import { ChevronDown, ChevronRight, ChevronLeft, Plus, BarChart3, Loader2, X, Sparkles, Backpack, Route, Library, CircleUser, Play, Pause, SkipBack, SkipForward, Languages, Check, FileText, ArrowRight, Lock, GripVertical, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, usesNikud } from "@/lib/language";
-import { mnemonicImagePrompt } from "@/lib/imageStyle";
+import { prepareMnemonicCard } from "@/lib/mnemonicCard";
+import { mnemonicImageErrorMessage } from "@/lib/mnemonicImageError";
 import {
-  MNEMONIC_EXPLANATION_RULE,
   ensureShortMnemonicExplanation,
   isShortMnemonicExplanation,
 } from "@/lib/mnemonicExplanation";
+import { embedLemma, mnemonicSaveFields, readEmbeddedLemma, stripLemmaMarker } from "@/lib/mnemonicLemma";
+import { sentenceInputFromWord, warmVerifiedExamples } from "@/lib/mnemonicSentence";
 import { generateLesson } from "@/lib/journal/generateLesson";
 import JournalLessonView from "@/components/journal/JournalLessonView";
 import WordCard from "@/components/backpack/WordCard";
@@ -819,106 +821,53 @@ export default function Home() {
     }
   };
 
-  // Sound-anchor mnemonic image — same recipe as the full Backpack page.
+  // Sound-anchor picture from the dictionary base (בית, not בבית).
+  // The example-sentence check starts inside prepareMnemonicCard, before the image.
   const suggestMnemonicForWord = async (word: any) => {
     setSuggestingMnemonic(word.id);
     try {
-      const rawWord = word.phonetic || word.word;
-      const mnemonicLang = word.language || language;
-      // Strip Hebrew infinitive "l" prefix for verbs — Hebrew only.
-      const targetWord =
-        mnemonicLang === "hebrew" && (word.is_verb || word.phonetic?.startsWith("l")) && /^l/i.test(rawWord)
-          ? rawWord.slice(1)
-          : rawWord;
-      const meaning = word.translation || "";
-
-      const concept = await base44.integrations.Core.InvokeLLM({
-        prompt: `You create sound-based visual mnemonics for language learning.
-
-Target word: "${targetWord}" (meaning: "${meaning}")
-
-STEP 1 — SOUND MATCH (BEGINNING OF THE WORD): Find a real, common English noun that sounds like the BEGINNING — the first 1-2 syllables — of "${targetWord}". The match must be to how the word STARTS when spoken aloud; never anchor on the middle or end. Examples: "chatunah" → "HAT" (cha-tunah opens like "hat"), "shalom" → "shallow", "kelev" → "collar", "askeem" → "eskimo". PRONUNCIATION RULE for Hebrew: the "ch"/"kh" sound (ח/כ) is a breathy H — treat it as English "h" (so "chatunah" starts like "hat", "chaver" like "have"), NEVER as the "ch" in "chair" and NEVER as "k"/"c" (do NOT turn "chatunah" into "cat"). The noun must be a physical, concrete, everyday object or creature. IMPORTANT: Do NOT use colors (like ivory, red, blue, gold, etc.) as the sound anchor — use objects or animals only.
-
-STEP 2 — SCENE: Place that physical noun object in a funny visual scene that ALSO shows the meaning "${meaning}". The object itself (not speech bubbles, not labels) should remind you of the sound. The MEANING "${meaning}" must be the BIG, obvious visual focus of the scene; the sound-anchor object is only a supporting prop inside it. Keep the scene MODERN, timeless and child-friendly — NEVER use historical/period or violent settings (no medieval, knights, soldiers, armor, battlefield, war, ancient, Victorian). If the sound-anchor would normally be historical or military (e.g. "armor"), reimagine it as a cute, modern, harmless cartoon version. NEVER write art-style or realism words (like "medieval", "realistic", "photograph", "oil painting", "cinematic", "render", "3D") inside the description — describe only WHAT happens, not how it is drawn.
-
-CRITICAL: Do NOT name any character, creature, animal, or person in the scene with the sound-anchor word, the target word, or any variant. They are just generic characters performing the action.
-
-STEP 3 — The image must show the OBJECT doing something related to the meaning. NO speech bubbles, NO text, NO characters speaking or calling out. PURE VISUAL ACTION ONLY — no mouths open to speak, no gesturing as if calling out.
-
-Return JSON:
-- sound_anchor: the English noun that sounds like "${targetWord}"
-- explanation: ${MNEMONIC_EXPLANATION_RULE}
-- image_prompt: a vivid description of the SCENE and ACTION only, where the meaning "${meaning}" is the clear centerpiece and the sound_anchor object is just a small prop. Modern/timeless setting. NO era/period words, NO art-style or realism words, no talking, no speech, no text, no naming any creatures.`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            sound_anchor: { type: "string" },
-            explanation: { type: "string" },
-            image_prompt: { type: "string" },
-          },
-        },
+      const prepared = await prepareMnemonicCard(word, word.language || language, {
+        invoke: (args) => base44.integrations.Core.InvokeLLM(args),
+        generateImage: (args) => base44.integrations.Core.GenerateImage({ ...args, cache: false }),
       });
-
-      const imageResult = await base44.integrations.Core.GenerateImage({
-        prompt: mnemonicImagePrompt(concept.image_prompt),
-      });
-
-      const explanation = await ensureShortMnemonicExplanation(concept.explanation);
+      const explanation = await ensureShortMnemonicExplanation(prepared.concept.explanation);
       setMnemonicExplanations((prev: any) => ({ ...prev, [word.id]: explanation }));
-      await updateWordMutation.mutateAsync({
+      const saved = await updateWordMutation.mutateAsync({
         id: word.id,
-        data: { image_url: imageResult.url, mnemonic_explanation: explanation },
+        data: mnemonicSaveFields(prepared.concept, explanation, prepared.imageUrl),
       });
+      if (!saved) throw new Error("The picture was created but could not be saved on this card.");
       toast.success("Mnemonic image created! 🎨");
+      prepared.examplesP.then((examples) => {
+        if (!examples?.length || (Array.isArray(word.usage_examples) && word.usage_examples.length)) return;
+        updateWordMutation.mutate({ id: word.id, data: { usage_examples: examples } });
+      }).catch((e) => console.error("[mnemonic] sentences", e));
+      return true;
     } catch (e) {
-      toast.error("Failed to generate mnemonic");
+      console.error("[mnemonic] image", e);
+      toast.error(mnemonicImageErrorMessage(e));
+      return false;
+    } finally {
+      setSuggestingMnemonic(null);
     }
-    setSuggestingMnemonic(null);
   };
 
-  // One strict example sentence per card — session-only, same as the full page.
+  // One checked example sentence — session-only. A native-speaker pass runs
+  // before it is shown; the transliteration and English are for that sentence.
   const generateCardSentence = async (word: any) => {
     setGeneratingSentence((prev: any) => ({ ...prev, [word.id]: true }));
     setCardSentences((prev: any) => { const next = { ...prev }; delete next[word.id]; return next; });
     try {
       const lang = word.language || language;
-      const label = languageLabel(lang);
-      const nikud = usesNikud(lang);
-      const hebrewScript = word.word && word.word !== word.phonetic ? word.word : null;
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are an expert ${label} linguist and language teacher creating example sentences for learners.
-
-TARGET WORD: ${hebrewScript ? `${label}: "${hebrewScript}"` : ""} Transliteration: "${word.phonetic || word.word}" | English meaning: "${word.translation}"
-
-TASK: Write ONE grammatically perfect, natural modern ${label} sentence that clearly demonstrates the meaning of "${word.translation}".
-
-STRICT RULES:
-1. The sentence MUST contain the word ${hebrewScript || word.phonetic} (or its correctly conjugated/declined form)
-2. The ${label} sentence and the English translation MUST convey the EXACT same meaning — no creative liberties
-3. Use correct ${nikud ? "nikud-less Hebrew script (standard modern written Hebrew)" : `${label} native spelling (including any accents or diacritics)`}
-4. 4–7 words only
-5. The English translation must be a direct, accurate translation of the ${label} — not a paraphrase
-6. Each word in the "words" array must map 1-to-1 to the actual ${label} words in the sentence in order
-7. Do NOT invent words or use placeholder meanings — every ${label} word must have its real translation
-
-Return JSON with:
-- hebrew_sentence: the full sentence in ${label} native script
-- transliteration: the full sentence in Latin letters (natural pronunciation)
-- english: the direct English translation of the ${label} sentence
-- words: array (one per ${label} word, in order) of { hebrew: the word in ${label} native script, word: its transliteration, meaning: its English meaning }`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            hebrew_sentence: { type: "string" },
-            transliteration: { type: "string" },
-            english: { type: "string" },
-            words: { type: "array", items: { type: "object", properties: { hebrew: { type: "string" }, word: { type: "string" }, meaning: { type: "string" } } } },
-          },
-        },
-      });
-      setCardSentences((prev: any) => ({ ...prev, [word.id]: result }));
+      const [verified] = await warmVerifiedExamples(
+        sentenceInputFromWord(word, lang, 1),
+        (args) => base44.integrations.Core.InvokeLLM(args),
+        { cache: false },
+      );
+      if (!verified) throw new Error("Couldn't verify an example sentence.");
+      setCardSentences((prev: any) => ({ ...prev, [word.id]: verified }));
     } catch (e) {
-      toast.error("Failed to generate sentence");
+      toast.error(e instanceof Error ? e.message : "Failed to generate sentence");
     }
     setGeneratingSentence((prev: any) => ({ ...prev, [word.id]: false }));
   };
@@ -1099,54 +1048,20 @@ Return JSON with:
   const generateUsageExamples = async (word: any) => {
     setGeneratingExamples((prev) => ({ ...prev, [word.id]: true }));
     try {
-      const lang = word.language || language;
-      const label = languageLabel(lang);
-      const nativeWord = word.word && word.word !== word.phonetic ? word.word : null;
-      const result: any = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are an expert ${label} teacher writing usage examples for a flashcard.
-
-TARGET WORD: ${nativeWord ? `${label}: "${nativeWord}"` : ""} Transliteration: "${word.phonetic || word.word}" | English meaning: "${word.translation || ""}"
-
-Write 3 DIFFERENT, natural, everyday modern ${label} sentences that use this word (or its correctly conjugated/declined form).
-Rules:
-- Each sentence 3 to 6 words, simple enough for a learner, each showing a different typical use.
-- Standard modern written ${label} (${usesNikud(lang) ? "no nikud" : "native spelling"}).
-- The English translation must say exactly the same as the ${label} sentence.
-- "words" maps 1-to-1, in order, to the ${label} words of the sentence, each with its transliteration and English meaning.
-
-Return JSON: { "examples": [ { "hebrew_sentence": the sentence in ${label} script, "transliteration": the whole sentence in Latin letters, "english": its translation, "words": [ { "hebrew": word in ${label} script, "word": its transliteration, "meaning": its English meaning } ] } ] }`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            examples: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  hebrew_sentence: { type: "string" },
-                  transliteration: { type: "string" },
-                  english: { type: "string" },
-                  words: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: { hebrew: { type: "string" }, word: { type: "string" }, meaning: { type: "string" } },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-      const examples = (result?.examples || [])
-        .filter((e: any) => e?.hebrew_sentence && e?.transliteration)
-        .slice(0, 3);
+      const examples = await warmVerifiedExamples(
+        sentenceInputFromWord(word, word.language || language),
+        (args) => base44.integrations.Core.InvokeLLM(args),
+      );
       if (examples.length) {
         await updateWordMutation.mutateAsync({ id: word.id, data: { usage_examples: examples } });
+      } else {
+        examplesTried.current.delete(word.id);
+        toast.error("Couldn't verify an example sentence — try the card again.");
       }
     } catch (e) {
       console.error("[usage examples] generation failed", e);
+      examplesTried.current.delete(word.id);
+      toast.error(e instanceof Error ? e.message : "Couldn't verify an example sentence.");
     }
     setGeneratingExamples((prev) => {
       const next = { ...prev };
@@ -1168,13 +1083,18 @@ Return JSON: { "examples": [ { "hebrew_sentence": the sentence in ${label} scrip
   useEffect(() => {
     const w = currentCard;
     if (tab !== "learning" || deckKey === null || !w?.id || w.review_status || w.approved) return;
-    if (!w.mnemonic_explanation || isShortMnemonicExplanation(w.mnemonic_explanation)) return;
+    const visible = stripLemmaMarker(w.mnemonic_explanation);
+    if (!visible || isShortMnemonicExplanation(visible)) return;
     if (shortenTried.current.has(w.id)) return;
     shortenTried.current.add(w.id);
-    ensureShortMnemonicExplanation(w.mnemonic_explanation).then((short) => {
+    const basis = readEmbeddedLemma(w.mnemonic_explanation);
+    ensureShortMnemonicExplanation(visible).then((short) => {
       if (!short || !isShortMnemonicExplanation(short)) return;
       setMnemonicExplanations((prev: any) => ({ ...prev, [w.id]: short }));
-      updateWordMutation.mutate({ id: w.id, data: { mnemonic_explanation: short } });
+      updateWordMutation.mutate({
+        id: w.id,
+        data: { mnemonic_explanation: basis ? embedLemma(short, basis) : short },
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, deckKey, currentCard?.id, currentCard?.mnemonic_explanation]);

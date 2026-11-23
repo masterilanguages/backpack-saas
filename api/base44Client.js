@@ -340,13 +340,28 @@ const Core = {
   },
 
   // GenerateImage(args) -> { url } (callers read result.url).
+  // The edge function's JSON error used to be thrown away ("Edge Function
+  // returned a non-2xx status code"), so a dead model looked like a blank card.
   async GenerateImage(args) {
-    const { data, error } = await supabase.functions.invoke('generate-image', {
-      body: args,
-    });
-    if (error) throw error;
-    // Normalize so callers always get { url }.
-    return { url: data?.url };
+    const prompt = (args && (args.prompt || args.text)) || "";
+    const key = `${args && args.cache === false ? "new:" : "cache:"}${prompt}`;
+    if (prompt && imageInflight.has(key)) return imageInflight.get(key);
+    const run = (async () => {
+      const { data, error } = await supabase.functions.invoke('generate-image', {
+        body: args,
+      });
+      if (error || !data || data.error || !data.url) {
+        throw new Error(await readInvokeError(error, data));
+      }
+      return { url: data.url, source: data.source, cached: !!data.cached };
+    })();
+    if (prompt) {
+      imageInflight.set(key, run);
+      run.finally(() => {
+        if (imageInflight.get(key) === run) imageInflight.delete(key);
+      });
+    }
+    return run;
   },
 
   // UploadFile({ file }) -> { file_url } (callers destructure { file_url } / read .file_url).
@@ -392,6 +407,23 @@ const Core = {
     return data;
   },
 };
+
+// One picture request at a time per prompt (the card and the queue both fire).
+const imageInflight = new Map();
+
+async function readInvokeError(error, data) {
+  if (data && typeof data === 'object' && data.error) return String(data.error);
+  const res = error && error.context;
+  if (res && typeof res.clone === 'function') {
+    try {
+      const body = await res.clone().json();
+      if (body && body.error) return String(body.error);
+    } catch {
+      /* body was not JSON */
+    }
+  }
+  return (error && error.message) || 'Image generation failed';
+}
 
 const integrations = { Core };
 
