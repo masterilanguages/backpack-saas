@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
+import SpeakButton from "@/components/speech/SpeakButton";
 
 const SECTIONS = [
   {
@@ -16,7 +17,7 @@ const SECTIONS = [
       { hebrew: "עַכְשָׁו", roman: "achsháv", english: "now" },
       { hebrew: "תָּמִיד", roman: "tamíd", english: "always" },
       { hebrew: "רֶגַע", roman: "réga", english: "moment" },
-      { hebrew: "שָׁעָה", roman: "shaá", english: "hour" },
+      { hebrew: "שָׁעָה", roman: "sha'á", english: "hour" },
       { hebrew: "דַּקָּה", roman: "daká", english: "minute" },
     ],
   },
@@ -28,10 +29,10 @@ const SECTIONS = [
       { hebrew: "יוֹם רִאשׁוֹן", roman: "yom rishón", english: "Sunday" },
       { hebrew: "יוֹם שֵׁנִי", roman: "yom shení", english: "Monday" },
       { hebrew: "יוֹם שְׁלִישִׁי", roman: "yom shlishí", english: "Tuesday" },
-      { hebrew: "יוֹם רְבִיעִי", roman: "yom rvií", english: "Wednesday" },
+      { hebrew: "יוֹם רְבִיעִי", roman: "yom revi'í", english: "Wednesday" },
       { hebrew: "יוֹם חֲמִישִׁי", roman: "yom chamishí", english: "Thursday" },
       { hebrew: "יוֹם שִׁשִּׁי", roman: "yom shishí", english: "Friday" },
-      { hebrew: "שַׁבָּת", roman: "shabát", english: "Saturday / Shabbat" },
+      { hebrew: "שַׁבָּת", roman: "shabbat", english: "Saturday / Shabbat" },
     ],
   },
   {
@@ -50,7 +51,7 @@ const SECTIONS = [
       { hebrew: "סֶפְטֶמְבֶּר", roman: "septémber", english: "September" },
       { hebrew: "אוֹקְטוֹבֶר", roman: "október", english: "October" },
       { hebrew: "נוֹבֶמְבֶּר", roman: "novémber", english: "November" },
-      { hebrew: "דֶּצֶמְבֶּר", roman: "detsémber", english: "December" },
+      { hebrew: "דֶּצֶמְבֶּר", roman: "detzémber", english: "December" },
     ],
   },
   {
@@ -63,19 +64,19 @@ const SECTIONS = [
       { hebrew: "שְׁתַּיִם", roman: "shtáyim", english: "2" },
       { hebrew: "שָׁלוֹשׁ", roman: "shalósh", english: "3" },
       { hebrew: "אַרְבַּע", roman: "árba", english: "4" },
-      { hebrew: "חָמֵשׁ", roman: "chamésḥ", english: "5" },
+      { hebrew: "חָמֵשׁ", roman: "chamésh", english: "5" },
       { hebrew: "שֵׁשׁ", roman: "shesh", english: "6" },
       { hebrew: "שֶׁבַע", roman: "shéva", english: "7" },
       { hebrew: "שְׁמוֹנֶה", roman: "shmoné", english: "8" },
       { hebrew: "תֵּשַׁע", roman: "tésha", english: "9" },
       { hebrew: "עֶשֶׂר", roman: "éser", english: "10" },
       { hebrew: "אַחַד עָשָׂר", roman: "achád asar", english: "11" },
-      { hebrew: "שְׁנֵים עָשָׂר", roman: "shném asar", english: "12" },
+      { hebrew: "שְׁנֵים עָשָׂר", roman: "shneím asar", english: "12" },
       { hebrew: "עֶשְׂרִים", roman: "esrím", english: "20" },
       { hebrew: "שְׁלוֹשִׁים", roman: "shloshím", english: "30" },
       { hebrew: "אַרְבָּעִים", roman: "arbaím", english: "40" },
       { hebrew: "חֲמִישִׁים", roman: "chamishím", english: "50" },
-      { hebrew: "מֵאָה", roman: "meá", english: "100" },
+      { hebrew: "מֵאָה", roman: "me'á", english: "100" },
       { hebrew: "אֶלֶף", roman: "élef", english: "1,000" },
     ],
   },
@@ -198,9 +199,9 @@ const SECTIONS = [
       { hebrew: "לֶאֱהֹב", roman: "le'ehóv", english: "to love" },
       { hebrew: "לוֹמַר", roman: "lomár", english: "to say" },
       { hebrew: "לִשְׁמֹעַ", roman: "lishmóa", english: "to hear / listen" },
-      { hebrew: "לָדַעַת", roman: "ladáat", english: "to know" },
+      { hebrew: "לָדַעַת", roman: "lada'át", english: "to know" },
       { hebrew: "לִרְצוֹת", roman: "lirtzót", english: "to want" },
-      { hebrew: "לְיַכוֹל", roman: "leychól", english: "to be able to / can" },
+      { hebrew: "לְיַכוֹל", roman: "leyachól", english: "to be able to / can" },
       { hebrew: "לַחְשׁוֹב", roman: "lachshóv", english: "to think" },
     ],
   },
@@ -244,7 +245,10 @@ function Section({ section, onAddToBackpack }) {
                   className="flex flex-col items-center text-center px-3 py-1.5 rounded-lg group w-fit"
                   style={{ background: idx % 2 === 0 ? '#1e293b' : '#0f172a', border: '1px solid #334155' }}
                 >
-                  <span className="text-xs font-medium leading-none" style={{ color: '#5eead4' }}>{item.roman}</span>
+                  <span className="flex items-center gap-1 text-xs font-medium leading-none" style={{ color: '#5eead4' }}>
+                    <span>{item.roman}</span>
+                    <SpeakButton text={item.hebrew} language="hebrew" className="h-5 w-5 text-teal-300" />
+                  </span>
                   <span className="text-[10px] text-slate-400 leading-none">{item.english}</span>
                   <span className="text-base font-bold leading-none mt-0.5" dir="rtl" style={{ color: '#ffffff' }}>{item.hebrew}</span>
                   {onAddToBackpack && (

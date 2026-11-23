@@ -1,15 +1,11 @@
-// Reusable lesson text-to-speech abstraction.
-//
-// The app has no server-side TTS provider yet, so this default implementation
-// speaks with the browser's built-in Web Speech API (SpeechSynthesis). It is
-// deliberately the ONLY place the UI touches audio synthesis — pages/components
-// call `generateLessonAudio(...)` and drive the returned player, they never
-// construct utterances or <audio> elements themselves.
-//
-// Swapping to a hosted TTS provider later (OpenAI / ElevenLabs / Google) means
-// changing only this file: fetch an audio URL from an edge function and return a
-// player backed by an HTMLAudioElement. The `LessonAudioPlayer` contract below
-// stays the same, so no caller changes.
+// Lesson audio entry point. Pages call `generateLessonAudio(...).play()`.
+// The neural voice (Israeli he-IL for Hebrew, a native voice for the other
+// learning languages) lives in lib/speech. This wrapper keeps the old player
+// shape and sends every language through that platform path, with the
+// browser's speechSynthesis as the fallback when no provider key is set.
+
+import { playSpeech, stopSpeech } from "@/lib/speech/player";
+import { speechLocale } from "@/lib/speech/voices";
 
 export type LessonLanguage =
   | "hebrew"
@@ -21,11 +17,11 @@ export type LessonLanguage =
   | string;
 
 export interface GenerateLessonAudioOptions {
-  /** The text to speak, in the target language. */
+  /** The text to speak, in the target language (native script, not a transliteration). */
   text: string;
-  /** Target language name as used across the app (e.g. "hebrew", "spanish"). */
+  /** Target language id as used across the app (e.g. "hebrew", "spanish"). */
   language: LessonLanguage;
-  /** Optional preferred voice name (matched loosely against installed voices). */
+  /** Optional preferred browser-voice name, used only for the speechSynthesis fallback. */
   voicePreference?: string;
   /** Playback rate. 1 = normal. Clamped to [0.5, 1.5]. */
   speed?: number;
@@ -34,58 +30,16 @@ export interface GenerateLessonAudioOptions {
 export interface LessonAudioPlayer {
   /** Start (or restart) playback from the beginning. */
   play: () => void;
-  /** Pause playback; `play()` restarts from the beginning. */
+  /** Stop playback. */
   pause: () => void;
   /** Stop and clear any queued speech. */
   stop: () => void;
-  /** Whether audio can actually be produced in this environment. */
+  /** Whether audio can be requested in this environment. */
   readonly supported: boolean;
 }
 
-// App language name -> BCP-47 tag the speech engine understands.
-const LANGUAGE_BCP47: Record<string, string> = {
-  hebrew: "he-IL",
-  english: "en-US",
-  spanish: "es-ES",
-  french: "fr-FR",
-  portuguese: "pt-BR",
-  italian: "it-IT",
-};
-
 export function toBcp47(language: LessonLanguage): string {
-  return LANGUAGE_BCP47[String(language || "").toLowerCase()] || "en-US";
-}
-
-function isSpeechSupported(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    "speechSynthesis" in window &&
-    typeof (window as any).SpeechSynthesisUtterance === "function"
-  );
-}
-
-// Voices load asynchronously in some browsers; pick the best match we can for a
-// BCP-47 tag, preferring an explicitly requested voice name.
-function pickVoice(
-  bcp47: string,
-  voicePreference?: string
-): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices() || [];
-  if (!voices.length) return null;
-  const lang = bcp47.toLowerCase();
-  const base = lang.split("-")[0];
-
-  if (voicePreference) {
-    const byName = voices.find((v) =>
-      v.name.toLowerCase().includes(voicePreference.toLowerCase())
-    );
-    if (byName) return byName;
-  }
-  return (
-    voices.find((v) => v.lang.toLowerCase() === lang) ||
-    voices.find((v) => v.lang.toLowerCase().startsWith(base)) ||
-    null
-  );
+  return speechLocale(language);
 }
 
 const NOOP_PLAYER: LessonAudioPlayer = {
@@ -96,60 +50,30 @@ const NOOP_PLAYER: LessonAudioPlayer = {
 };
 
 /**
- * Build a playable audio handle for a piece of lesson text.
- *
- * Returns a player object rather than auto-playing, so the UI decides when to
- * start (e.g. on a Play button click, which also satisfies browser autoplay
- * gestures). Safe to call during render / SSR: if speech isn't supported it
- * returns a no-op player whose `supported` flag is false.
+ * Build a playable handle for lesson text. Does not auto-play.
+ * Safe during SSR: without `window` it returns a no-op player.
  */
-export function generateLessonAudio(
-  opts: GenerateLessonAudioOptions
-): LessonAudioPlayer {
-  if (!isSpeechSupported() || !opts.text || !opts.text.trim()) {
-    return NOOP_PLAYER;
-  }
-
-  const synth = window.speechSynthesis;
-  const bcp47 = toBcp47(opts.language);
-  const rate = Math.min(1.5, Math.max(0.5, opts.speed ?? 1));
-
-  const build = () => {
-    const u = new SpeechSynthesisUtterance(opts.text);
-    u.lang = bcp47;
-    u.rate = rate;
-    const voice = pickVoice(bcp47, opts.voicePreference);
-    if (voice) u.voice = voice;
-    return u;
-  };
-
+export function generateLessonAudio(opts: GenerateLessonAudioOptions): LessonAudioPlayer {
+  if (typeof window === "undefined" || !opts.text?.trim()) return NOOP_PLAYER;
+  let current: { stop: () => void } | null = null;
   return {
     supported: true,
     play() {
-      // Chrome quirks that made 🔊 silently do nothing now and then:
-      //  - an utterance queued in the same tick as cancel() can be dropped;
-      //  - the engine can get stuck "paused" (e.g. after the tab was idle);
-      //  - on first use the voice list may still be loading.
-      synth.cancel();
-      synth.resume();
-      const speakNow = () => {
-        synth.resume();
-        synth.speak(build());
-      };
-      if (!synth.getVoices().length) {
-        let done = false;
-        const once = () => { if (!done) { done = true; speakNow(); } };
-        synth.addEventListener("voiceschanged", once, { once: true });
-        setTimeout(once, 400);
-      } else {
-        setTimeout(speakNow, 60);
-      }
+      current?.stop();
+      current = playSpeech({
+        text: opts.text,
+        language: opts.language,
+        speed: opts.speed,
+        voicePreference: opts.voicePreference,
+      });
     },
     pause() {
-      synth.cancel();
+      current?.stop();
+      stopSpeech();
     },
     stop() {
-      synth.cancel();
+      current?.stop();
+      stopSpeech();
     },
   };
 }

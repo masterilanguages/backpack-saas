@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
 import VideoTranscriptWord from "../video/VideoTranscriptWord";
+import SpeakButton from "@/components/speech/SpeakButton";
 
 export default function KaraokeTranscript({ 
   lines, 
@@ -154,7 +155,8 @@ export default function KaraokeTranscript({
             </div>
             
             {/* Hebrew */}
-            <div className="hebrew" style={{ direction: 'ltr', textAlign: 'left', unicodeBidi: 'bidi-override' }}>
+            <div className="hebrew flex items-start gap-1" style={{ direction: 'ltr', textAlign: 'left', unicodeBidi: 'bidi-override' }}>
+              {line.hebrew && <SpeakButton text={line.hebrew} language="hebrew" className="text-cyan-300" />}
               {line.hebrew.split(/(\s+)/).map((part, i) => 
                 /\S/.test(part) ? (
                   <VideoTranscriptWord

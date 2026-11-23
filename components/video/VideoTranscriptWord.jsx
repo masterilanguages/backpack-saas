@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Pencil, ShoppingBag } from "lucide-react";
+import SpeakButton from "@/components/speech/SpeakButton";
 
 export default function VideoTranscriptWord({ 
   word, 
@@ -83,6 +84,11 @@ export default function VideoTranscriptWord({
           className="absolute bottom-full left-0 mb-1 flex gap-1 z-50"
           style={{ whiteSpace: 'nowrap' }}
         >
+          <SpeakButton
+            text={/[\u0590-\u05FF]/.test(word) ? word : (hebrew || "")}
+            language="hebrew"
+            className="h-6 w-6 bg-teal-500/80 text-white hover:bg-teal-500"
+          />
           <button
             onMouseDown={(e) => {
               e.preventDefault();

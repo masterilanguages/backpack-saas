@@ -6,6 +6,10 @@ import { Play, Pause, Loader2, Check, X, Plus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { languageLabel, isRTLLanguage, isRTLText } from "@/lib/language";
 import { stripCaptionNoise } from "@/lib/transcription";
+import { QUALITY_MODEL, translitRules } from "@/lib/chapterPrompts";
+import SpeakButton from "@/components/speech/SpeakButton";
+import NikudToggle from "@/components/speech/NikudToggle";
+import PointedHebrew from "@/components/speech/PointedHebrew";
 
 export default function ContinuousTranscript({
   transcript: transcriptProp,
@@ -131,10 +135,11 @@ export default function ContinuousTranscript({
       for (let b = 0; b < broken.length; b += BATCH) {
         const chunk = broken.slice(b, b + BATCH);
         const result = await base44.integrations.Core.InvokeLLM({
-          model: "claude_sonnet_4_6",
+          model: QUALITY_MODEL,
           prompt: `You are an expert Hebrew linguist. For each numbered sentence below you get the best available source (Hebrew script and/or a transliteration, with an English hint). Return for EACH one:
 - hebrew: the sentence in Hebrew script, FULLY vocalized with complete nikud (vowel points). Do not change the wording; only restore correct spelling and add nikud.
-- transliteration: a Latin-letter transliteration of that Hebrew, following modern Israeli pronunciation, with punctuation matching the Hebrew.
+- transliteration: a Latin-letter transliteration of that Hebrew, punctuation matching the Hebrew.
+${translitRules("Hebrew")}
 
 Rules:
 - Do NOT translate; the sentence stays in Hebrew.
@@ -412,6 +417,9 @@ ${chunk.map((s, i) => `${i + 1}. Source: "${s.hebrew || s.transliteration || s.t
               <Loader2 className="w-3 h-3 animate-spin" /> Restoring nikud & transliteration…
             </span>
           )}
+          {!hideTranslit && /hebrew/i.test(language) && (
+            <NikudToggle className="border border-white/20 text-white" />
+          )}
           <button
             onClick={() => setHideTranslit(prev => !prev)}
             className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition-all border ${
@@ -583,8 +591,11 @@ ${chunk.map((s, i) => `${i + 1}. Source: "${s.hebrew || s.transliteration || s.t
                      </p>
                    )}
                    {!hideHebrew && segment.hebrew && (
+                     <PointedHebrew text={segment.hebrew} transliteration={segment.transliteration} active={!hideTranslit && /hebrew/i.test(language)}>
+                     {(shown) => (
                      <p className="text-cyan-300 text-base font-medium leading-tight text-center break-words" dir={dirFor(segment.hebrew)}>
-                       {renderWords(segIdx, 'hebrew', segment.hebrew, 'text-cyan-300 text-base font-medium')}
+                       <SpeakButton text={shown} language={language} className="mr-1 align-middle text-cyan-200" />
+                       {renderWords(segIdx, 'hebrew', shown, 'text-cyan-300 text-base font-medium')}
                        {canEdit && !translitShown && (
                          <button
                            onClick={(e) => { e.stopPropagation(); startEditSegment(segIdx); }}
@@ -595,6 +606,8 @@ ${chunk.map((s, i) => `${i + 1}. Source: "${s.hebrew || s.transliteration || s.t
                          </button>
                        )}
                      </p>
+                     )}
+                     </PointedHebrew>
                    )}
                   </>
                   )}

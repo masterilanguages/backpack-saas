@@ -5,10 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, MessageSquare, Image, Sparkles, Volume2, BookOpen, Check, Wand2 } from "lucide-react";
+import { Loader2, MessageSquare, Image, Sparkles, BookOpen, Check, Wand2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { languageLabel, isRTLText, nativeScriptInstruction, usesNikud } from "@/lib/language";
+import { translitRules } from "@/lib/chapterPrompts";
+import SpeakButton from "@/components/speech/SpeakButton";
 
 export default function ClickableWord({
   word, // target-language native word (Hebrew by default)
@@ -59,7 +61,7 @@ export default function ClickableWord({
       const result = await base44.integrations.Core.InvokeLLM({
         prompt: `Create 5 example sentences using the ${languageLabel(lang)} word "${word}" (${transliteration}) which means "${translation}".
         Return each sentence's ${nativeScriptInstruction(lang)} in the "hebrew" field, plus an English translation with phonetic pronunciation.
-        Make sentences progressively harder from beginner to advanced.`,
+        Make sentences progressively harder from beginner to advanced.${translitRules(languageLabel(lang))}`,
         response_json_schema: {
           type: "object",
           properties: {
@@ -225,6 +227,7 @@ export default function ClickableWord({
                 <Sparkles className="w-6 h-6 text-cyan-400" />
                 <div>
                   <span className="text-2xl" dir={isRTLText(word) ? "rtl" : "ltr"}>{word}</span>
+                  <SpeakButton text={/[\u0590-\u05FF]/.test(word) ? word : ""} language={lang || "hebrew"} className="text-cyan-300" />
                   <span className="text-white/60 ml-3">/{transliteration}/</span>
                   <span className="text-cyan-400 ml-3">{translation}</span>
                 </div>

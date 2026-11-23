@@ -4,13 +4,17 @@
 // prepared in the browser. Pure TypeScript: no imports.
 
 // Transliteration is where a small model fails in Hebrew (written without
-// vowels, Haiku guessed "Nikansta lekhayay" for נכנסת לחיי = "Nichnast lechayai";
-// measured: Sonnet 5.5 still misreads forms, Opus 5.5 gets them right).
+// vowels, Haiku guessed "Nikansta lekhayay" for נכנסת לחיי = "nichnast lechayai";
+// measured: Sonnet still misreads forms, Opus gets them right). Hebrew
+// romanization always asks for QUALITY_MODEL. The deterministic romanizer in
+// lib/speech/hebrewRomanization.ts then locks vocalized output to this standard.
 export const QUALITY_MODEL = "claude-opus-5-5";
 
-// Simple style, like the lyric videos students compare with: no hyphens or
-// apostrophes, one-letter prefixes joined to their word (Mark's choice).
-export const HEBREW_TRANSLIT_RULES = `Transliterate Hebrew exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as it is sung), in a simple everyday style: "ch" for ח and for כ without dagesh, "tz" for צ, "sh" for ש, every vowel that is actually spoken, and no hyphens or apostrophes. Work out each word's grammatical form from the context (person, gender, tense) before transliterating it, and use its real pronunciation, never a letter-by-letter guess. Keep one Latin word per Hebrew word, with a one-letter prefix (ו ה ב כ ל מ ש) joined to its word. Examples: נכנסת לחיי = nichnast lechayai; לפני שוויתרתי = lifnei shevitarti; הערת את הלב בים של צבעים = heart et halev beyam shel tzvaim; בן אדם, מה לך נרדם = ben adam, ma lecha nirdam.`;
+// Platform standard for every school teaching Hebrew. Full write-up: docs/speech.md.
+// Apostrophe is only the glottal of א/ע between vowels (le'ehov, sha'a) — the
+// old "no apostrophes" line deleted ע and, in one example, taught the English
+// word "heart" for הערת.
+export const HEBREW_TRANSLIT_RULES = `Transliterate Hebrew exactly as it is pronounced in modern Israeli Hebrew (for song lyrics, as it is sung). Use "ch" for ח and for כ/ך without dagesh (never "kh", never the English "ch" of "chair"); "k" for כּ; "tz" for צ (never "ts" or "tsch"); "sh" for שׁ and "s" for שׂ; "t" for ת (never "th" or Ashkenazi "s"); "b" for בּ and word-initial ב, "v" for fricative ב and consonantal ו. Work out each word's grammatical form from context (person, gender, number, tense) and write the vowels that are actually spoken — never a letter-by-letter guess, never Ashkenazi or Biblical forms (no "oy" for holam, no "shabbos", no "sav"). א and ע are silent at the start or end of a word; between vowels write an apostrophe (le'ehov, sha'a, me'a, lir'ot, tzva'im). Final ה is silent (toda, not todah). No hyphens. One Latin word per Hebrew word, with a one-letter prefix (ו ה ב כ ל מ ש) joined to its word. Examples: נכנסת לחיי = nichnast lechayai; לפני שוויתרתי = lifnei shevitarti; הערת את הלב בים של צבעים = he'arta et halev beyam shel tzva'im; בן אדם, מה לך נרדם = ben adam, ma lecha nirdam; לֶאֱהֹב = le'ehov; שַׁבָּת = shabbat; חָמֵשׁ = chamesh.`;
 
 export const translitRules = (label: string) => (/hebrew/i.test(label) ? `\n${HEBREW_TRANSLIT_RULES}` : "");
 

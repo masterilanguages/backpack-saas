@@ -10,6 +10,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { languageLabel, usesNikud, isRTLLanguage, isRTLText, nativeScriptInstruction } from "@/lib/language";
 import { checkLater, markRow } from "@/lib/saveWordDeps";
+import { translitRules } from "@/lib/chapterPrompts";
+import { invokeQuality } from "@/lib/invokeQuality";
+import SpeakButton from "@/components/speech/SpeakButton";
 
 export default function TranslatorWidget() {
   const queryClient = useQueryClient();
@@ -62,7 +65,7 @@ export default function TranslatorWidget() {
       const text = inputText.trim();
       const lang = targetLanguage || "hebrew";
       const langLabel = languageLabel(lang);
-      const result = await base44.integrations.Core.InvokeLLM({
+      const result = await invokeQuality({
         prompt: `The user typed: "${text}"
 
 This could be a ${langLabel} word (in ${langLabel} script), an English word, or a transliteration of a ${langLabel} word (Latin letters that sound like the ${langLabel} word).
@@ -70,7 +73,7 @@ This could be a ${langLabel} word (in ${langLabel} script), an English word, or 
 Return JSON with:
 - hebrew: ${nativeScriptInstruction(lang)}
 - transliteration: phonetic Latin spelling of the ${langLabel} word
-- english: English meaning
+- english: English meaning${translitRules(langLabel)}
 - example_sentence_hebrew: one short example sentence in ${langLabel}${usesNikud(lang) ? " (Hebrew script with nikud)" : " (native spelling with any accents/diacritics)"}
 - example_sentence_transliteration: transliteration of the example sentence
 - example_sentence_english: English translation of the example sentence`,
@@ -192,8 +195,14 @@ Return JSON with:
               {translation && translation.result && (
                 <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 space-y-2">
                   <p className="text-slate-400 text-[10px] uppercase mb-0.5">{translation.original}</p>
-                  <p className="text-teal-300 text-xl font-bold" dir={(isRTLLanguage(targetLanguage) || isRTLText(translation.result.hebrew)) ? "rtl" : "ltr"}>{translation.result.hebrew}</p>
-                  <p className="text-slate-300 text-sm">{translation.original}</p>
+                  <p className="text-teal-300 text-xl font-bold flex items-center gap-2" dir={(isRTLLanguage(targetLanguage) || isRTLText(translation.result.hebrew)) ? "rtl" : "ltr"}>
+                    <span>{translation.result.hebrew}</span>
+                    <SpeakButton text={translation.result.hebrew} language={targetLanguage} className="text-teal-300" />
+                  </p>
+                  {translation.result.transliteration && (
+                    <p className="text-slate-300 text-sm">{translation.result.transliteration}</p>
+                  )}
+                  <p className="text-slate-400 text-sm">{translation.original}</p>
                   <p className="text-white font-semibold text-base">{translation.result.english}</p>
 
                   {translation.result.example_sentence_hebrew && (

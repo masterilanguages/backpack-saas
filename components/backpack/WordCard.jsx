@@ -7,7 +7,9 @@ import EditableWord from "@/components/learning/EditableWord";
 import { toast } from "sonner";
 import { isRTLLanguage, isRTLText, languageLabel, needsTransliteration } from "@/lib/language";
 import { mnemonicImagePrompt } from "@/lib/imageStyle";
-import { generateLessonAudio } from "@/lib/audio/lessonAudio";
+import SpeakButton from "@/components/speech/SpeakButton";
+import NikudToggle from "@/components/speech/NikudToggle";
+import { usePointedHebrew } from "@/lib/speech/useNikud";
 import VerbDetails from "./VerbDetails";
 import { highlightParts, isVerbCard, pickOccurrence } from "@/lib/verbCard";
 
@@ -132,11 +134,7 @@ function UsageExamples({ examples, videoSentence, loading, lang, showEnglish, on
           {ex.from_video ? '📺 From the video' : `Example ${videoSentence ? i : i + 1}`}
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button
-            onClick={() => generateLessonAudio({ text: sentence, language: lang }).play()}
-            title="Listen"
-            style={{ background: 'none', border: 0, cursor: 'pointer', fontSize: 13 }}
-          >🔊</button>
+          <SpeakButton text={sentence} language={lang} title="Listen" className="text-indigo-500" />
           {slides.length > 1 && (
             <>
               <button onClick={() => go(i - 1)} style={{ background: '#eef2ff', border: 0, borderRadius: 999, width: 22, height: 22, color: '#4f46e5', cursor: 'pointer', fontWeight: 700 }}>‹</button>
@@ -263,6 +261,9 @@ export default function WordCard({
   // Target language for this card (drives native-script direction + transliteration/script toggles).
   // Prefer an explicit language prop (e.g. passed from a session view), then the word's own language, then Hebrew.
   const lang = language || word.language || 'hebrew';
+  const nikudActive = needsTransliteration(lang) && !!showTransliteration;
+  const pointedWord = usePointedHebrew(String(word.word || ""), String(word.phonetic || ""), nikudActive);
+  const hebrewShown = pointedWord.text || word.word;
   // Render the native word RTL only for RTL languages / actual RTL text — Latin renders LTR.
   const nativeWordRTL = isRTLLanguage(lang) || isRTLText(word.word);
 
@@ -400,6 +401,7 @@ export default function WordCard({
                 {String(lang).toLowerCase() === 'arabic' ? 'ع' : 'א'}
               </button>
             )}
+            <span onClick={(e) => e.stopPropagation()}><NikudToggle visible={nikudActive} /></span>
           </div>
         </div>
 
@@ -524,7 +526,7 @@ export default function WordCard({
           {showHebrew && (
             <div dir={nativeWordRTL ? 'rtl' : 'ltr'} style={{ fontSize: 32, fontWeight: 800, color: '#1e1b4b', lineHeight: 1.1 }}>
               <EditableWord
-                text={word.word}
+                text={hebrewShown}
                 language={nativeWordRTL ? 'he' : 'en'}
                 editable={canEdit}
                 onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { word: v } })}
@@ -738,6 +740,7 @@ export default function WordCard({
               {String(lang).toLowerCase() === 'arabic' ? 'ع' : 'א'}
             </button>
           )}
+          <span onClick={(e) => e.stopPropagation()}><NikudToggle visible={nikudActive} className="border border-slate-600" /></span>
         </div>
         {word.image_url && !imgFailed ? (
           <>
@@ -771,7 +774,7 @@ export default function WordCard({
               </>
             ) : (
               <>
-                <p className="text-teal-300 font-bold text-xl" dir={nativeWordRTL ? "rtl" : "ltr"}>{word.word}</p>
+                <p className="text-teal-300 font-bold text-xl" dir={nativeWordRTL ? "rtl" : "ltr"}>{hebrewShown}</p>
                 <p className="text-slate-400 text-sm">{word.phonetic}</p>
                 <button
                   onClick={(e) => { e.stopPropagation(); setImgFailed(false); suggestMnemonicForWord(word); }}
@@ -791,7 +794,7 @@ export default function WordCard({
         {showHebrew && (
           <p className={`text-teal-300 font-bold text-center ${large ? "text-3xl" : "text-base"}`} dir={nativeWordRTL ? "rtl" : "ltr"}>
             <EditableWord
-              text={word.word}
+              text={hebrewShown}
               language={nativeWordRTL ? "he" : "en"}
               editable={canEdit}
               onSave={(v) => updateWordMutation.mutate({ id: word.id, data: { word: v } })}
@@ -894,13 +897,7 @@ export default function WordCard({
             stored in the same column are not sentences and are skipped. */}
         {word.example_sentence && word.example_sentence.includes(' ') && !/^Session \d+$/i.test(word.example_sentence) && (
           <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-slate-700 bg-slate-800 p-2">
-            <button
-              onClick={() => generateLessonAudio({ text: word.example_sentence, language: lang }).play()}
-              title="Listen to sentence"
-              className="flex-shrink-0 rounded p-0.5 text-sm hover:bg-slate-700 transition-all"
-            >
-              🔊
-            </button>
+            <SpeakButton text={word.example_sentence} language={lang} title="Listen to sentence" className="text-slate-300 hover:bg-slate-700" />
             <p
               dir={isRTLText(word.example_sentence) ? 'rtl' : 'ltr'}
               className={`flex-1 ${large ? 'text-sm' : 'text-[11px]'} leading-relaxed text-slate-300 ${isRTLText(word.example_sentence) ? 'text-right' : ''}`}
